@@ -45,11 +45,12 @@ fn main() -> ExitCode {
         match DrmFramebuffer::probe(&args.device) {
             Ok(probe) => {
                 println!(
-                    "drm-ok device={} connector={}-{} crtc={:?} mode={}x{} refresh={}Hz",
+                    "drm-ok device={} connector={}-{} crtc={:?} selection={} mode={}x{} refresh={}Hz",
                     args.device,
                     probe.connector_interface,
                     probe.connector_interface_id,
                     probe.crtc,
+                    probe.selection_source,
                     probe.width,
                     probe.height,
                     probe.refresh_hz
