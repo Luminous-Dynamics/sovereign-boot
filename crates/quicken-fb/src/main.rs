@@ -54,7 +54,7 @@ fn main() -> ExitCode {
                     probe.height,
                     probe.refresh_hz
                 );
-                return;
+                return ExitCode::SUCCESS;
             }
             Err(e) => {
                 eprintln!("quicken-fb: DRM probe failed: {e}");
