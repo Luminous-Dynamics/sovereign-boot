@@ -36,3 +36,8 @@ grep -q 'connector_interface' crates/quicken-fb/src/framebuffer.rs
 grep -q 'connector_interface_id' crates/quicken-fb/src/framebuffer.rs
 grep -q 'original_connectors' crates/quicken-fb/src/framebuffer.rs
 grep -q 'probe.connector_interface' crates/quicken-fb/src/main.rs
+
+# Multi-GPU hosts require an explicit DRM card; probe errors must include connector diagnostics.
+! grep -q 'default = "/dev/dri/card0"' nix/modules/sovereign-boot.nix
+grep -q 'NoConnectedDisplay' crates/quicken-fb/src/framebuffer.rs
+grep -q 'connector_diagnostics' crates/quicken-fb/src/framebuffer.rs
