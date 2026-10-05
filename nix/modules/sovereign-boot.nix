@@ -117,14 +117,6 @@ let
       exit 8
     fi
 
-    if [[ ! "$armed_at_unix_s" =~ ^[0-9]+$ ]]; then
-      echo "sovereign-boot: invalid canary arm timestamp" >&2
-      printf 'status=FAIL_INVALID_REQUEST\nboot_id=%s\n' "$(< /proc/sys/kernel/random/boot_id)" | write_atomic "$result"
-      request_active=0
-      rm -f "$inflight"
-      exit 2
-    fi
-
     if [[ "$device" != /dev/dri/card[0-9]* ]] || [[ ! -e "$device" ]]; then
       echo "sovereign-boot: invalid physical canary device request: $device" >&2
       printf 'status=FAIL_INVALID_REQUEST\nboot_id=%s\n' "$(< /proc/sys/kernel/random/boot_id)" | write_atomic "$result"
