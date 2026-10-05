@@ -5,6 +5,7 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 artifact="${SOVEREIGN_BOOT_ARTIFACT:-$root/result/bin/quicken-fb}"
 seconds=5
 device=""
+isolate=0
 
 while (($#)); do
   case "$1" in
@@ -18,8 +19,15 @@ while (($#)); do
       seconds="$2"
       shift 2
       ;;
+    --isolate)
+      isolate=1
+      shift
+      ;;
     -h|--help)
-      echo "Usage: launch-physical-canary.sh [--device /dev/dri/cardN] [--seconds N]"
+      echo "Usage: launch-physical-canary.sh [--device /dev/dri/cardN] [--seconds N] [--isolate]"
+      echo
+      echo "--isolate: allocate a real VT first, isolate multi-user.target, run the"
+      echo "           bounded canary, then attempt graphical.target recovery."
       exit 0
       ;;
     *)
@@ -48,12 +56,54 @@ inner='set -euo pipefail
 artifact="$1"
 seconds="$2"
 device="$3"
+isolate="$4"
+did_isolate=0
+
+cleanup() {
+  rc=$?
+  if ((did_isolate)); then
+    echo
+    echo "Recovering graphical.target..."
+    if ! systemctl isolate graphical.target; then
+      echo "WARNING: graphical.target recovery failed; use the recovery shell." >&2
+      rc=1
+    elif ! systemctl is-active --quiet graphical.target; then
+      echo "WARNING: graphical.target is not active after recovery." >&2
+      rc=1
+    elif ! systemctl is-active --quiet display-manager.service; then
+      echo "WARNING: display-manager.service is not active after recovery." >&2
+      rc=1
+    else
+      echo "Graphical recovery: PASS"
+    fi
+  fi
+  exit "$rc"
+}
+trap cleanup EXIT
+
+if [[ "$isolate" == "1" ]]; then
+  if systemctl is-active --quiet graphical.target; then
+    echo "Opt-in isolation requested; this VT was acquired before graphical.target isolation."
+    did_isolate=1
+    systemctl isolate multi-user.target
+  else
+    echo "REFUSING: --isolate requires graphical.target to be active" >&2
+    exit 1
+  fi
+fi
 
 if systemctl is-active --quiet display-manager.service; then
   echo "REFUSING: display-manager.service is active" >&2
-  echo "Run this only after the desktop has been isolated from DRM ownership." >&2
+  echo "Use --isolate for an explicit automated graphical handoff." >&2
   exit 1
 fi
+
+active_vt="$(cat /sys/class/tty/tty0/active 2>/dev/null || true)"
+stdin_tty="$(readlink /proc/self/fd/0 || true)"
+[[ "$stdin_tty" == "/dev/$active_vt" ]] || {
+  echo "REFUSING: launcher stdin is not the active VT (stdin=$stdin_tty active=$active_vt)" >&2
+  exit 1
+}
 
 if [[ -z "$device" ]]; then
   success_count=0
@@ -105,8 +155,7 @@ probe_output="$("$artifact" --probe --device "$device" 2>&1)" || {
   echo "$probe_output" >&2
   exit 1
 }
-printf "%s
-" "$probe_output"
+printf "%s\n" "$probe_output"
 
 echo
 echo "Starting bounded renderer canary..."
@@ -114,8 +163,7 @@ set +e
 canary_output="$("$artifact" --genesis-phrase "Sovereign Boot" --device "$device" --canary-seconds "$seconds" 2>&1)"
 canary_rc=$?
 set -e
-printf "%s
-" "$canary_output"
+printf "%s\n" "$canary_output"
 
 ((canary_rc == 0)) || {
   echo "CANARY RESULT: FAIL (renderer exit code $canary_rc)" >&2
@@ -131,4 +179,4 @@ echo
 echo "CANARY RESULT: PASS"
 '
 
-exec sudo openvt --switch --wait -- bash -c "$inner" _ "$artifact" "$seconds" "$device"
+exec sudo openvt --switch --wait -- bash -c "$inner" _ "$artifact" "$seconds" "$device" "$isolate"
