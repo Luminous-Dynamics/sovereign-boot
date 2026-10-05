@@ -80,12 +80,18 @@ probe_output="$("$artifact" --probe --device "$device" 2>&1)" || {
 printf "%s\n" "$probe_output"
 
 install -d -m 0755 /var/lib/sovereign-boot
+if [[ -e "$request" ]] || [[ -e "$request.inflight" ]]; then
+  echo "ERROR: a physical canary request is already pending or in-flight." >&2
+  echo "Refusing to overwrite an existing qualification request." >&2
+  exit 1
+fi
 tmp="$(mktemp /var/lib/sovereign-boot/physical-canary.request.XXXXXX)"
 trap 'rm -f "$tmp"' EXIT
 chmod 0600 "$tmp"
 artifact_sha256="$(sha256sum "$artifact" | cut -d' ' -f1)"
 probe_sha256="$(printf '%s\n' "$probe_output" | sha256sum | cut -d' ' -f1)"
-printf 'device=%s\nseconds=%s\nartifact_sha256=%s\npreboot_probe_sha256=%s\n' "$device" "$seconds" "$artifact_sha256" "$probe_sha256" >"$tmp"
+armed_at_unix_s="$(date +%s)"
+printf 'device=%s\nseconds=%s\nartifact_sha256=%s\npreboot_probe_sha256=%s\narmed_at_unix_s=%s\n' "$device" "$seconds" "$artifact_sha256" "$probe_sha256" "$armed_at_unix_s" >"$tmp"
 mv -f "$tmp" "$request"
 sync
 
