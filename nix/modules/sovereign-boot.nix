@@ -108,6 +108,15 @@ let
       exit 4
     fi
 
+    probe_output="$("$artifact" --probe --device "$device" 2>&1)" || {
+      echo "sovereign-boot: boot-time non-mutating DRM probe failed" >&2
+      printf 'status=FAIL_PROBE\nboot_id=%s\ndevice=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$device" >"$result"
+      request_active=0
+      rm -f "$inflight"
+      exit 5
+    }
+    echo "Sovereign Boot: boot-time probe: $probe_output"
+
     active_vt="$(${pkgs.coreutils}/bin/cat /sys/class/tty/tty0/active 2>/dev/null || true)"
     if [[ "$active_vt" != "tty1" ]]; then
       echo "sovereign-boot: refusing physical canary because tty1 is not active (active=$active_vt)" >&2
