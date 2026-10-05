@@ -53,14 +53,19 @@ sudo nix run --no-update-lock-file --no-write-lock-file .#arm-physical-canary --
 ```
 
 The arming command performs the non-mutating probe first, writes a root-owned
-one-shot request under `/var/lib/sovereign-boot/`, and then reboots. It **does not**
+one-shot request under `/var/lib/sovereign-boot/`, and then reboots. The request also records the SHA-256 digest of the probed renderer and the
+selected DRM card, so the next-boot service refuses to execute a stale or mismatched
+artifact. The boot service consumes the request before modesetting, performs a fresh
+non-mutating probe, and requires an explicit restoration receipt in addition to a zero
+renderer exit code. It **does not**
 call `systemctl isolate`, stop SDDM, kill Plasma, or take DRM away from the current
 desktop. On the next boot, `sovereign-boot-physical-canary.service` is ordered before
 the display manager and uses `/dev/tty1` as its controlling VT. The request is
 consumed
 once, and a persistent result is written to
 `/var/lib/sovereign-boot/physical-canary.result` with the boot ID, selected device,
-duration, and renderer exit status.
+duration, renderer digest, boot-time probe receipt, restoration receipt, and renderer
+exit status.
 
 For direct operator testing from an already-active Linux console, the non-destructive
 launcher remains available:
