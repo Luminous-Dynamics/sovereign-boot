@@ -144,7 +144,7 @@ in
     # A stale/mismatched artifact request must fail closed before the renderer
     # executes, and the request must still be consumed.
     machine.succeed(
-        "printf 'device=/dev/dri/card99\nseconds=1\nartifact_sha256=%064d\n' 0 > /var/lib/sovereign-boot/physical-canary.request"
+        "printf 'request_id=%s\ndevice=/dev/dri/card99\nseconds=1\nartifact_sha256=%064d\npreboot_probe_sha256=%s\narmed_at_unix_s=%s\nexpires_at_unix_s=%s\n' 22222222222222222222222222222222 0 2222222222222222222222222222222222222222222222222222222222222222 "$(date +%s)" "$(($(date +%s) + 900))" > /var/lib/sovereign-boot/physical-canary.request"
     )
     machine.succeed("systemctl reset-failed sovereign-boot-physical-canary.service")
     machine.fail("systemctl start sovereign-boot-physical-canary.service")
@@ -165,7 +165,7 @@ in
     # A wrong requested DRM card must fail closed even when an alternate card path exists.
     machine.succeed("touch /dev/dri/card98")
     machine.succeed(
-        "printf 'device=/dev/dri/card98\nseconds=1\nartifact_sha256=0000000000000000000000000000000000000000000000000000000000000000\n' > /var/lib/sovereign-boot/physical-canary.request"
+        "printf 'request_id=%s\ndevice=/dev/dri/card98\nseconds=1\nartifact_sha256=0000000000000000000000000000000000000000000000000000000000000000\npreboot_probe_sha256=%s\narmed_at_unix_s=%s\nexpires_at_unix_s=%s\n' 33333333333333333333333333333333 3333333333333333333333333333333333333333333333333333333333333333 "$(date +%s)" "$(($(date +%s) + 900))" > /var/lib/sovereign-boot/physical-canary.request"
     )
     machine.succeed("systemctl reset-failed sovereign-boot-physical-canary.service")
     machine.fail("systemctl start sovereign-boot-physical-canary.service")
