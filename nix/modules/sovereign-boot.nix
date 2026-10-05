@@ -76,17 +76,26 @@ let
     }
     trap cleanup_request EXIT
 
+    request_id="$(${pkgs.gnused}/bin/sed -n 's/^request_id=//p' "$inflight")"
     device="$(${pkgs.gnused}/bin/sed -n 's/^device=//p' "$inflight")"
     seconds="$(${pkgs.gnused}/bin/sed -n 's/^seconds=//p' "$inflight")"
     requested_sha="$(${pkgs.gnused}/bin/sed -n 's/^artifact_sha256=//p' "$inflight")"
     preboot_probe_sha="$(${pkgs.gnused}/bin/sed -n 's/^preboot_probe_sha256=//p' "$inflight")"
     armed_at_unix_s="$(${pkgs.gnused}/bin/sed -n 's/^armed_at_unix_s=//p' "$inflight")"
     expires_at_unix_s="$(${pkgs.gnused}/bin/sed -n 's/^expires_at_unix_s=//p' "$inflight")"
+    if [[ ! "$request_id" =~ ^[0-9a-f]{32}$ ]]; then
+      echo "sovereign-boot: invalid physical canary request identity" >&2
+      printf 'status=FAIL_INVALID_REQUEST\nboot_id=%s\nrequest_id=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$request_id" | write_atomic "$result"
+      request_active=0
+      rm -f "$inflight"
+      exit 2
+    fi
+
     actual_sha="$(${pkgs.coreutils}/bin/sha256sum "$artifact" | ${pkgs.coreutils}/bin/cut -d' ' -f1)"
 
     if [[ "$device" != "${cfg.drmDevice}" ]]; then
       echo "sovereign-boot: request device does not match configured DRM device: $device" >&2
-      printf 'status=FAIL_DEVICE_MISMATCH\nboot_id=%s\narmed_at_unix_s=%s\ndevice=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$armed_at_unix_s" "$device" | write_atomic "$result"
+      printf 'status=FAIL_DEVICE_MISMATCH\nboot_id=%s\nrequest_id=%s\narmed_at_unix_s=%s\ndevice=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$armed_at_unix_s" "$device" | write_atomic "$result"
       request_active=0
       rm -f "$inflight"
       exit 2
@@ -94,7 +103,7 @@ let
 
     if [[ ! "$requested_sha" =~ ^[0-9a-f]{64}$ ]] || [[ "$requested_sha" != "$actual_sha" ]]; then
       echo "sovereign-boot: renderer artifact digest mismatch" >&2
-      printf 'status=FAIL_ARTIFACT_MISMATCH\nboot_id=%s\narmed_at_unix_s=%s\nexpected_sha=%s\nactual_sha=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$armed_at_unix_s" "$requested_sha" "$actual_sha" | write_atomic "$result"
+      printf 'status=FAIL_ARTIFACT_MISMATCH\nboot_id=%s\nrequest_id=%s\narmed_at_unix_s=%s\nexpected_sha=%s\nactual_sha=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$armed_at_unix_s" "$requested_sha" "$actual_sha" | write_atomic "$result"
       request_active=0
       rm -f "$inflight"
       exit 3
@@ -111,7 +120,7 @@ let
     now_unix_s="$(${pkgs.coreutils}/bin/date +%s)"
     if (( now_unix_s > expires_at_unix_s )); then
       echo "sovereign-boot: physical canary request has expired; refusing execution" >&2
-      printf 'status=FAIL_EXPIRED_REQUEST\nboot_id=%s\narmed_at_unix_s=%s\nexpires_at_unix_s=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$armed_at_unix_s" "$expires_at_unix_s" | write_atomic "$result"
+      printf 'status=FAIL_EXPIRED_REQUEST\nboot_id=%s\nrequest_id=%s\narmed_at_unix_s=%s\nexpires_at_unix_s=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$armed_at_unix_s" "$expires_at_unix_s" | write_atomic "$result"
       request_active=0
       rm -f "$inflight"
       exit 8
@@ -200,8 +209,8 @@ let
     if [[ -n "$restore_receipt" ]]; then
       restore_sha="$(printf '%s\n' "$restore_receipt" | sha256sum | cut -d' ' -f1)"
     fi
-    printf 'status=%s\nboot_id=%s\narmed_at_unix_s=%s\nexpires_at_unix_s=%s\ndevice=%s\nseconds=%s\nexit_code=%s\nartifact_sha256=%s\npreboot_probe_sha256=%s\nboot_probe_sha256=%s\nrenderer_output_sha256=%s\nrestore_receipt_sha256=%s\n' \
-      "$status" "$(< /proc/sys/kernel/random/boot_id)" "$armed_at_unix_s" "$expires_at_unix_s" "$device" "$seconds" "$rc" "$actual_sha" "$preboot_probe_sha" "$probe_sha" "$output_sha" "$restore_sha" | write_atomic "$result"
+    printf 'status=%s\nboot_id=%s\nrequest_id=%s\narmed_at_unix_s=%s\nexpires_at_unix_s=%s\ndevice=%s\nseconds=%s\nexit_code=%s\nartifact_sha256=%s\npreboot_probe_sha256=%s\nboot_probe_sha256=%s\nrenderer_output_sha256=%s\nrestore_receipt_sha256=%s\n' \
+      "$status" "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$armed_at_unix_s" "$expires_at_unix_s" "$device" "$seconds" "$rc" "$actual_sha" "$preboot_probe_sha" "$probe_sha" "$output_sha" "$restore_sha" | write_atomic "$result"
     request_active=0
     rm -f "$inflight"
 
