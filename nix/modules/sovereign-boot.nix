@@ -67,6 +67,12 @@ let
       result_request_id="$(${pkgs.gnused}/bin/sed -n 's/^request_id=//p' "$result")"
     fi
     if [[ "$result_request_id" == "$request_id" ]]; then
+      if [[ "$request_id" =~ ^[0-9a-f]{32}$ ]]; then
+        mkdir -p "$archive_dir"
+        mv -f "$inflight" "$archive_dir/$request_id.request"
+      else
+        rm -f "$inflight"
+      fi
       exit 0
     fi
 
