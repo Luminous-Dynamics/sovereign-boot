@@ -77,6 +77,8 @@ grep -q 'FAIL_DEVICE_MISMATCH' nix/modules/sovereign-boot.nix
 grep -q 'FAIL_RENDERER' nix/modules/sovereign-boot.nix
 grep -q 'FAIL_PROBE' nix/modules/sovereign-boot.nix
 grep -q 'FAIL_PROBE_RECEIPT' nix/modules/sovereign-boot.nix
+grep -q 'FAIL_EXPIRED_REQUEST' nix/modules/sovereign-boot.nix
+grep -q 'expires_at_unix_s' scripts/arm-physical-canary.sh
 grep -q 'restore_receipt=' nix/modules/sovereign-boot.nix
 grep -q 'canary_output=' nix/modules/sovereign-boot.nix
 grep -q 'FAIL_DISPLAY_MANAGER' nix/modules/sovereign-boot.nix
