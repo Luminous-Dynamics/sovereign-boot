@@ -85,7 +85,8 @@ in
     assert "device=/dev/dri/card99" in result, result
     assert "seconds=1" in result, result
     assert "exit_code=0" in result, result
-    assert "artifact_sha256=" in result
+    assert "artifact_sha256=" in result, result
+    machine.succeed("test -f /run/sovereign-boot-test/display-manager.started")
     machine.succeed("test ! -e /var/lib/sovereign-boot/physical-canary.request")
     machine.succeed("test ! -e /var/lib/sovereign-boot/physical-canary.request.inflight")
     permissions = machine.succeed("stat -c %a /var/lib/sovereign-boot/physical-canary.result").strip()
@@ -140,7 +141,8 @@ in
         "systemctl is-active multi-user.target"
     ).strip() == "active"
 
-    # A wrong requested DRM card must fail closed even if the path exists.
+    # A wrong requested DRM card must fail closed even when an alternate card path exists.
+    machine.succeed("touch /dev/dri/card98")
     machine.succeed(
         "printf 'device=/dev/dri/card98\nseconds=1\nartifact_sha256=0000000000000000000000000000000000000000000000000000000000000000\n' > /var/lib/sovereign-boot/physical-canary.request"
     )
@@ -163,7 +165,7 @@ in
         "printf 'device=/dev/dri/card99\nseconds=1\nartifact_sha256=%s\n' " + sha + " > /var/lib/sovereign-boot/physical-canary.request"
     )
     machine.succeed("systemctl reset-failed sovereign-boot-physical-canary.service")
-    machine.succeed("systemctl start sovereign-boot-physical-canary.service || test $? -ne 0")
+    machine.fail("systemctl start sovereign-boot-physical-canary.service")
     result = machine.succeed(
         "cat /var/lib/sovereign-boot/physical-canary.result"
     )
@@ -171,6 +173,9 @@ in
     assert "exit_code=7" in result, result
     machine.succeed(
         "test ! -e /var/lib/sovereign-boot/physical-canary.request"
+    )
+    machine.succeed(
+        "test ! -e /var/lib/sovereign-boot/physical-canary.request.inflight"
     )
     assert machine.succeed(
         "systemctl is-active multi-user.target"
