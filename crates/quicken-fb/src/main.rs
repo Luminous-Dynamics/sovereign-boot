@@ -39,6 +39,19 @@ static SHUTDOWN: AtomicBool = AtomicBool::new(false);
 fn main() {
     let args = parse_args();
 
+    if args.probe {
+        match DrmFramebuffer::probe(&args.device) {
+            Ok((width, height, refresh_hz)) => {
+                println!("drm-ok device={} mode={}x{} refresh={}Hz", args.device, width, height, refresh_hz);
+                return;
+            }
+            Err(e) => {
+                eprintln!("quicken-fb: DRM probe failed: {e}");
+                std::process::exit(1);
+            }
+        }
+    }
+
     // Install signal handlers
     install_signal_handlers();
 
@@ -168,6 +181,7 @@ struct Args {
     genesis_phrase: String,
     progress_pipe: Option<String>,
     device: String,
+    probe: bool,
 }
 
 /// Minimal argument parser (no clap dependency to keep binary small).
@@ -176,6 +190,7 @@ fn parse_args() -> Args {
     let mut genesis_phrase = None;
     let mut progress_pipe = None;
     let mut device = "/dev/dri/card0".to_string();
+    let mut probe = false;
 
     let mut i = 1;
     while i < args.len() {
@@ -198,6 +213,9 @@ fn parse_args() -> Args {
                     device = args[i].clone();
                 }
             }
+            "--probe" => {
+                probe = true;
+            }
             "--help" | "-h" => {
                 print_usage();
                 std::process::exit(0);
@@ -213,8 +231,9 @@ fn parse_args() -> Args {
 
     let genesis_phrase = match genesis_phrase {
         Some(p) => p,
+        None if probe => String::new(),
         None => {
-            eprintln!("quicken-fb: --genesis-phrase is required");
+            eprintln!("quicken-fb: --genesis-phrase is required unless --probe is used");
             print_usage();
             std::process::exit(1);
         }
@@ -224,6 +243,7 @@ fn parse_args() -> Args {
         genesis_phrase,
         progress_pipe,
         device,
+        probe,
     }
 }
 
