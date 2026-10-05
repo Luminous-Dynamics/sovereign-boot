@@ -2,18 +2,9 @@
 resolver = "2"
 members = [
     "crates/quicken-fb",
-    "crates/spore-kernel",
-]
-exclude = [
-    "crates/spore-kernel/fuzz",
 ]
 
 [workspace.package]
 edition = "2024"
 license = "AGPL-3.0-or-later"
-authors = ["Luminous Dynamics <tristan.stoltz@evolvingresonantcocreationism.com>"]
-
-[workspace.dependencies]
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-proptest = "1"
+authors = ["Luminous Dynamics <tristan.stoltz@evolvingresonantcocreationism.com"]
