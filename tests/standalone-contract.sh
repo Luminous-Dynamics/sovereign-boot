@@ -61,8 +61,11 @@ grep -q 'drm-restore-ok' scripts/launch-physical-canary.sh
 grep -q 'openvt --switch --wait' README.md
 grep -q 'physical-canary = pkgs.writeShellApplication' flake.nix
 grep -q 'SOVEREIGN_BOOT_ARTIFACT' flake.nix
+grep -q -- '--isolate' scripts/launch-physical-canary.sh
+grep -q 'systemctl isolate multi-user.target' scripts/launch-physical-canary.sh
+grep -q 'systemctl isolate graphical.target' scripts/launch-physical-canary.sh
+grep -q 'trap cleanup EXIT' scripts/launch-physical-canary.sh
 bash -n scripts/launch-physical-canary.sh
-! grep -Eq 'systemctl (isolate|stop|start|restart|kill)' scripts/launch-physical-canary.sh
 
 # Bounded physical canary must have an explicit active-VT ownership guard.
 test -s crates/quicken-fb/src/vt.rs
