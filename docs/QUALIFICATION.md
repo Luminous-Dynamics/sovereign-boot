@@ -9,10 +9,10 @@ repository. Green means the exact evidence named in the row exists.
 | Dependency lock | PASS_STATIC | Committed Cargo.lock contains the renderer closure. |
 | CLI/module alignment | PASS_STATIC | Module invokes only arguments implemented by quicken-fb. |
 | DRM probe | PASS_OBSERVED | 2026-10-05: rebuilt artifact SHA256 `53902aa03eabbf59210ea57020db803d98530c238ad910b09ef123a3316ab846`; `/dev/dri/card1`, Intel `i915`, `boot_vga=1`, connector `eDP-1`, CRTC `59`, `1920x1080@144Hz`; exact receipt: `drm-ok device=/dev/dri/card1 connector=eDP-1 crtc=crtc::Handle(59) selection=current mode=1920x1080 refresh=144Hz`. Card0/NVIDIA reported disconnected connectors. Probe receipts also distinguish a `current` CRTC from a `free-compatible` CRTC selected after compositor release. |
-| Renderer execution | FAIL_OBSERVED / REWORKED | First live physical canary (binary SHA256 `2264808f1583f12c70b7584838d3bdf57ad1ab8424f25798520b55d857808bc0`) produced a black screen; the session was recovered by reboot, so no CRTC restoration evidence was captured. The manual canary boundary has since been hardened with active-VT ownership, KD_GRAPHICS handoff, extended signal handling, bounded duration, strict render-buffer sizing, and explicit restoration verification. |
+| Renderer execution | FAIL_OBSERVED / REWORKED | First live physical canary (binary SHA256 `2264808f1583f12c70b7584838d3bdf57ad1ab8424f25798520b55d857808bc0`) produced a black screen; the session was recovered by reboot, so no CRTC restoration evidence was captured. The manual canary boundary has since been hardened with active-VT ownership, KD_GRAPHICS handoff, extended signal handling, bounded duration, strict render-buffer sizing, and explicit restoration verification. A later automated run demonstrated a separate launcher defect: --isolate terminated the active KDE/SDDM session by isolating multi-user.target; no renderer success or restoration receipt was observed. The destructive isolation path is therefore removed from the launcher. |
 | Nix package build | PASS_LOCAL_OBSERVED / PENDING_HOSTED | Local x86_64-linux `nix build .#quicken-fb` completed successfully on 2026-10-05; hosted build still pending. |
-| VM boot integration | BLOCKED | Requires successful package + VM gates first. |
-| Physical boot integration | BLOCKED | Must remain outside the boot-critical path until VM qualification. |
+| VM boot integration | BLOCKED / REWORKED | The no-DRM boundary remains valid; the new boot-scoped physical-canary service needs a VM gate proving request consumption, TTY ownership, ordering before display-manager, and non-required failure semantics. |
+| Physical boot integration | BLOCKED | Automated qualification is now designed as a reboot-scoped one-shot service rather than live desktop isolation. Physical render/restore remains unqualified until that path is exercised and its persistent receipt is independently reviewed. |
 | Lifecycle/state/LKG integration | NOT_EXPORTED | Requires standalone binaries and independent evidence contracts. |
 
 ## Safety invariant
@@ -60,3 +60,12 @@ A connected connector is no longer treated as unusable merely because `current_e
 ## Local artifact evidence
 
 The rebuilt `result/bin/quicken-fb` on the canary checkout is 821 KiB and has SHA256 `53902aa03eabbf59210ea57020db803d98530c238ad910b09ef123a3316ab846`. The non-mutating physical probe completed successfully against `/dev/dri/card1` and selected `eDP-1` / CRTC 59 at 1920x1080@144Hz with `selection=current`.
+
+
+## Boot-scoped physical qualification
+
+The first automated desktop isolation experiment is explicitly rejected as a qualification mechanism. The 2026-10-05 journal showed SDDM receiving SIGTERM at the canary start time, followed by display-manager restart and a new KDE login session. No drm-ok, drm-restore-ok, or CANARY RESULT: PASS receipt was observed for that run.
+
+The replacement design arms a root-owned one-shot request while the desktop remains running, then reboots. On the next boot, systemd starts the request-gated canary before display-manager.service, with StandardInput=tty and TTYPath=/dev/tty1. The service is wanted by multi-user.target but is not a requirement of it, so a failed physical canary cannot make normal boot depend on renderer success. The request is consumed once and the result is retained under /var/lib/sovereign-boot/physical-canary.result.
+
+This is aligned with systemd's distinction between ordering and requirement dependencies: Before= controls sequencing, while Wants=/Requires= control whether another unit is a dependency.
