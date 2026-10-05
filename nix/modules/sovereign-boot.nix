@@ -115,6 +115,16 @@ let
       rm -f "$inflight"
       exit 5
     }
+    case "$probe_output" in
+      drm-ok\ *) ;;
+      *)
+        echo "sovereign-boot: boot-time DRM probe returned no valid receipt" >&2
+        printf 'status=FAIL_PROBE_RECEIPT\nboot_id=%s\ndevice=%s\nprobe_receipt=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$device" "$probe_output" >"$result"
+        request_active=0
+        rm -f "$inflight"
+        exit 6
+        ;;
+    esac
     echo "Sovereign Boot: boot-time probe: $probe_output"
 
     active_vt="$(${pkgs.coreutils}/bin/cat /sys/class/tty/tty0/active 2>/dev/null || true)"
@@ -131,19 +141,24 @@ let
     echo "Sovereign Boot: display-manager.service is intentionally not started yet."
 
     set +e
-    "$artifact" --genesis-phrase "${lib.escapeShellArg cfg.genesisPhrase}" \
-      --device "$device" --canary-seconds "$seconds"
+    canary_output="$("$artifact" --genesis-phrase "${lib.escapeShellArg cfg.genesisPhrase}" \
+      --device "$device" --canary-seconds "$seconds" 2>&1)"
     rc=$?
     set -e
+    printf "%s\n" "$canary_output"
 
-    if (( rc == 0 )); then
+    restore_receipt="$(${pkgs.gnugrep}/bin/grep -m1 "^drm-restore-ok " <<<"$canary_output" || true)"
+    if (( rc == 0 )) && [[ -n "$restore_receipt" ]]; then
       status="PASS"
+    elif (( rc == 0 )); then
+      status="FAIL_RESTORE_RECEIPT"
+      rc=7
     else
       status="FAIL_RENDERER"
     fi
 
-    printf 'status=%s\nboot_id=%s\ndevice=%s\nseconds=%s\nexit_code=%s\nartifact_sha256=%s\nprobe_receipt=%s\n' \
-      "$status" "$(< /proc/sys/kernel/random/boot_id)" "$device" "$seconds" "$rc" "$actual_sha" "$probe_output" >"$result"
+    printf 'status=%s\nboot_id=%s\ndevice=%s\nseconds=%s\nexit_code=%s\nartifact_sha256=%s\nprobe_receipt=%s\nrestore_receipt=%s\n' \
+      "$status" "$(< /proc/sys/kernel/random/boot_id)" "$device" "$seconds" "$rc" "$actual_sha" "$probe_output" "$restore_receipt" >"$result"
     request_active=0
     rm -f "$inflight"
 
