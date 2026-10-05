@@ -19,10 +19,10 @@ while (($#)); do
       shift 2
       ;;
     -h|--help)
-      echo "Usage: launch-physical-canary.sh [--device /dev/dri/cardN] [--seconds N] [--isolate]"
+      echo "Usage: launch-physical-canary.sh [--device /dev/dri/cardN] [--seconds N]"
       echo
-      echo "--isolate: allocate a real VT first, isolate multi-user.target, run the"
-      echo "           bounded canary, then attempt graphical.target recovery."
+      echo "Run only from a real active VT after the display manager has released DRM."
+      echo "For automated physical qualification, use the boot-scoped arm-physical-canary path."
       exit 0
       ;;
     *)
