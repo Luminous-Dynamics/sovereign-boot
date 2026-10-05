@@ -97,6 +97,29 @@ pub struct DrmFramebuffer {
     original_connectors: Vec<control::connector::Handle>,
 }
 
+/// Describe connector state without forcing a probe or changing modeset state.
+fn connector_diagnostics(card: &Card, res: &ResourceHandles) -> String {
+    let mut entries = Vec::new();
+    for &conn_handle in res.connectors() {
+        let conn = match card.get_connector(conn_handle, false) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        entries.push(format!(
+            "{}-{}:{:?}:modes={}",
+            conn.interface().as_str(),
+            conn.interface_id(),
+            conn.state(),
+            conn.modes().len()
+        ));
+    }
+    if entries.is_empty() {
+        "card exposes no readable connectors".to_string()
+    } else {
+        format!("connectors=[{}]", entries.join(","))
+    }
+}
+
 /// Non-mutating DRM hardware qualification result.
 #[derive(Debug, Clone, Copy)]
 pub struct DrmProbe {
@@ -209,38 +232,8 @@ impl DrmFramebuffer {
                 .clone();
             return Ok((conn, mode));
         }
-        Err(DrmError::NoConnector)
-    }
-
-    /// Describe the connectors visible from this DRM card without performing
-    /// a forced probe or changing modeset state.
-    pub fn probe_diagnostics(device_path: &str) -> Result<String, DrmError> {
-        let card = Card::open(device_path)?;
-        let res = card.resource_handles().map_err(DrmError::ResourceQuery)?;
-        let mut entries = Vec::new();
-
-        for &conn_handle in res.connectors() {
-            let conn = match card.get_connector(conn_handle, false) {
-                Ok(c) => c,
-                Err(_) => continue,
-            };
-            entries.push(format!(
-                "{}-{}:{:?}:modes={}",
-                conn.interface().as_str(),
-                conn.interface_id(),
-                conn.state(),
-                conn.modes().len()
-            ));
-        }
-
-        if entries.is_empty() {
-            return Err(DrmError::NoConnectedDisplay("card exposes no readable connectors".into()));
-        }
-
-        Err(DrmError::NoConnectedDisplay(format!(
-            "connectors=[{}]",
-            entries.join(",")
-        )))
+        let details = connector_diagnostics(card, res);
+        Err(DrmError::NoConnectedDisplay(details))
     }
 
     /// Stride in bytes.
