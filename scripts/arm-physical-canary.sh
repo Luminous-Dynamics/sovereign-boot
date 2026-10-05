@@ -91,12 +91,14 @@ chmod 0600 "$tmp"
 artifact_sha256="$(sha256sum "$artifact" | cut -d' ' -f1)"
 probe_sha256="$(printf '%s\n' "$probe_output" | sha256sum | cut -d' ' -f1)"
 armed_at_unix_s="$(date +%s)"
-printf 'device=%s\nseconds=%s\nartifact_sha256=%s\npreboot_probe_sha256=%s\narmed_at_unix_s=%s\n' "$device" "$seconds" "$artifact_sha256" "$probe_sha256" "$armed_at_unix_s" >"$tmp"
+expires_at_unix_s=$((armed_at_unix_s + 900))
+printf 'device=%s\nseconds=%s\nartifact_sha256=%s\npreboot_probe_sha256=%s\narmed_at_unix_s=%s\nexpires_at_unix_s=%s\n' "$device" "$seconds" "$artifact_sha256" "$probe_sha256" "$armed_at_unix_s" "$expires_at_unix_s" >"$tmp"
 mv -f "$tmp" "$request"
 sync
 
 echo
 echo "ARMED: physical canary will run on the next boot before the display manager."
 echo "The current KDE session is left untouched until reboot."
+echo "Request expiry: 15 minutes"
 echo "Rebooting..."
 exec systemctl reboot
