@@ -115,7 +115,7 @@ in
         "printf 'device=/dev/dri/card99\nseconds=1\nartifact_sha256=%064d\n' 0 > /var/lib/sovereign-boot/physical-canary.request"
     )
     machine.succeed("systemctl reset-failed sovereign-boot-physical-canary.service")
-    machine.succeed("systemctl start sovereign-boot-physical-canary.service || test $? -ne 0")
+    machine.fail("systemctl start sovereign-boot-physical-canary.service")
     result = machine.succeed(
         "cat /var/lib/sovereign-boot/physical-canary.result"
     )
