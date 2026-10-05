@@ -69,3 +69,17 @@ The first automated desktop isolation experiment is explicitly rejected as a qua
 The replacement design arms a root-owned one-shot request while the desktop remains running, then reboots. On the next boot, systemd starts the request-gated canary before display-manager.service, with StandardInput=tty and TTYPath=/dev/tty1. The service is wanted by multi-user.target but is not a requirement of it, so a failed physical canary cannot make normal boot depend on renderer success. The request is consumed once and the result is retained under /var/lib/sovereign-boot/physical-canary.result.
 
 This is aligned with systemd's distinction between ordering and requirement dependencies: Before= controls sequencing, while Wants=/Requires= control whether another unit is a dependency.
+
+
+### Request identity and interruption semantics
+
+The boot-scoped physical canary request is now bound to both the configured DRM
+device and the SHA-256 digest of the renderer artifact that was probed before
+reboot. A digest mismatch or device mismatch is a fail-closed qualification
+failure and is recorded without executing the renderer.
+
+The request is atomically renamed to a transient `physical-canary.request.inflight`
+state before renderer execution. This makes the request single-consumption:
+an interrupted renderer cannot silently cause the same modeset attempt to repeat
+on every future boot. The persistent result remains the authoritative
+cross-boot receipt for the consumed request.
