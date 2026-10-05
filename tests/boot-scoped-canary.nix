@@ -119,6 +119,7 @@ in
     machine.succeed("test -f /run/sovereign-boot-test/display-manager.started")
     machine.succeed("test ! -e /var/lib/sovereign-boot/physical-canary.request")
     machine.succeed("test ! -e /var/lib/sovereign-boot/physical-canary.request.inflight")
+    machine.succeed("test -s /var/lib/sovereign-boot/requests/11111111111111111111111111111111.request")
     permissions = machine.succeed("stat -c %a /var/lib/sovereign-boot/physical-canary.result").strip()
     assert permissions == "600", permissions, result
 
@@ -169,6 +170,7 @@ in
     machine.succeed(
         "test ! -e /var/lib/sovereign-boot/physical-canary.request.inflight"
     )
+    machine.succeed("test -s /var/lib/sovereign-boot/requests/22222222222222222222222222222222.request")
     assert machine.succeed(
         "systemctl is-active multi-user.target"
     ).strip() == "active"
@@ -187,6 +189,7 @@ in
     machine.succeed(
         "test ! -e /var/lib/sovereign-boot/physical-canary.request"
     )
+    machine.succeed("test -s /var/lib/sovereign-boot/requests/33333333333333333333333333333333.request")
 
     # Exit code zero is insufficient without the explicit restoration receipt.
     machine.succeed("touch /run/sovereign-boot-test/no-restore")
@@ -206,6 +209,7 @@ in
     assert "restore_receipt_sha256=" in result, result
     assert "renderer_output_sha256=" in result, result
     machine.succeed("test ! -e /var/lib/sovereign-boot/physical-canary.request.inflight")
+    machine.succeed("test -s /var/lib/sovereign-boot/requests/44444444444444444444444444444444.request")
     machine.succeed("rm -f /run/sovereign-boot-test/no-restore")
 
     # An expired request must never execute the renderer.
@@ -224,6 +228,7 @@ in
     machine.succeed(
         "test ! -e /var/lib/sovereign-boot/physical-canary.request.inflight"
     )
+    machine.succeed("test -s /var/lib/sovereign-boot/requests/55555555555555555555555555555555.request")
 
     # A renderer failure must also remain fail-open for the boot target.
     machine.succeed("touch /run/sovereign-boot-test/fail")
@@ -269,6 +274,7 @@ in
     machine.succeed(
         "test ! -e /var/lib/sovereign-boot/physical-canary.request.inflight"
     )
+    machine.succeed("test -s /var/lib/sovereign-boot/requests/77777777777777777777777777777777.request")
     assert machine.succeed(
         "systemctl is-active multi-user.target"
     ).strip() == "active"
