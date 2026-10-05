@@ -5,6 +5,7 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 artifact="${SOVEREIGN_BOOT_ARTIFACT:-$root/result/bin/quicken-fb}"
 seconds=5
 device=""
+isolate=0
 
 while (($#)); do
   case "$1" in
@@ -18,8 +19,15 @@ while (($#)); do
       seconds="$2"
       shift 2
       ;;
+    --isolate)
+      isolate=1
+      shift
+      ;;
     -h|--help)
-      echo "Usage: launch-physical-canary.sh [--device /dev/dri/cardN] [--seconds N]"
+      echo "Usage: launch-physical-canary.sh [--device /dev/dri/cardN] [--seconds N] [--isolate]"
+      echo
+      echo "--isolate: opt in to isolating multi-user.target after this helper has"
+      echo "           acquired its own VT; graphical.target is restored afterward."
       exit 0
       ;;
     *)
@@ -48,10 +56,25 @@ inner='set -euo pipefail
 artifact="$1"
 seconds="$2"
 device="$3"
+isolate="$4"
+was_graphical=0
+did_isolate=0
+
+if [[ "$isolate" == "1" ]]; then
+  if systemctl is-active --quiet graphical.target; then
+    was_graphical=1
+    echo "Opt-in isolation requested; acquired VT before stopping graphical.target."
+    systemctl isolate multi-user.target
+    did_isolate=1
+  else
+    echo "REFUSING: --isolate requires graphical.target to be active" >&2
+    exit 1
+  fi
+fi
 
 if systemctl is-active --quiet display-manager.service; then
   echo "REFUSING: display-manager.service is active" >&2
-  echo "Run this only after the desktop has been isolated from DRM ownership." >&2
+  echo "Use --isolate for an explicit automated graphical handoff." >&2
   exit 1
 fi
 
@@ -82,6 +105,13 @@ if [[ -z "$device" ]]; then
     exit 1
   }
   device="$success_device"
+fi
+
+if ((did_isolate)); then
+  if systemctl is-active --quiet display-manager.service; then
+    echo "REFUSING: display-manager.service remained active after isolation" >&2
+    exit 1
+  fi
 fi
 
 [[ "$device" == /dev/dri/card[0-9]* ]] || {
@@ -131,4 +161,4 @@ echo
 echo "CANARY RESULT: PASS"
 '
 
-exec sudo openvt --switch --wait -- bash -c "$inner" _ "$artifact" "$seconds" "$device"
+exec sudo openvt --switch --wait -- bash -c "$inner" _ "$artifact" "$seconds" "$device" "$isolate"
