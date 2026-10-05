@@ -57,8 +57,11 @@ in
 
     drmDevice = lib.mkOption {
       type = lib.types.str;
-      default = "/dev/dri/card0";
-      description = "DRM/KMS card device used for the boot canary.";
+      description = ''
+        Explicit DRM/KMS card device used for the boot canary. No implicit
+        card0 default is provided because multi-GPU systems may expose the
+        connected display on another DRM card.
+      '';
     };
 
     progressPipe = lib.mkOption {
