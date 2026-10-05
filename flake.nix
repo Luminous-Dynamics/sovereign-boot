@@ -49,6 +49,19 @@
             '';
           };
 
+          arm-physical-canary = pkgs.writeShellApplication {
+            name = "sovereign-boot-arm-physical-canary";
+            runtimeInputs = with pkgs; [
+              coreutils
+              gnugrep
+              systemd
+            ];
+            text = ''
+              export SOVEREIGN_BOOT_ARTIFACT="${quicken-fb}/bin/quicken-fb"
+              exec ${./scripts/arm-physical-canary.sh} "$@"
+            '';
+          };
+
           default = quicken-fb;
         };
 
