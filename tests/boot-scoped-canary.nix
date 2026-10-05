@@ -85,7 +85,11 @@ in
     assert "device=/dev/dri/card99" in result, result
     assert "seconds=1" in result, result
     assert "exit_code=0" in result, result
-    assert "artifact_sha256=" in result, result
+    assert "artifact_sha256=" in result
+    machine.succeed("test ! -e /var/lib/sovereign-boot/physical-canary.request")
+    machine.succeed("test ! -e /var/lib/sovereign-boot/physical-canary.request.inflight")
+    permissions = machine.succeed("stat -c %a /var/lib/sovereign-boot/physical-canary.result").strip()
+    assert permissions == "600", permissions, result
 
     unit = machine.succeed(
         "systemctl cat sovereign-boot-physical-canary.service"
@@ -111,6 +115,10 @@ in
     ).strip()
     assert active == "active", active
 
+    # Leave the display-manager stopped while exercising subsequent
+    # boot-scoped requests; the real service would only run before it starts.
+    machine.succeed("systemctl stop display-manager.service")
+
     # A stale/mismatched artifact request must fail closed before the renderer
     # executes, and the request must still be consumed.
     machine.succeed(
@@ -125,9 +133,26 @@ in
     machine.succeed(
         "test ! -e /var/lib/sovereign-boot/physical-canary.request"
     )
+    machine.succeed(
+        "test ! -e /var/lib/sovereign-boot/physical-canary.request.inflight"
+    )
     assert machine.succeed(
         "systemctl is-active multi-user.target"
     ).strip() == "active"
+
+    # A wrong requested DRM card must fail closed even if the path exists.
+    machine.succeed(
+        "printf 'device=/dev/dri/card98\nseconds=1\nartifact_sha256=0000000000000000000000000000000000000000000000000000000000000000\n' > /var/lib/sovereign-boot/physical-canary.request"
+    )
+    machine.succeed("systemctl reset-failed sovereign-boot-physical-canary.service")
+    machine.fail("systemctl start sovereign-boot-physical-canary.service")
+    result = machine.succeed(
+        "cat /var/lib/sovereign-boot/physical-canary.result"
+    )
+    assert "status=FAIL_DEVICE_MISMATCH" in result, result
+    machine.succeed(
+        "test ! -e /var/lib/sovereign-boot/physical-canary.request"
+    )
 
     # A renderer failure must also remain fail-open for the boot target.
     machine.succeed("touch /run/sovereign-boot-test/fail")
@@ -153,6 +178,7 @@ in
 
     # The fake display manager participates in the same boot transaction and
     # can only report success after the canary result exists.
+    machine.succeed("systemctl start graphical.target")
     machine.wait_for_unit("display-manager.service")
     machine.succeed(
         "test -f /run/sovereign-boot-test/display-manager.started"
