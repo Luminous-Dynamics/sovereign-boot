@@ -40,6 +40,40 @@ let
   canaryProbeReceipt = "${canaryRequestDir}/physical-canary.probe";
   canaryOutput = "${canaryRequestDir}/physical-canary.output";
 
+  physicalCanaryPostStop = pkgs.writeShellScript "sovereign-boot-physical-canary-post-stop" ''
+    set -u
+
+    request=${lib.escapeShellArg canaryRequest}
+    inflight="$request.inflight"
+    result=${lib.escapeShellArg canaryResult}
+
+    write_atomic() {
+      local target="$1"
+      local tmp
+      tmp="$(mktemp "$target.tmp.XXXXXX")"
+      chmod 0600 "$tmp"
+      cat >"$tmp"
+      mv -f "$tmp" "$target"
+    }
+
+    [[ -e "$inflight" ]] || exit 0
+    [[ -e "$result" ]] && exit 0
+
+    request_id="$(${pkgs.gnused}/bin/sed -n 's/^request_id=//p' "$inflight")"
+    device="$(${pkgs.gnused}/bin/sed -n 's/^device=//p' "$inflight")"
+    armed_at_unix_s="$(${pkgs.gnused}/bin/sed -n 's/^armed_at_unix_s=//p' "$inflight")"
+
+    case "${SERVICE_RESULT:-unknown}" in
+      timeout) status="FAIL_SERVICE_TIMEOUT" ;;
+      *) status="FAIL_SERVICE_ABORTED" ;;
+    esac
+
+    printf 'status=%s\nboot_id=%s\nrequest_id=%s\narmed_at_unix_s=%s\ndevice=%s\nservice_result=%s\nexit_code=%s\nexit_status=%s\n' \
+      "$status" "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$armed_at_unix_s" "$device" "${SERVICE_RESULT:-unknown}" "${EXIT_CODE:-unknown}" "${EXIT_STATUS:-unknown}" | write_atomic "$result"
+
+    rm -f "$inflight"
+  '';
+
   physicalCanaryRunner = pkgs.writeShellScript "sovereign-boot-physical-canary-runner" ''
     set -euo pipefail
 
@@ -294,6 +328,7 @@ in
       serviceConfig = {
         Type = "oneshot";
         ExecStart = physicalCanaryRunner;
+        ExecStopPost = physicalCanaryPostStop;
         StandardInput = "tty";
         StandardOutput = "journal";
         StandardError = "journal";
