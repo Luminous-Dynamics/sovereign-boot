@@ -2,7 +2,7 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
-artifact="$root/result/bin/quicken-fb"
+artifact="${SOVEREIGN_BOOT_ARTIFACT:-$root/result/bin/quicken-fb}"
 seconds=5
 device=""
 
