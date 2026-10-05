@@ -10,6 +10,10 @@ grep -q '"crates/quicken-fb"' Cargo.toml
 ! grep -q 'workspace = true' crates/quicken-fb/Cargo.toml
 test -s Cargo.lock
 test -s rust-toolchain.toml
+test -s flake.lock
+grep -q '"a7868a727837f3c09cee2ce0ca671c76b1589fed"' flake.lock
+grep -q '"11707dc2f618dd54ca8739b309ec4fc024de578b"' flake.lock
+grep -q '"da67096a3b9bf56a91d16901293e51ba5b49a27e"' flake.lock
 
 grep -q -- '--genesis-phrase' crates/quicken-fb/src/main.rs
 grep -q -- '--device' crates/quicken-fb/src/main.rs
