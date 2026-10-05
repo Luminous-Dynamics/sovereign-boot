@@ -102,6 +102,34 @@ pub struct DrmFramebuffer {
     restored: bool,
 }
 
+fn select_crtc(
+    card: &Card,
+    res: &ResourceHandles,
+    connector: &ConnectorInfo,
+) -> Result<(CrtcHandle, &'static str), DrmError> {
+    if let Some(encoder_handle) = connector.current_encoder() {
+        let encoder = card
+            .get_encoder(encoder_handle)
+            .map_err(DrmError::ResourceQuery)?;
+        if let Some(crtc) = encoder.crtc() {
+            return Ok((crtc, "current"));
+        }
+    }
+
+    for &encoder_handle in connector.encoders() {
+        let encoder = card
+            .get_encoder(encoder_handle)
+            .map_err(DrmError::ResourceQuery)?;
+        for crtc in res.filter_crtcs(encoder.possible_crtcs()) {
+            if connected_connectors_for_crtc(card, res, crtc)?.is_empty() {
+                return Ok((crtc, "free-compatible"));
+            }
+        }
+    }
+
+    Err(DrmError::NoCrtc)
+}
+
 fn connected_connectors_for_crtc(
     card: &Card,
     res: &ResourceHandles,
@@ -167,6 +195,7 @@ pub struct DrmProbe {
     pub connector_interface: &'static str,
     pub connector_interface_id: u32,
     pub crtc: CrtcHandle,
+    pub selection_source: &'static str,
 }
 
 impl DrmFramebuffer {
@@ -181,12 +210,10 @@ impl DrmFramebuffer {
         // Find first connected connector with a valid mode
         let (connector, mode) = Self::find_connected_display(&card, &res)?;
 
-        // Find encoder + CRTC
-        let encoder_handle = connector.current_encoder().ok_or(DrmError::NoEncoder)?;
-        let encoder = card
-            .get_encoder(encoder_handle)
-            .map_err(DrmError::ResourceQuery)?;
-        let crtc = encoder.crtc().ok_or(DrmError::NoCrtc)?;
+        // Prefer the connector's currently active CRTC, but when the
+        // compositor has released KMS there may be no current encoder. In that
+        // early-boot state select a compatible CRTC that is presently free.
+        let (crtc, selection_source) = select_crtc(&card, &res, &connector)?;
 
         // Capture the original state before any modeset. Failing closed here
         // guarantees that every successful modeset has a restoration snapshot.
@@ -196,10 +223,6 @@ impl DrmFramebuffer {
         // SETCRTC restore must include connector attachment as well as
         // framebuffer/mode state.
         let original_connectors = connected_connectors_for_crtc(&card, &res, crtc)?
-        if original_connectors.is_empty() {
-            return Err(DrmError::NoConnector);
-        }
-
         let width = mode.size().0 as u32;
         let height = mode.size().1 as u32;
 
@@ -405,11 +428,7 @@ impl DrmFramebuffer {
         let card = Card::open(device_path)?;
         let res = card.resource_handles().map_err(DrmError::ResourceQuery)?;
         let (connector, mode) = Self::find_connected_display(&card, &res)?;
-        let encoder_handle = connector.current_encoder().ok_or(DrmError::NoEncoder)?;
-        let encoder = card
-            .get_encoder(encoder_handle)
-            .map_err(DrmError::ResourceQuery)?;
-        let crtc = encoder.crtc().ok_or(DrmError::NoCrtc)?;
+        let (crtc, selection_source) = select_crtc(&card, &res, &connector)?;
         Ok(DrmProbe {
             width: mode.size().0 as u32,
             height: mode.size().1 as u32,
@@ -417,6 +436,7 @@ impl DrmFramebuffer {
             connector_interface: connector.interface().as_str(),
             connector_interface_id: connector.interface_id(),
             crtc,
+            selection_source,
         })
     }
 }
