@@ -52,6 +52,22 @@ let
 
     device="$(${pkgs.gnused}/bin/sed -n 's/^device=//p' "$request")"
     seconds="$(${pkgs.gnused}/bin/sed -n 's/^seconds=//p' "$request")"
+    requested_sha="$(${pkgs.gnused}/bin/sed -n 's/^artifact_sha256=//p' "$request")"
+    actual_sha="$(${pkgs.coreutils}/bin/sha256sum "$artifact" | ${pkgs.coreutils}/bin/cut -d' ' -f1)"
+
+    if [[ "$device" != "${cfg.drmDevice}" ]]; then
+      echo "sovereign-boot: request device does not match configured DRM device: $device" >&2
+      printf 'status=FAIL_DEVICE_MISMATCH\nboot_id=%s\ndevice=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$device" >"$result"
+      rm -f "$request"
+      exit 2
+    fi
+
+    if [[ ! "$requested_sha" =~ ^[0-9a-f]{64}$ ]] || [[ "$requested_sha" != "$actual_sha" ]]; then
+      echo "sovereign-boot: renderer artifact digest mismatch" >&2
+      printf 'status=FAIL_ARTIFACT_MISMATCH\nboot_id=%s\nexpected_sha=%s\nactual_sha=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$requested_sha" "$actual_sha" >"$result"
+      rm -f "$request"
+      exit 3
+    fi
 
     if [[ "$device" != /dev/dri/card[0-9]* ]] || [[ ! -e "$device" ]]; then
       echo "sovereign-boot: invalid physical canary device request: $device" >&2
@@ -91,8 +107,8 @@ let
       status="FAIL_RENDERER"
     fi
 
-    printf 'status=%s\nboot_id=%s\ndevice=%s\nseconds=%s\nexit_code=%s\n' \
-      "$status" "$(< /proc/sys/kernel/random/boot_id)" "$device" "$seconds" "$rc" >"$result"
+    printf 'status=%s\nboot_id=%s\ndevice=%s\nseconds=%s\nexit_code=%s\nartifact_sha256=%s\n' \
+      "$status" "$(< /proc/sys/kernel/random/boot_id)" "$device" "$seconds" "$rc" "$actual_sha" >"$result"
     rm -f "$request"
 
     if (( rc == 0 )); then
