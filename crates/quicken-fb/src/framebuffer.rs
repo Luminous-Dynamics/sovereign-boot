@@ -188,12 +188,10 @@ impl DrmFramebuffer {
         let w = self.width as usize;
         let h = self.height as usize;
 
-        // Reinterpret the u8 mapping as u32 slice
+        // XRGB8888 is a 4-byte pixel format. bytemuck performs the typed-view
+        // alignment/length checks for us.
         let dst_bytes: &mut [u8] = &mut mapping;
-        // SAFETY: XRGB8888 is 4-byte aligned, DRM guarantees alignment.
-        let dst: &mut [u32] = unsafe {
-            std::slice::from_raw_parts_mut(dst_bytes.as_mut_ptr() as *mut u32, dst_bytes.len() / 4)
-        };
+        let dst: &mut [u32] = bytemuck::cast_slice_mut(dst_bytes);
 
         if stride_pixels == w {
             // Fast path: no padding
@@ -214,12 +212,21 @@ impl DrmFramebuffer {
         // mapping is dropped here, which flushes/unmaps
     }
 
-    /// Request a page flip (non-blocking). Returns immediately.
-    pub fn page_flip(&self) -> Result<(), DrmError> {
-        // For dumb buffers with a single FB, we just do a set_crtc.
-        // True page-flipping with double-buffering would require two FBs.
-        // For a boot animation at ~30fps, direct writes are fine.
-        Ok(())
+    /// Probe a DRM device without creating a framebuffer or changing CRTC state.
+    ///
+    /// This is the recommended first physical-system test: it verifies that the
+    /// device can be opened and that a connected display, usable mode, encoder,
+    /// and CRTC are discoverable without taking ownership of the display.
+    pub fn probe(device_path: &str) -> Result<(u32, u32, u32), DrmError> {
+        let card = Card::open(device_path)?;
+        let res = card.resource_handles().map_err(DrmError::ResourceQuery)?;
+        let (connector, mode) = Self::find_connected_display(&card, &res)?;
+        let encoder_handle = connector.current_encoder().ok_or(DrmError::NoEncoder)?;
+        let encoder = card
+            .get_encoder(encoder_handle)
+            .map_err(DrmError::ResourceQuery)?;
+        let _crtc = encoder.crtc().ok_or(DrmError::NoCrtc)?;
+        Ok((mode.size().0 as u32, mode.size().1 as u32, mode.vrefresh()))
     }
 }
 
@@ -242,6 +249,3 @@ impl Drop for DrmFramebuffer {
     }
 }
 
-// SAFETY: The dumb buffer is tied to the Card file descriptor lifetime.
-// Access is single-threaded (animation loop).
-unsafe impl Send for DrmFramebuffer {}
