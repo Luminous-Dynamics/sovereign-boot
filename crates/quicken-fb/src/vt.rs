@@ -24,6 +24,21 @@ impl VirtualTerminalGuard {
     /// Refuses pseudo-terminals and inactive VTs so a canary cannot be launched
     /// from Kitty, a Wayland/X11 terminal, or a different console.
     pub fn enter() -> Result<Self, String> {
+        // The compositor must already have released the display before the
+        // canary is permitted to take DRM ownership.
+        match std::process::Command::new("systemctl")
+            .args(["is-active", "--quiet", "display-manager.service"])
+            .status()
+        {
+            Ok(status) if status.success() => {
+                return Err("display-manager.service is still active; stop it before the canary".into());
+            }
+            Ok(_) => {}
+            Err(e) => {
+                return Err(format!("cannot verify display-manager.service state: {e}"));
+            }
+        }
+
         let stdin = std::fs::read_link("/proc/self/fd/0")
             .map_err(|e| format!("cannot identify stdin terminal: {e}"))?;
         let tty_name = tty_name(&stdin)
