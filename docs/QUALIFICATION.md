@@ -8,7 +8,7 @@ repository. Green means the exact evidence named in the row exists.
 | Standalone Cargo topology | PASS_STATIC | Root workspace contains only the renderer. |
 | Dependency lock | PASS_STATIC | Committed Cargo.lock contains the renderer closure. |
 | CLI/module alignment | PASS_STATIC | Module invokes only arguments implemented by quicken-fb. |
-| DRM probe | PASS_OBSERVED | 2026-10-05: `/dev/dri/card1`, Intel `i915`, `boot_vga=1`, connector `eDP-1`, CRTC `59`, 1920x1080@144Hz; card0/NVIDIA reported disconnected connectors. |
+| DRM probe | PASS_OBSERVED | 2026-10-05: `/dev/dri/card1`, Intel `i915`, `boot_vga=1`, connector `eDP-1`, CRTC `59`, 1920x1080@144Hz; card0/NVIDIA reported disconnected connectors. Probe receipts now also distinguish a `current` CRTC from a `free-compatible` CRTC selected after compositor release. |
 | Renderer execution | FAIL_OBSERVED / REWORKED | First live physical canary (binary SHA256 `2264808f1583f12c70b7584838d3bdf57ad1ab8424f25798520b55d857808bc0`) produced a black screen; the session was recovered by reboot, so no CRTC restoration evidence was captured. The manual canary boundary has since been hardened with active-VT ownership, KD_GRAPHICS handoff, extended signal handling, bounded duration, strict render-buffer sizing, and explicit restoration verification. |
 | Nix package build | PASS_LOCAL_OBSERVED / PENDING_HOSTED | Local x86_64-linux `nix build .#quicken-fb` completed successfully on 2026-10-05; hosted build still pending. |
 | VM boot integration | BLOCKED | Requires successful package + VM gates first. |
@@ -52,3 +52,7 @@ observes and records successful restoration on the target hardware or a VM.
 Hosted CI uses Cargo --locked for check/test/clippy and Nix --no-write-lock-file for
 the package build, preventing silent lockfile or dependency-graph drift during
 qualification.
+
+## KMS selection boundary
+
+A connected connector is no longer treated as unusable merely because `current_encoder` is absent. The selector first preserves an existing connector-to-CRTC mapping when one exists; otherwise it searches the connector's advertised encoders for a compatible CRTC that is currently unoccupied. If no such CRTC exists, selection fails closed rather than stealing an unrelated active output.
