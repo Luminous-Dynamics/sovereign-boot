@@ -62,6 +62,20 @@ impl VirtualTerminalGuard {
             .map_err(|e| format!("cannot open controlling VT: {e}"))?;
         let fd = tty.as_raw_fd();
 
+        let foreground_pgrp = unsafe { nix::libc::tcgetpgrp(fd) };
+        let process_pgrp = unsafe { nix::libc::getpgrp() };
+        if foreground_pgrp < 0 {
+            return Err(format!(
+                "cannot determine VT foreground process group: {}",
+                std::io::Error::last_os_error()
+            ));
+        }
+        if foreground_pgrp != process_pgrp {
+            return Err(format!(
+                "canary must remain the foreground process group: foreground={foreground_pgrp} process={process_pgrp}"
+            ));
+        }
+
         let mut original_mode = 0;
         let rc = unsafe { nix::libc::ioctl(fd, nix::libc::KDGETMODE, &mut original_mode) };
         if rc < 0 {
