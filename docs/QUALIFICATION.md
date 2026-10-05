@@ -9,7 +9,7 @@ repository. Green means the exact evidence named in the row exists.
 | Dependency lock | PASS_STATIC | Committed Cargo.lock contains the renderer closure. |
 | CLI/module alignment | PASS_STATIC | Module invokes only arguments implemented by quicken-fb. |
 | DRM probe | PASS_OBSERVED | 2026-10-05: `/dev/dri/card1`, Intel `i915`, `boot_vga=1`, connector `eDP-1`, CRTC `59`, 1920x1080@144Hz; card0/NVIDIA reported disconnected connectors. |
-| Renderer execution | FAIL_OBSERVED / REWORKED | First live physical canary (binary SHA256 `2264808f1583f12c70b7584838d3bdf57ad1ab8424f25798520b55d857808bc0`) produced a black screen; the session was recovered by reboot, so no CRTC restoration evidence was captured. The manual canary boundary has since been hardened with active-VT ownership, KD_GRAPHICS handoff, SIGHUP handling, bounded duration, and fail-closed blitting. |
+| Renderer execution | FAIL_OBSERVED / REWORKED | First live physical canary (binary SHA256 `2264808f1583f12c70b7584838d3bdf57ad1ab8424f25798520b55d857808bc0`) produced a black screen; the session was recovered by reboot, so no CRTC restoration evidence was captured. The manual canary boundary has since been hardened with active-VT ownership, KD_GRAPHICS handoff, extended signal handling, bounded duration, strict render-buffer sizing, and explicit restoration verification. |
 | Nix package build | PASS_LOCAL_OBSERVED / PENDING_HOSTED | Local x86_64-linux `nix build .#quicken-fb` completed successfully on 2026-10-05; hosted build still pending. |
 | VM boot integration | BLOCKED | Requires successful package + VM gates first. |
 | Physical boot integration | BLOCKED | Must remain outside the boot-critical path until VM qualification. |
@@ -34,10 +34,15 @@ This evidence upgrades the lock/source review. The local x86_64-linux package bu
 
 ## DRM lifecycle hardening
 
-The renderer now captures all connectors currently attached to the selected CRTC before
-calling legacy SETCRTC, and restores that connector set together with the original
-framebuffer, position, and mode on drop. The non-mutating probe emits the selected
-connector interface/id and CRTC in its receipt.
+The renderer captures all connectors currently attached to the selected CRTC before
+calling legacy SETCRTC. Restoration is now an explicit operation that re-queries the
+CRTC and connector topology after SETCRTC and refuses to claim success when framebuffer,
+mode, position, or connector attachment differs from the original snapshot. Drop uses
+the same restoration path as a final best-effort fallback, and the normal exit path emits
+a drm-restore-ok receipt only after verification succeeds.
+
+The renderer also rejects undersized source buffers before mapping the DRM dumb buffer;
+there is no partial-frame fallback during qualification.
 
 This is still source-level qualification until a controlled renderer execution
 observes and records successful restoration on the target hardware or a VM.
