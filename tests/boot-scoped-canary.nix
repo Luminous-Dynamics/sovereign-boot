@@ -197,6 +197,24 @@ in
     machine.succeed("test ! -e /var/lib/sovereign-boot/physical-canary.request.inflight")
     machine.succeed("rm -f /run/sovereign-boot-test/no-restore")
 
+    # An expired request must never execute the renderer.
+    stale_sha = machine.succeed(
+        "sha256sum ${fakeRenderer}/bin/quicken-fb | cut -d' ' -f1"
+    ).strip()
+    machine.succeed(
+        "printf 'device=/dev/dri/card99\\nseconds=1\\nartifact_sha256=%s\\npreboot_probe_sha256=deadbeef\\narmed_at_unix_s=1\\nexpires_at_unix_s=2\\n' "
+        + stale_sha + " > /var/lib/sovereign-boot/physical-canary.request"
+    )
+    machine.succeed("systemctl reset-failed sovereign-boot-physical-canary.service")
+    machine.fail("systemctl start sovereign-boot-physical-canary.service")
+    result = machine.succeed(
+        "cat /var/lib/sovereign-boot/physical-canary.result"
+    )
+    assert "status=FAIL_EXPIRED_REQUEST" in result, result
+    machine.succeed(
+        "test ! -e /var/lib/sovereign-boot/physical-canary.request.inflight"
+    )
+
     # A renderer failure must also remain fail-open for the boot target.
     machine.succeed("touch /run/sovereign-boot-test/fail")
     sha = machine.succeed(
