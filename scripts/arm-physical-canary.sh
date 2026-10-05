@@ -92,7 +92,8 @@ artifact_sha256="$(sha256sum "$artifact" | cut -d' ' -f1)"
 probe_sha256="$(printf '%s\n' "$probe_output" | sha256sum | cut -d' ' -f1)"
 armed_at_unix_s="$(date +%s)"
 expires_at_unix_s=$((armed_at_unix_s + 900))
-printf 'device=%s\nseconds=%s\nartifact_sha256=%s\npreboot_probe_sha256=%s\narmed_at_unix_s=%s\nexpires_at_unix_s=%s\n' "$device" "$seconds" "$artifact_sha256" "$probe_sha256" "$armed_at_unix_s" "$expires_at_unix_s" >"$tmp"
+request_id="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+printf 'request_id=%s\ndevice=%s\nseconds=%s\nartifact_sha256=%s\npreboot_probe_sha256=%s\narmed_at_unix_s=%s\nexpires_at_unix_s=%s\n' "$request_id" "$device" "$seconds" "$artifact_sha256" "$probe_sha256" "$armed_at_unix_s" "$expires_at_unix_s" >"$tmp"
 mv -f "$tmp" "$request"
 sync
 
