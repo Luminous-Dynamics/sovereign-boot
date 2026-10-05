@@ -63,6 +63,7 @@ grep -q 'physical-canary = pkgs.writeShellApplication' flake.nix
 grep -q 'arm-physical-canary = pkgs.writeShellApplication' flake.nix
 grep -q 'SOVEREIGN_BOOT_ARTIFACT' flake.nix
 grep -q 'EUID -ne 0' scripts/launch-physical-canary.sh
+test -x scripts/arm-physical-canary.sh
 grep -q 'EUID -ne 0' scripts/arm-physical-canary.sh
 ! grep -q 'systemctl isolate' scripts/launch-physical-canary.sh
 ! grep -q -- '--isolate' scripts/launch-physical-canary.sh
