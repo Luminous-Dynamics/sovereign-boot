@@ -57,11 +57,16 @@ let
     }
 
     [[ -e "$inflight" ]] || exit 0
-    [[ -e "$result" ]] && exit 0
-
     request_id="$(${pkgs.gnused}/bin/sed -n 's/^request_id=//p' "$inflight")"
     device="$(${pkgs.gnused}/bin/sed -n 's/^device=//p' "$inflight")"
     armed_at_unix_s="$(${pkgs.gnused}/bin/sed -n 's/^armed_at_unix_s=//p' "$inflight")"
+    result_request_id=""
+    if [[ -e "$result" ]]; then
+      result_request_id="$(${pkgs.gnused}/bin/sed -n 's/^request_id=//p' "$result")"
+    fi
+    if [[ "$result_request_id" == "$request_id" ]]; then
+      exit 0
+    fi
 
     case "\${SERVICE_RESULT:-unknown}" in
       timeout) status="FAIL_SERVICE_TIMEOUT" ;;
