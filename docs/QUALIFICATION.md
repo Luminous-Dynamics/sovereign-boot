@@ -19,3 +19,16 @@ repository. Green means the exact evidence named in the row exists.
 
 A failure of Sovereign Boot must reduce to a missing or failed decorative service;
 it must never prevent NixOS from reaching its normal display-manager path.
+
+## Recent build-gate evidence
+
+The first standalone Nix build reached the Cargo vendor phase and exposed two omitted
+transitive lock entries: `wasi 0.11.1+wasi-snapshot-preview1` (via `getrandom 0.2.17`) and
+`serde_core 1.0.228`. Both are now committed with registry checksums, and an automated
+closure audit reports zero unresolved dependency names across 119 locked packages.
+The Nix package source boundary was also corrected to include the workspace root and
+use `buildAndTestSubdir = "crates/quicken-fb"` so the root Cargo.lock is available
+without widening the Cargo build target.
+
+This evidence upgrades the lock/source review only; it does not qualify the actual
+Nix build until a clean hosted or local `nix build .#quicken-fb` succeeds.
