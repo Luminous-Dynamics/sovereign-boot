@@ -17,6 +17,9 @@ let
       echo "drm-ok device=/dev/dri/card99 connector=VM-1 crtc=fake selection=current mode=1024x768 refresh=60Hz"
       exit 0
     fi
+    if ((is_canary)) && [[ -e /run/sovereign-boot-test/hang ]]; then
+      sleep 30
+    fi
     if ((is_canary)) && [[ -e /run/sovereign-boot-test/no-restore ]]; then
       echo "fake quicken-fb: successful exit without restoration receipt"
       exit 0
@@ -63,6 +66,8 @@ in
     systemd.defaultUnit = "graphical.target";
 
     systemd.services.sovereign-boot-animation.wantedBy = pkgs.lib.mkForce [ ];
+
+    systemd.services.sovereign-boot-physical-canary.serviceConfig.TimeoutStartSec = pkgs.lib.mkForce "3s";
 
     systemd.services.seed-physical-canary-request = {
       description = "Seed a deterministic physical canary request";
@@ -244,6 +249,30 @@ in
     assert machine.succeed(
         "systemctl is-active multi-user.target"
     ).strip() == "active"
+
+    # A hard renderer timeout must generate a durable service-level failure.
+    machine.succeed("touch /run/sovereign-boot-test/hang")
+    sha = machine.succeed(
+        "sha256sum ${fakeRenderer}/bin/quicken-fb | cut -d' ' -f1"
+    ).strip()
+    machine.succeed(
+        "printf 'request_id=77777777777777777777777777777777\\ndevice=/dev/dri/card99\\nseconds=1\\nartifact_sha256=%s\\npreboot_probe_sha256=7777777777777777777777777777777777777777777777777777777777777777\\narmed_at_unix_s=%s\\nexpires_at_unix_s=%s\\n' " + sha + " \"$(date +%s)\" \"$(($(date +%s) + 900))\" > /var/lib/sovereign-boot/physical-canary.request"
+    )
+    machine.succeed("systemctl reset-failed sovereign-boot-physical-canary.service")
+    machine.fail("systemctl start sovereign-boot-physical-canary.service")
+    result = machine.succeed(
+        "cat /var/lib/sovereign-boot/physical-canary.result"
+    )
+    assert "status=FAIL_SERVICE_TIMEOUT" in result, result
+    assert "request_id=77777777777777777777777777777777" in result, result
+    assert "service_result=timeout" in result, result
+    machine.succeed(
+        "test ! -e /var/lib/sovereign-boot/physical-canary.request.inflight"
+    )
+    assert machine.succeed(
+        "systemctl is-active multi-user.target"
+    ).strip() == "active"
+    machine.succeed("rm -f /run/sovereign-boot-test/hang")
 
     # The fake display manager participates in the same boot transaction and
     # can only report success after the canary result exists.
