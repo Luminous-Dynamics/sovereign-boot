@@ -43,7 +43,13 @@ A probe failure is a hardware/DRM compatibility result, not a reason to weaken t
 
 After the probe succeeds, the repository also provides a small VT launcher so you do not have to copy the long renderer command onto the Linux console. `openvt --switch --wait` attaches the child command to a real VT, switches to it while the command runs, and returns to the launching terminal afterward. citeturn867726search0
 
-From the repository checkout, use:
+From the repository checkout, the fully pinned convenience path is:
+
+```bash
+nix run .#physical-canary -- --device /dev/dri/card1 --seconds 5
+```
+
+This flake app supplies the launcher's runtime tools and binds it to the exact `quicken-fb` derivation being built from this revision. The script form remains available for local development:
 
 ```bash
 sudo ./scripts/launch-physical-canary.sh --device /dev/dri/card1 --seconds 5
