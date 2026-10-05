@@ -41,7 +41,7 @@ assume `card0`.
 
 A probe failure is a hardware/DRM compatibility result, not a reason to weaken the boot boundary.
 
-After the probe succeeds, the repository also provides a small VT launcher so you do not have to copy the long renderer command onto the Linux console. `openvt --switch --wait` attaches the child command to a real VT, switches to it while the command runs, and returns to the launching terminal afterward. citeturn867726search0
+After the probe succeeds, the repository also provides a small VT launcher so you do not have to copy the long renderer command onto the Linux console. `openvt --switch --wait` attaches the child command to a real VT, switches to it while the command runs, and returns to the launching terminal afterward. (see `openvt(1)`)
 
 From the repository checkout, the fully pinned convenience path is:
 
