@@ -58,8 +58,8 @@ jobs:
       - name: Format Nix
         run: nix fmt -- --check
 
-      - name: Evaluate physical canary app
-        run: nix eval .#physical-canary --no-update-lock-file --no-write-lock-file
+      - name: Build physical canary app
+        run: nix build .#physical-canary --no-link --no-update-lock-file --no-write-lock-file
 
       - name: Build renderer
         run: nix build .#quicken-fb --no-link --no-update-lock-file --no-write-lock-file
