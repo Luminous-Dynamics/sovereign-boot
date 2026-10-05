@@ -142,8 +142,8 @@ let
       status="FAIL_RENDERER"
     fi
 
-    printf 'status=%s\nboot_id=%s\ndevice=%s\nseconds=%s\nexit_code=%s\nartifact_sha256=%s\n' \
-      "$status" "$(< /proc/sys/kernel/random/boot_id)" "$device" "$seconds" "$rc" "$actual_sha" >"$result"
+    printf 'status=%s\nboot_id=%s\ndevice=%s\nseconds=%s\nexit_code=%s\nartifact_sha256=%s\nprobe_receipt=%s\n' \
+      "$status" "$(< /proc/sys/kernel/random/boot_id)" "$device" "$seconds" "$rc" "$actual_sha" "$probe_output" >"$result"
     request_active=0
     rm -f "$inflight"
 
