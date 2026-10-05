@@ -90,6 +90,8 @@ grep -q '"/dev/tty1 rw"' nix/modules/sovereign-boot.nix
 grep -q '/dev/urandom r' nix/modules/sovereign-boot.nix
 grep -q '/dev/null rw' nix/modules/sovereign-boot.nix
 grep -q 'request.inflight' nix/modules/sovereign-boot.nix
+grep -q 'canaryArchiveDir' nix/modules/sovereign-boot.nix
+grep -q 'requests/\$request_id.request' nix/modules/sovereign-boot.nix
 bash -n scripts/launch-physical-canary.sh
 bash -n scripts/arm-physical-canary.sh
 
