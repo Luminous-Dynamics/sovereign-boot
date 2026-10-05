@@ -16,3 +16,4 @@ pub mod color;
 pub mod framebuffer;
 pub mod mycelium;
 pub mod progress;
+pub mod vt;
