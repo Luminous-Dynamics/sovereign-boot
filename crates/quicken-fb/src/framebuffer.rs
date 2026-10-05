@@ -91,6 +91,19 @@ pub struct DrmFramebuffer {
     dumb_buffer: control::dumbbuffer::DumbBuffer,
     /// Original CRTC state for restore on drop.
     original_crtc: Option<control::crtc::Info>,
+    /// Connectors originally driven by the selected CRTC.
+    original_connectors: Vec<control::connector::Handle>,
+}
+
+/// Non-mutating DRM hardware qualification result.
+#[derive(Debug, Clone, Copy)]
+pub struct DrmProbe {
+    pub width: u32,
+    pub height: u32,
+    pub refresh_hz: u32,
+    pub connector_interface: &'static str,
+    pub connector_interface_id: u32,
+    pub crtc: CrtcHandle,
 }
 
 impl DrmFramebuffer {
@@ -115,6 +128,27 @@ impl DrmFramebuffer {
         // Capture the original state before any modeset. Failing closed here
         // guarantees that every successful modeset has a restoration snapshot.
         let original_crtc = Some(card.get_crtc(crtc).map_err(DrmError::CrtcQuery)?);
+
+        // Capture every connector currently attached to this CRTC. The legacy
+        // SETCRTC restore must include connector attachment as well as
+        // framebuffer/mode state.
+        let mut original_connectors = Vec::new();
+        for &connector_handle in res.connectors() {
+            let connector = card
+                .get_connector(connector_handle, false)
+                .map_err(DrmError::ResourceQuery)?;
+            if let Some(encoder_handle) = connector.current_encoder() {
+                let encoder = card
+                    .get_encoder(encoder_handle)
+                    .map_err(DrmError::ResourceQuery)?;
+                if encoder.crtc() == Some(crtc) {
+                    original_connectors.push(connector_handle);
+                }
+            }
+        }
+        if original_connectors.is_empty() {
+            return Err(DrmError::NoConnector);
+        }
 
         let width = mode.size().0 as u32;
         let height = mode.size().1 as u32;
@@ -144,6 +178,7 @@ impl DrmFramebuffer {
             mode,
             dumb_buffer: db,
             original_crtc,
+            original_connectors,
         })
     }
 
@@ -220,7 +255,7 @@ impl DrmFramebuffer {
     /// This is the recommended first physical-system test: it verifies that the
     /// device can be opened and that a connected display, usable mode, encoder,
     /// and CRTC are discoverable without modesetting the display.
-    pub fn probe(device_path: &str) -> Result<(u32, u32, u32), DrmError> {
+    pub fn probe(device_path: &str) -> Result<DrmProbe, DrmError> {
         let card = Card::open(device_path)?;
         let res = card.resource_handles().map_err(DrmError::ResourceQuery)?;
         let (connector, mode) = Self::find_connected_display(&card, &res)?;
@@ -228,8 +263,15 @@ impl DrmFramebuffer {
         let encoder = card
             .get_encoder(encoder_handle)
             .map_err(DrmError::ResourceQuery)?;
-        let _crtc = encoder.crtc().ok_or(DrmError::NoCrtc)?;
-        Ok((mode.size().0 as u32, mode.size().1 as u32, mode.vrefresh()))
+        let crtc = encoder.crtc().ok_or(DrmError::NoCrtc)?;
+        Ok(DrmProbe {
+            width: mode.size().0 as u32,
+            height: mode.size().1 as u32,
+            refresh_hz: mode.vrefresh(),
+            connector_interface: connector.interface().as_str(),
+            connector_interface_id: connector.interface_id(),
+            crtc,
+        })
     }
 }
 
@@ -241,7 +283,7 @@ impl Drop for DrmFramebuffer {
                 self.crtc,
                 orig.framebuffer(),
                 orig.position(),
-                &[],
+                &self.original_connectors,
                 orig.mode(),
             );
         }
