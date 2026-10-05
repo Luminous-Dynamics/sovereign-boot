@@ -57,12 +57,10 @@ artifact="$1"
 seconds="$2"
 device="$3"
 isolate="$4"
-was_graphical=0
 did_isolate=0
 
 if [[ "$isolate" == "1" ]]; then
   if systemctl is-active --quiet graphical.target; then
-    was_graphical=1
     echo "Opt-in isolation requested; acquired VT before stopping graphical.target."
     systemctl isolate multi-user.target
     did_isolate=1
@@ -71,6 +69,26 @@ if [[ "$isolate" == "1" ]]; then
     exit 1
   fi
 fi
+
+cleanup() {
+  rc=$?
+  if ((did_isolate)); then
+    echo
+    echo "Recovering graphical.target..."
+    if ! systemctl isolate graphical.target; then
+      echo "WARNING: graphical.target recovery failed; use the recovery shell." >&2
+      rc=1
+    elif ! systemctl is-active --quiet graphical.target; then
+      echo "WARNING: graphical.target is not active after recovery." >&2
+      rc=1
+    elif ! systemctl is-active --quiet display-manager.service; then
+      echo "WARNING: display-manager.service is not active after recovery." >&2
+      rc=1
+    fi
+  fi
+  exit "$rc"
+}
+trap cleanup EXIT
 
 if systemctl is-active --quiet display-manager.service; then
   echo "REFUSING: display-manager.service is active" >&2
