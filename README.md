@@ -46,10 +46,10 @@ After the probe succeeds, the repository also provides a small VT launcher so yo
 From the repository checkout, the fully pinned convenience path is:
 
 ```bash
-nix run --no-update-lock-file --no-write-lock-file .#physical-canary -- --device /dev/dri/card1 --seconds 5
+nix run --no-update-lock-file --no-write-lock-file .#physical-canary -- --device /dev/dri/card1 --seconds 5 --isolate
 ```
 
-This flake app supplies the launcher's runtime tools and binds it to the exact `quicken-fb` derivation being built from this revision. The script form remains available for local development:
+This flake app supplies the launcher's runtime tools and binds it to the exact `quicken-fb` derivation being built from this revision. With `--isolate`, it first acquires a dedicated VT, then explicitly isolates `multi-user.target`, runs the bounded canary, and attempts to restore `graphical.target` before reporting the final result. Without `--isolate`, an active display manager is refused. The script form remains available for local development:
 
 ```bash
 sudo ./scripts/launch-physical-canary.sh --device /dev/dri/card1 --seconds 5
