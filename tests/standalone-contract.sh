@@ -96,50 +96,13 @@ grep -q 'SIGQUIT' crates/quicken-fb/src/main.rs
 grep -q 'SIGTSTP' crates/quicken-fb/src/main.rs
 
 test -s tests/boot-boundary.nix
+test -s tests/boot-scoped-canary.nix
 grep -q 'sovereign-boot-boundary' flake.nix
+grep -q 'sovereign-boot-boot-scoped-canary' flake.nix
 grep -q 'runNixOSTest' flake.nix
 grep -q 'nix flake check --no-update-lock-file --no-write-lock-file' .github/workflows/ci.yml
 grep -q 'nix build .#quicken-fb --no-update-lock-file --no-write-lock-file' .github/workflows/ci.yml
 grep -q 'nix build .#arm-physical-canary --no-update-lock-file --no-write-lock-file' .github/workflows/ci.yml
-
-# The service must be isolated from the desktop handoff and cannot become a
-# required target dependency.
-grep -q 'Conflicts = \[ "display-manager.service" \];' nix/modules/sovereign-boot.nix
-grep -q 'ProtectSystem = "strict";' nix/modules/sovereign-boot.nix
-
-echo "sovereign-boot restoration/buffer contract: PASS"
- flake.nix
-! grep -q 'systemctl isolate' scripts/launch-physical-canary.sh
-grep -q 'ConditionPathExists = canaryRequest' nix/modules/sovereign-boot.nix
-grep -q 'StandardInput = "tty";' nix/modules/sovereign-boot.nix
-grep -q 'TTYPath = "/dev/tty1";' nix/modules/sovereign-boot.nix
-grep -q 'Before = [' nix/modules/sovereign-boot.nix
-grep -q '"display-manager.service"' nix/modules/sovereign-boot.nix
-grep -q '"getty@tty1.service"' nix/modules/sovereign-boot.nix
-grep -q 'physical-canary.result' nix/modules/sovereign-boot.nix
-bash -n scripts/launch-physical-canary.sh
-bash -n scripts/arm-physical-canary.sh
-
-# Bounded physical canary must have an explicit active-VT ownership guard.
-test -s crates/quicken-fb/src/vt.rs
-grep -q 'KDGETMODE' crates/quicken-fb/src/vt.rs
-grep -q 'KD_GRAPHICS' crates/quicken-fb/src/vt.rs
-grep -q 'tty0/active' crates/quicken-fb/src/vt.rs
-grep -q 'SIGHUP' crates/quicken-fb/src/main.rs
-
-grep -q 'display-manager.service' crates/quicken-fb/src/vt.rs
-grep -q 'requires a real VT' crates/quicken-fb/src/vt.rs
-grep -q 'KDSETMODE' crates/quicken-fb/src/vt.rs
-
-grep -q 'tcgetpgrp' crates/quicken-fb/src/vt.rs
-grep -q 'SIGQUIT' crates/quicken-fb/src/main.rs
-grep -q 'SIGTSTP' crates/quicken-fb/src/main.rs
-
-test -s tests/boot-boundary.nix
-grep -q 'sovereign-boot-boundary' flake.nix
-grep -q 'runNixOSTest' flake.nix
-grep -q 'nix flake check --no-update-lock-file --no-write-lock-file' .github/workflows/ci.yml
-grep -q 'nix build .#quicken-fb --no-update-lock-file --no-write-lock-file' .github/workflows/ci.yml
 
 # The service must be isolated from the desktop handoff and cannot become a
 # required target dependency.
