@@ -7,7 +7,15 @@
   };
 
   outputs = { self, nixpkgs, flake-utils }:
-    flake-utils.lib.eachDefaultSystem (system:
+    let
+      nixosModule = import ./nix/modules/sovereign-boot.nix;
+    in
+    {
+      nixosModules = {
+        default = nixosModule;
+        sovereignBoot = nixosModule;
+      };
+    } // flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
       in
