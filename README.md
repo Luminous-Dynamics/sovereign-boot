@@ -46,7 +46,7 @@ After the probe succeeds, the repository also provides a small VT launcher so yo
 From the repository checkout, the fully pinned convenience path is:
 
 ```bash
-nix --no-update-lock-file --no-write-lock-file run .#physical-canary -- --device /dev/dri/card1 --seconds 5
+nix run --no-update-lock-file --no-write-lock-file .#physical-canary -- --device /dev/dri/card1 --seconds 5
 ```
 
 This flake app supplies the launcher's runtime tools and binds it to the exact `quicken-fb` derivation being built from this revision. The script form remains available for local development:
