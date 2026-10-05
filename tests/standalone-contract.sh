@@ -52,6 +52,14 @@ grep -q -- '--canary-seconds' crates/quicken-fb/src/main.rs
 grep -q -- '--device is required' crates/quicken-fb/src/main.rs
 grep -q '1..=30' crates/quicken-fb/src/main.rs
 
+# Operator launcher must allocate a real VT and preserve the renderer\'s ownership guards.
+test -x scripts/launch-physical-canary.sh
+grep -q 'openvt --switch --wait' scripts/launch-physical-canary.sh
+grep -q 'display-manager.service' scripts/launch-physical-canary.sh
+grep -q 'drm-restore-ok' scripts/launch-physical-canary.sh
+
+grep -q 'openvt --switch --wait' README.md
+
 # Bounded physical canary must have an explicit active-VT ownership guard.
 test -s crates/quicken-fb/src/vt.rs
 grep -q 'KDGETMODE' crates/quicken-fb/src/vt.rs
