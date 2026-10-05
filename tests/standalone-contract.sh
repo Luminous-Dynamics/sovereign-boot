@@ -69,6 +69,11 @@ grep -q 'EUID -ne 0' scripts/arm-physical-canary.sh
 grep -q 'openvt --switch --wait' scripts/launch-physical-canary.sh
 grep -q 'systemctl reboot' scripts/arm-physical-canary.sh
 grep -q 'physical-canary.request' scripts/arm-physical-canary.sh
+grep -q 'artifact_sha256' scripts/arm-physical-canary.sh
+grep -q 'artifact_sha256' nix/modules/sovereign-boot.nix
+grep -q 'FAIL_ARTIFACT_MISMATCH' nix/modules/sovereign-boot.nix
+grep -q 'FAIL_DEVICE_MISMATCH' nix/modules/sovereign-boot.nix
+grep -q 'FAIL_RENDERER' nix/modules/sovereign-boot.nix
 bash -n scripts/launch-physical-canary.sh
 bash -n scripts/arm-physical-canary.sh
 
