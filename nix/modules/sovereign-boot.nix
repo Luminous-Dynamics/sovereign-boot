@@ -79,21 +79,24 @@ let
     if [[ ! "$requested_sha" =~ ^[0-9a-f]{64}$ ]] || [[ "$requested_sha" != "$actual_sha" ]]; then
       echo "sovereign-boot: renderer artifact digest mismatch" >&2
       printf 'status=FAIL_ARTIFACT_MISMATCH\nboot_id=%s\nexpected_sha=%s\nactual_sha=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$requested_sha" "$actual_sha" >"$result"
-      rm -f "$request"
+      request_active=0
+      rm -f "$inflight"
       exit 3
     fi
 
     if [[ "$device" != /dev/dri/card[0-9]* ]] || [[ ! -e "$device" ]]; then
       echo "sovereign-boot: invalid physical canary device request: $device" >&2
       printf 'status=FAIL_INVALID_REQUEST\nboot_id=%s\n' "$(< /proc/sys/kernel/random/boot_id)" >"$result"
-      rm -f "$request"
+      request_active=0
+      rm -f "$inflight"
       exit 2
     fi
 
     if [[ ! "$seconds" =~ ^[0-9]+$ ]] || (( seconds < 1 || seconds > 30 )); then
       echo "sovereign-boot: invalid physical canary duration: $seconds" >&2
       printf 'status=FAIL_INVALID_REQUEST\nboot_id=%s\n' "$(< /proc/sys/kernel/random/boot_id)" >"$result"
-      rm -f "$request"
+      request_active=0
+      rm -f "$inflight"
       exit 2
     fi
 
@@ -101,7 +104,8 @@ let
     if [[ "$active_vt" != "tty1" ]]; then
       echo "sovereign-boot: refusing physical canary because tty1 is not active (active=$active_vt)" >&2
       printf 'status=FAIL_WRONG_VT\nboot_id=%s\nactive_vt=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$active_vt" >"$result"
-      rm -f "$request"
+      request_active=0
+      rm -f "$inflight"
       exit 3
     fi
 
