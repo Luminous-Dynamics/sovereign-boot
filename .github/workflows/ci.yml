@@ -52,8 +52,11 @@ jobs:
       - name: Standalone contract
         run: bash tests/standalone-contract.sh
 
+      - name: Flake check
+        run: nix flake check --no-update-lock-file --no-write-lock-file
+
       - name: Format Nix
         run: nix fmt -- --check
 
       - name: Build renderer
-        run: nix build .#quicken-fb --no-link --no-write-lock-file
+        run: nix build .#quicken-fb --no-link --no-update-lock-file --no-write-lock-file
