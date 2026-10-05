@@ -14,6 +14,7 @@
 /// Signal handling:
 ///   SIGTERM — clean exit (restore CRTC, unmap, fade to black)
 ///   SIGINT  — same as SIGTERM
+use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
@@ -37,7 +38,7 @@ const FADE_DURATION: f32 = 1.5;
 /// Global flag set by signal handler.
 static SHUTDOWN: AtomicBool = AtomicBool::new(false);
 
-fn main() {
+fn main() -> ExitCode {
     let args = parse_args();
 
     if args.probe {
@@ -118,6 +119,8 @@ fn main() {
     let mut completing = false;
     let mut contraction_start: Option<Instant> = None;
 
+    let mut exit_code = ExitCode::SUCCESS;
+
     // Main animation loop
     loop {
         let now = Instant::now();
@@ -195,6 +198,7 @@ fn main() {
         // something we silently continue through during a boot canary.
         if let Err(e) = fb.blit_from(&render_buf) {
             eprintln!("quicken-fb: framebuffer blit failed: {e}");
+            exit_code = ExitCode::from(2);
             break;
         }
 
@@ -212,9 +216,29 @@ fn main() {
     }
     if let Err(e) = fb.blit_from(&render_buf) {
         eprintln!("quicken-fb: final framebuffer clear failed: {e}");
+        exit_code = ExitCode::from(2);
     }
 
-    eprintln!("quicken-fb: clean exit");
+    match fb.restore() {
+        Ok(receipt) => {
+            eprintln!(
+                "drm-restore-ok crtc={:?} connectors={} framebuffer={:?} mode={}x{} refresh={}Hz",
+                receipt.crtc,
+                receipt.connector_count,
+                receipt.framebuffer,
+                receipt.mode_width,
+                receipt.mode_height,
+                receipt.refresh_hz
+            );
+        }
+        Err(e) => {
+            eprintln!("quicken-fb: DRM restoration verification failed: {e}");
+            exit_code = ExitCode::from(3);
+        }
+    }
+
+    eprintln!("quicken-fb: clean exit status={:?}", exit_code);
+    exit_code
 }
 
 /// Parsed command-line arguments.
