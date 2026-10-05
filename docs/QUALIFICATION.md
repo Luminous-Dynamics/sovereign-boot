@@ -66,7 +66,7 @@ The rebuilt `result/bin/quicken-fb` on the canary checkout is 821 KiB and has SH
 
 The first automated desktop isolation experiment is explicitly rejected as a qualification mechanism. The 2026-10-05 journal showed SDDM receiving SIGTERM at the canary start time, followed by display-manager restart and a new KDE login session. No drm-ok, drm-restore-ok, or CANARY RESULT: PASS receipt was observed for that run.
 
-The replacement design arms a root-owned one-shot request while the desktop remains running, then reboots. On the next boot, systemd starts the request-gated canary before display-manager.service, with StandardInput=tty and TTYPath=/dev/tty1. The service is wanted by multi-user.target but is not a requirement of it, so a failed physical canary cannot make normal boot depend on renderer success. The request is consumed once and the result is retained under /var/lib/sovereign-boot/physical-canary.result.
+The replacement design arms a root-owned one-shot request while the desktop remains running, then reboots. On the next boot, systemd starts the request-gated canary before display-manager.service, with StandardInput=tty and TTYPath=/dev/tty1. The service is wanted by multi-user.target but is not a requirement of it, so a failed physical canary cannot make normal boot depend on renderer success. The request is consumed once and the result is retained under /var/lib/sovereign-boot/physical-canary.result. Armed requests expire after 15 minutes, so an abandoned reboot request cannot unexpectedly trigger a later unrelated boot.
 
 This is aligned with systemd's distinction between ordering and requirement dependencies: Before= controls sequencing, while Wants=/Requires= control whether another unit is a dependency.
 
@@ -83,3 +83,17 @@ state before renderer execution. This makes the request single-consumption:
 an interrupted renderer cannot silently cause the same modeset attempt to repeat
 on every future boot. The persistent result remains the authoritative
 cross-boot receipt for the consumed request.
+
+
+### Evidence artifact layout
+
+A completed boot-scoped canary produces a structured manifest plus two raw evidence
+captures:
+
+- `physical-canary.result`: stable key/value qualification manifest.
+- `physical-canary.probe`: exact boot-time non-mutating probe receipt.
+- `physical-canary.output`: exact bounded renderer output.
+
+The manifest records SHA-256 digests of the renderer artifact, preboot probe,
+boot-time probe, renderer output, and restoration receipt. The raw evidence files
+and manifest are written atomically with mode 0600.
