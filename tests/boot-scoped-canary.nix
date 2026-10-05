@@ -105,6 +105,8 @@ in
     assert "CapabilityBoundingSet=" in unit
     assert "NoNewPrivileges=true" in unit
     assert "ReadWritePaths=/var/lib/sovereign-boot" in unit
+    assert "DevicePolicy=strict" in unit
+    assert "/dev/tty1 rw" in unit
 
     requires = machine.succeed(
         "systemctl show multi-user.target -p Requires --value"
