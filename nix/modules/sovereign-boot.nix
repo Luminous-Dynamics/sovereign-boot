@@ -229,7 +229,11 @@ in
         RestrictRealtime = true;
         CapabilityBoundingSet = "";
         UMask = "0077";
-        DeviceAllow = "${cfg.drmDevice} rw";
+        DevicePolicy = "strict";
+        DeviceAllow = [
+          "${cfg.drmDevice} rw"
+          "/dev/tty1 rw"
+        ];
         ReadWritePaths = [ canaryRequestDir ];
       };
     };
