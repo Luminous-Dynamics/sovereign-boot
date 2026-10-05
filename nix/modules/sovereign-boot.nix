@@ -200,7 +200,7 @@ let
     if [[ -n "$restore_receipt" ]]; then
       restore_sha="$(printf '%s\n' "$restore_receipt" | sha256sum | cut -d' ' -f1)"
     fi
-    printf 'status=%s\nboot_id=%s\narmed_at_unix_s=%s\ndevice=%s\nseconds=%s\nexit_code=%s\nartifact_sha256=%s\npreboot_probe_sha256=%s\nboot_probe_sha256=%s\nrenderer_output_sha256=%s\nrestore_receipt_sha256=%s\n' \
+    printf 'status=%s\nboot_id=%s\narmed_at_unix_s=%s\nexpires_at_unix_s=%s\ndevice=%s\nseconds=%s\nexit_code=%s\nartifact_sha256=%s\npreboot_probe_sha256=%s\nboot_probe_sha256=%s\nrenderer_output_sha256=%s\nrestore_receipt_sha256=%s\n' \
       "$status" "$(< /proc/sys/kernel/random/boot_id)" "$armed_at_unix_s" "$expires_at_unix_s" "$device" "$seconds" "$rc" "$actual_sha" "$preboot_probe_sha" "$probe_sha" "$output_sha" "$restore_sha" | write_atomic "$result"
     request_active=0
     rm -f "$inflight"
