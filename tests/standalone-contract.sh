@@ -70,6 +70,8 @@ grep -q 'SIGTSTP' crates/quicken-fb/src/main.rs
 test -s tests/boot-boundary.nix
 grep -q 'sovereign-boot-boundary' flake.nix
 grep -q 'runNixOSTest' flake.nix
+grep -q 'nix flake check --no-update-lock-file --no-write-lock-file' .github/workflows/ci.yml
+grep -q 'nix build .#quicken-fb --no-update-lock-file --no-write-lock-file' .github/workflows/ci.yml
 
 # The service must be isolated from the desktop handoff and cannot become a
 # required target dependency.
