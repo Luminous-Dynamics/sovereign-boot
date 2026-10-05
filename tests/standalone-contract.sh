@@ -46,3 +46,10 @@ grep -q 'connector_diagnostics' crates/quicken-fb/src/framebuffer.rs
 grep -q -- '--canary-seconds' crates/quicken-fb/src/main.rs
 grep -q -- '--device is required' crates/quicken-fb/src/main.rs
 grep -q '1..=30' crates/quicken-fb/src/main.rs
+
+# Bounded physical canary must have an explicit active-VT ownership guard.
+test -s crates/quicken-fb/src/vt.rs
+grep -q 'KDGETMODE' crates/quicken-fb/src/vt.rs
+grep -q 'KD_GRAPHICS' crates/quicken-fb/src/vt.rs
+grep -q 'tty0/active' crates/quicken-fb/src/vt.rs
+grep -q 'SIGHUP' crates/quicken-fb/src/main.rs
