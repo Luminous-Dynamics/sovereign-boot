@@ -42,7 +42,10 @@ fn main() {
     if args.probe {
         match DrmFramebuffer::probe(&args.device) {
             Ok((width, height, refresh_hz)) => {
-                println!("drm-ok device={} mode={}x{} refresh={}Hz", args.device, width, height, refresh_hz);
+                println!(
+                    "drm-ok device={} mode={}x{} refresh={}Hz",
+                    args.device, width, height, refresh_hz
+                );
                 return;
             }
             Err(e) => {
@@ -255,6 +258,7 @@ fn print_usage() {
          \x20 --genesis-phrase <PHRASE>   Genesis phrase for deterministic pattern seeding\n\
          \x20 --progress-pipe <PATH>      Named pipe for installer progress events\n\
          \x20 --device <PATH>             DRM device path (default: /dev/dri/card0)\n\
+         \x20 --probe                     Probe DRM/display capability without modesetting\n\
          \x20 --help                      Show this help"
     );
 }
