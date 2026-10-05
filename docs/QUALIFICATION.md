@@ -97,3 +97,16 @@ captures:
 The manifest records SHA-256 digests of the renderer artifact, preboot probe,
 boot-time probe, renderer output, and restoration receipt. The raw evidence files
 and manifest are written atomically with mode 0600.
+
+
+### Service-level termination evidence
+
+The boot-scoped canary has an `ExecStopPost` evidence boundary. If the renderer
+is killed before it can emit its normal manifest—for example by the service
+timeout—the post-stop helper records `FAIL_SERVICE_TIMEOUT` or
+`FAIL_SERVICE_ABORTED` with the systemd service result and exit status. The
+helper correlates against the current request ID, so an older persistent result
+cannot mask a new failure.
+
+This preserves the distinction between renderer-level receipts and
+service-orchestration failures.
