@@ -57,6 +57,11 @@ systemctl is-active --quiet graphical.target || {
   exit 1
 }
 
+systemctl is-active --quiet display-manager.service || {
+  echo "ERROR: display-manager.service is not active; refusing to arm outside a live graphical session." >&2
+  exit 1
+}
+
 [[ -e "$device" ]] || {
   echo "ERROR: DRM device does not exist: $device" >&2
   exit 1
