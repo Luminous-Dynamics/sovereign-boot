@@ -41,21 +41,38 @@ assume `card0`.
 
 A probe failure is a hardware/DRM compatibility result, not a reason to weaken the boot boundary.
 
-After the probe succeeds, the repository also provides a small VT launcher so you do not have to copy the long renderer command onto the Linux console. `openvt --switch --wait` attaches the child command to a real VT, switches to it while the command runs, and returns to the launching terminal afterward. (see `openvt(1)`)
+After the probe succeeds, the repository provides two intentionally different
+physical qualification paths.
 
-From the repository checkout, the fully pinned convenience path is:
-
-```bash
-sudo nix run --no-update-lock-file --no-write-lock-file .#physical-canary -- --device /dev/dri/card1 --seconds 5 --isolate
-```
-
-This flake app supplies the launcher's runtime tools and binds it to the exact `quicken-fb` derivation being built from this revision. With `--isolate`, it first acquires a dedicated VT, then explicitly isolates `multi-user.target`, runs the bounded canary, and attempts to restore `graphical.target` before reporting the final result. Without `--isolate`, an active display manager is refused. The script form remains available for local development:
+For **automated qualification**, the safe path is boot-scoped. It records a one-shot
+request, reboots normally, and lets systemd run the canary from a real text VT before
+the display manager starts:
 
 ```bash
-sudo ./scripts/launch-physical-canary.sh --device /dev/dri/card1 --seconds 5
+sudo nix run --no-update-lock-file --no-write-lock-file .#arm-physical-canary -- --device /dev/dri/card1 --seconds 5
 ```
 
-The launcher re-probes the selected device, can auto-select the unique probe-successful DRM card when `--device` is omitted, and requires an explicit `drm-restore-ok` receipt before reporting success. It deliberately does **not** isolate or stop the desktop; the existing display-manager/VT ownership boundary remains a separate safety step. This shortens the operator path without hiding a destructive system-state transition inside a convenience command.
+The arming command performs the non-mutating probe first, writes a root-owned
+one-shot request under `/var/lib/sovereign-boot/`, and then reboots. It **does not**
+call `systemctl isolate`, stop SDDM, kill Plasma, or take DRM away from the current
+desktop. On the next boot, `sovereign-boot-physical-canary.service` is ordered before
+the display manager and uses `/dev/tty1` as its controlling VT. The request is
+consumed
+once, and a persistent result is written to
+`/var/lib/sovereign-boot/physical-canary.result` with the boot ID, selected device,
+duration, and renderer exit status.
+
+For direct operator testing from an already-active Linux console, the non-destructive
+launcher remains available:
+
+```bash
+sudo nix run --no-update-lock-file --no-write-lock-file .#physical-canary -- --device /dev/dri/card1 --seconds 5
+```
+
+It allocates a real VT with `openvt --switch --wait`, but refuses to run while
+`display-manager.service` is active. It no longer has an isolation mode. This is
+deliberate: the previous `--isolate` implementation was observed terminating the
+active KDE/SDDM session during qualification.
 
 For the manual VT path:
 
