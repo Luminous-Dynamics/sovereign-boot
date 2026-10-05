@@ -17,6 +17,10 @@ let
       echo "drm-ok device=/dev/dri/card99 connector=VM-1 crtc=fake selection=current mode=1024x768 refresh=60Hz"
       exit 0
     fi
+    if ((is_canary)) && [[ -e /run/sovereign-boot-test/no-restore ]]; then
+      echo "fake quicken-fb: successful exit without restoration receipt"
+      exit 0
+    fi
     if ((is_canary)) && [[ -e /run/sovereign-boot-test/fail ]]; then
       echo "fake quicken-fb: intentional qualification failure" >&2
       exit 7
@@ -172,6 +176,24 @@ in
     machine.succeed(
         "test ! -e /var/lib/sovereign-boot/physical-canary.request"
     )
+
+    # Exit code zero is insufficient without the explicit restoration receipt.
+    machine.succeed("touch /run/sovereign-boot-test/no-restore")
+    sha = machine.succeed(
+        "sha256sum ${fakeRenderer}/bin/quicken-fb | cut -d' ' -f1"
+    ).strip()
+    machine.succeed(
+        "printf 'device=/dev/dri/card99\\nseconds=1\\nartifact_sha256=%s\\n' " + sha + " > /var/lib/sovereign-boot/physical-canary.request"
+    )
+    machine.succeed("systemctl reset-failed sovereign-boot-physical-canary.service")
+    machine.fail("systemctl start sovereign-boot-physical-canary.service")
+    result = machine.succeed(
+        "cat /var/lib/sovereign-boot/physical-canary.result"
+    )
+    assert "status=FAIL_RESTORE_RECEIPT" in result, result
+    assert "exit_code=7" in result, result
+    machine.succeed("test ! -e /var/lib/sovereign-boot/physical-canary.request.inflight")
+    machine.succeed("rm -f /run/sovereign-boot-test/no-restore")
 
     # A renderer failure must also remain fail-open for the boot target.
     machine.succeed("touch /run/sovereign-boot-test/fail")
