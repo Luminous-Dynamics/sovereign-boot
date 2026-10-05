@@ -51,6 +51,7 @@ pub enum DrmError {
     BufferMap(std::io::Error),
     FramebufferAdd(std::io::Error),
     ModeSetting(std::io::Error),
+    CrtcQuery(std::io::Error),
 }
 
 impl std::fmt::Display for DrmError {
@@ -66,6 +67,7 @@ impl std::fmt::Display for DrmError {
             Self::BufferMap(e) => write!(f, "dumb buffer map failed: {e}"),
             Self::FramebufferAdd(e) => write!(f, "framebuffer add failed: {e}"),
             Self::ModeSetting(e) => write!(f, "mode setting failed: {e}"),
+            Self::CrtcQuery(e) => write!(f, "original CRTC state query failed: {e}"),
         }
     }
 }
@@ -110,8 +112,9 @@ impl DrmFramebuffer {
             .map_err(DrmError::ResourceQuery)?;
         let crtc = encoder.crtc().ok_or(DrmError::NoCrtc)?;
 
-        // Save original CRTC for restoration
-        let original_crtc = card.get_crtc(crtc).ok();
+        // Capture the original state before any modeset. Failing closed here
+        // guarantees that every successful modeset has a restoration snapshot.
+        let original_crtc = Some(card.get_crtc(crtc).map_err(DrmError::CrtcQuery)?);
 
         let width = mode.size().0 as u32;
         let height = mode.size().1 as u32;
@@ -216,7 +219,7 @@ impl DrmFramebuffer {
     ///
     /// This is the recommended first physical-system test: it verifies that the
     /// device can be opened and that a connected display, usable mode, encoder,
-    /// and CRTC are discoverable without taking ownership of the display.
+    /// and CRTC are discoverable without modesetting the display.
     pub fn probe(device_path: &str) -> Result<(u32, u32, u32), DrmError> {
         let card = Card::open(device_path)?;
         let res = card.resource_handles().map_err(DrmError::ResourceQuery)?;
