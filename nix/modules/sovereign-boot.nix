@@ -37,6 +37,7 @@ let
   canaryRequestDir = "/var/lib/sovereign-boot";
   canaryRequest = "${canaryRequestDir}/physical-canary.request";
   canaryResult = "${canaryRequestDir}/physical-canary.result";
+  canaryArchiveDir = "${canaryRequestDir}/requests";
   canaryProbeReceipt = "${canaryRequestDir}/physical-canary.probe";
   canaryOutput = "${canaryRequestDir}/physical-canary.output";
 
@@ -46,6 +47,7 @@ let
     request=${lib.escapeShellArg canaryRequest}
     inflight="$request.inflight"
     result=${lib.escapeShellArg canaryResult}
+    archive_dir=${lib.escapeShellArg canaryArchiveDir}
 
     write_atomic() {
       local target="$1"
@@ -76,7 +78,12 @@ let
     printf 'status=%s\nboot_id=%s\nrequest_id=%s\narmed_at_unix_s=%s\ndevice=%s\nservice_result=%s\nexit_code=%s\nexit_status=%s\n' \
       "$status" "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$armed_at_unix_s" "$device" "\${SERVICE_RESULT:-unknown}" "\${EXIT_CODE:-unknown}" "\${EXIT_STATUS:-unknown}" | write_atomic "$result"
 
-    rm -f "$inflight"
+    if [[ "$request_id" =~ ^[0-9a-f]{32}$ ]]; then
+      mkdir -p "$archive_dir"
+      mv -f "$inflight" "$archive_dir/$request_id.request"
+    else
+      rm -f "$inflight"
+    fi
   '';
 
   physicalCanaryRunner = pkgs.writeShellScript "sovereign-boot-physical-canary-runner" ''
@@ -87,6 +94,7 @@ let
     result=${lib.escapeShellArg canaryResult}
     canaryProbeReceipt=${lib.escapeShellArg canaryProbeReceipt}
     canaryOutput=${lib.escapeShellArg canaryOutput}
+    archive_dir=${lib.escapeShellArg canaryArchiveDir}
     artifact="${cfg.package}/bin/quicken-fb"
 
     write_atomic() {
@@ -251,7 +259,8 @@ let
     printf 'status=%s\nboot_id=%s\nrequest_id=%s\narmed_at_unix_s=%s\nexpires_at_unix_s=%s\ndevice=%s\nseconds=%s\nexit_code=%s\nartifact_sha256=%s\npreboot_probe_sha256=%s\nboot_probe_sha256=%s\nrenderer_output_sha256=%s\nrestore_receipt_sha256=%s\n' \
       "$status" "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$armed_at_unix_s" "$expires_at_unix_s" "$device" "$seconds" "$rc" "$actual_sha" "$preboot_probe_sha" "$probe_sha" "$output_sha" "$restore_sha" | write_atomic "$result"
     request_active=0
-    rm -f "$inflight"
+    mkdir -p "$archive_dir"
+    mv -f "$inflight" "$archive_dir/$request_id.request"
 
     if (( rc == 0 )); then
       echo "Sovereign Boot: boot-scoped physical canary PASS"
@@ -311,7 +320,8 @@ in
 
     systemd.tmpfiles.rules = [
       "d ${runtimeDir} 0755 root root -",
-      "d ${canaryRequestDir} 0755 root root -"
+      "d ${canaryRequestDir} 0700 root root -",
+      "d ${canaryArchiveDir} 0700 root root -"
     ];
 
     systemd.services.sovereign-boot-physical-canary = {
@@ -367,7 +377,7 @@ in
           "/dev/random r"
           "/dev/urandom r"
         ];
-        ReadWritePaths = [ canaryRequestDir ];
+        ReadWritePaths = [ canaryRequestDir canaryArchiveDir ];
       };
     };
 
