@@ -85,7 +85,7 @@ let
 
     if [[ "$device" != "${cfg.drmDevice}" ]]; then
       echo "sovereign-boot: request device does not match configured DRM device: $device" >&2
-      printf 'status=FAIL_DEVICE_MISMATCH\nboot_id=%s\ndevice=%s\narmed_at_unix_s=%s\ndevice=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$armed_at_unix_s" "$device" | write_atomic "$result"
+      printf 'status=FAIL_DEVICE_MISMATCH\nboot_id=%s\narmed_at_unix_s=%s\ndevice=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$armed_at_unix_s" "$device" | write_atomic "$result"
       request_active=0
       rm -f "$inflight"
       exit 2
