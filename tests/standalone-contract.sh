@@ -57,3 +57,7 @@ grep -q 'SIGHUP' crates/quicken-fb/src/main.rs
 grep -q 'display-manager.service' crates/quicken-fb/src/vt.rs
 grep -q 'requires a real VT' crates/quicken-fb/src/vt.rs
 grep -q 'KDSETMODE' crates/quicken-fb/src/vt.rs
+
+grep -q 'tcgetpgrp' crates/quicken-fb/src/vt.rs
+grep -q 'SIGQUIT' crates/quicken-fb/src/main.rs
+grep -q 'SIGTSTP' crates/quicken-fb/src/main.rs
