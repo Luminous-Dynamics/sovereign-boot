@@ -37,6 +37,8 @@ let
   canaryRequestDir = "/var/lib/sovereign-boot";
   canaryRequest = "${canaryRequestDir}/physical-canary.request";
   canaryResult = "${canaryRequestDir}/physical-canary.result";
+  canaryProbeReceipt = "${canaryRequestDir}/physical-canary.probe";
+  canaryOutput = "${canaryRequestDir}/physical-canary.output";
 
   physicalCanaryRunner = pkgs.writeShellScript "sovereign-boot-physical-canary-runner" ''
     set -euo pipefail
@@ -66,6 +68,7 @@ let
     device="$(${pkgs.gnused}/bin/sed -n 's/^device=//p' "$inflight")"
     seconds="$(${pkgs.gnused}/bin/sed -n 's/^seconds=//p' "$inflight")"
     requested_sha="$(${pkgs.gnused}/bin/sed -n 's/^artifact_sha256=//p' "$inflight")"
+    preboot_probe_sha="$(${pkgs.gnused}/bin/sed -n 's/^preboot_probe_sha256=//p' "$inflight")"
     actual_sha="$(${pkgs.coreutils}/bin/sha256sum "$artifact" | ${pkgs.coreutils}/bin/cut -d' ' -f1)"
 
     if [[ "$device" != "${cfg.drmDevice}" ]]; then
@@ -119,12 +122,18 @@ let
       drm-ok\ *) ;;
       *)
         echo "sovereign-boot: boot-time DRM probe returned no valid receipt" >&2
-        printf 'status=FAIL_PROBE_RECEIPT\nboot_id=%s\ndevice=%s\nprobe_receipt=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$device" "$probe_output" >"$result"
+        printf "%s\n" "$probe_output" >"$canaryProbeReceipt"
+        chmod 0600 "$canaryProbeReceipt"
+        probe_sha="$(sha256sum "$canaryProbeReceipt" | cut -d' ' -f1)"
+        printf 'status=FAIL_PROBE_RECEIPT\nboot_id=%s\ndevice=%s\npreboot_probe_sha256=%s\nboot_probe_sha256=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$device" "$preboot_probe_sha" "$probe_sha" >"$result"
         request_active=0
         rm -f "$inflight"
         exit 6
         ;;
     esac
+    printf "%s\n" "$probe_output" >"$canaryProbeReceipt"
+    chmod 0600 "$canaryProbeReceipt"
+    probe_sha="$(sha256sum "$canaryProbeReceipt" | cut -d' ' -f1)"
     echo "Sovereign Boot: boot-time probe: $probe_output"
 
     active_vt="$(${pkgs.coreutils}/bin/cat /sys/class/tty/tty0/active 2>/dev/null || true)"
@@ -145,8 +154,11 @@ let
       --device "$device" --canary-seconds "$seconds" 2>&1)"
     rc=$?
     set -e
+    printf "%s\n" "$canary_output" >"$canaryOutput"
+    chmod 0600 "$canaryOutput"
     printf "%s\n" "$canary_output"
 
+    output_sha="$(sha256sum "$canaryOutput" | cut -d' ' -f1)"
     restore_receipt="$(${pkgs.gnugrep}/bin/grep -m1 "^drm-restore-ok " <<<"$canary_output" || true)"
     if (( rc == 0 )) && [[ -n "$restore_receipt" ]]; then
       status="PASS"
@@ -157,8 +169,12 @@ let
       status="FAIL_RENDERER"
     fi
 
-    printf 'status=%s\nboot_id=%s\ndevice=%s\nseconds=%s\nexit_code=%s\nartifact_sha256=%s\nprobe_receipt=%s\nrestore_receipt=%s\n' \
-      "$status" "$(< /proc/sys/kernel/random/boot_id)" "$device" "$seconds" "$rc" "$actual_sha" "$probe_output" "$restore_receipt" >"$result"
+    restore_sha=""
+    if [[ -n "$restore_receipt" ]]; then
+      restore_sha="$(printf '%s\n' "$restore_receipt" | sha256sum | cut -d' ' -f1)"
+    fi
+    printf 'status=%s\nboot_id=%s\ndevice=%s\nseconds=%s\nexit_code=%s\nartifact_sha256=%s\npreboot_probe_sha256=%s\nboot_probe_sha256=%s\nrenderer_output_sha256=%s\nrestore_receipt_sha256=%s\n' \
+      "$status" "$(< /proc/sys/kernel/random/boot_id)" "$device" "$seconds" "$rc" "$actual_sha" "$preboot_probe_sha" "$probe_sha" "$output_sha" "$restore_sha" >"$result"
     request_active=0
     rm -f "$inflight"
 
@@ -212,7 +228,7 @@ in
   config = lib.mkIf cfg.enable {
     assertions = [
       {
-        assertion = lib.hasPrefix "/dev/dri/card" cfg.drmDevice;
+        assertion = builtins.match "^/dev/dri/card[0-9]+$" cfg.drmDevice != null;
         message = "Sovereign Boot drmDevice must be an explicit /dev/dri/cardN path";
       }
     ];
