@@ -12,6 +12,13 @@ use std::fs::OpenOptions;
 use std::os::fd::{AsRawFd, RawFd};
 use std::path::Path;
 
+// Linux UAPI values from include/uapi/linux/kd.h. The libc crate does not
+// expose these console ioctl constants on every supported libc target.
+const KDSETMODE: nix::libc::c_ulong = 0x4B3A;
+const KDGETMODE: nix::libc::c_ulong = 0x4B3B;
+const KD_TEXT: nix::libc::c_int = 0;
+const KD_GRAPHICS: nix::libc::c_int = 1;
+
 pub struct VirtualTerminalGuard {
     _tty: std::fs::File,
     fd: RawFd,
@@ -77,12 +84,12 @@ impl VirtualTerminalGuard {
         }
 
         let mut original_mode = 0;
-        let rc = unsafe { nix::libc::ioctl(fd, nix::libc::KDGETMODE, &mut original_mode) };
+        let rc = unsafe { nix::libc::ioctl(fd, KDGETMODE, &mut original_mode) };
         if rc < 0 {
             return Err(std::io::Error::last_os_error().to_string());
         }
 
-        if original_mode != nix::libc::KD_TEXT {
+        if original_mode != KD_TEXT {
             return Err(format!(
                 "canary requires a text VT before takeover; current mode={original_mode}"
             ));
@@ -91,8 +98,8 @@ impl VirtualTerminalGuard {
         let rc = unsafe {
             nix::libc::ioctl(
                 fd,
-                nix::libc::KDSETMODE,
-                nix::libc::KD_GRAPHICS as nix::libc::c_ulong,
+                KDSETMODE,
+                KD_GRAPHICS as nix::libc::c_ulong,
             )
         };
         if rc < 0 {
@@ -117,7 +124,7 @@ impl Drop for VirtualTerminalGuard {
         let _ = unsafe {
             nix::libc::ioctl(
                 self.fd,
-                nix::libc::KDSETMODE,
+                KDSETMODE,
                 self.original_mode as nix::libc::c_ulong,
             )
         };
