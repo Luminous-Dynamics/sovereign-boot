@@ -63,13 +63,13 @@ let
     device="$(${pkgs.gnused}/bin/sed -n 's/^device=//p' "$inflight")"
     armed_at_unix_s="$(${pkgs.gnused}/bin/sed -n 's/^armed_at_unix_s=//p' "$inflight")"
 
-    case "${SERVICE_RESULT:-unknown}" in
+    case "\${SERVICE_RESULT:-unknown}" in
       timeout) status="FAIL_SERVICE_TIMEOUT" ;;
       *) status="FAIL_SERVICE_ABORTED" ;;
     esac
 
     printf 'status=%s\nboot_id=%s\nrequest_id=%s\narmed_at_unix_s=%s\ndevice=%s\nservice_result=%s\nexit_code=%s\nexit_status=%s\n' \
-      "$status" "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$armed_at_unix_s" "$device" "${SERVICE_RESULT:-unknown}" "${EXIT_CODE:-unknown}" "${EXIT_STATUS:-unknown}" | write_atomic "$result"
+      "$status" "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$armed_at_unix_s" "$device" "\${SERVICE_RESULT:-unknown}" "\${EXIT_CODE:-unknown}" "\${EXIT_STATUS:-unknown}" | write_atomic "$result"
 
     rm -f "$inflight"
   '';
