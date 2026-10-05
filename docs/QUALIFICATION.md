@@ -31,3 +31,19 @@ use `buildAndTestSubdir = "crates/quicken-fb"` so the root Cargo.lock is availab
 without widening the Cargo build target.
 
 This evidence upgrades the lock/source review. The local x86_64-linux package build has now completed successfully; hosted CI remains pending.
+
+## DRM lifecycle hardening
+
+The renderer now captures all connectors currently attached to the selected CRTC before
+calling legacy SETCRTC, and restores that connector set together with the original
+framebuffer, position, and mode on drop. The non-mutating probe emits the selected
+connector interface/id and CRTC in its receipt.
+
+This is still source-level qualification until a controlled renderer execution
+observes and records successful restoration on the target hardware or a VM.
+
+## Reproducibility hardening
+
+Hosted CI uses Cargo --locked for check/test/clippy and Nix --no-write-lock-file for
+the package build, preventing silent lockfile or dependency-graph drift during
+qualification.
