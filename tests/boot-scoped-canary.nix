@@ -103,8 +103,12 @@ in
     assert "seconds=1" in result, result
     assert "exit_code=0" in result, result
     assert "artifact_sha256=" in result, result
-    assert "probe_receipt=drm-ok" in result, result
-    assert "restore_receipt=drm-restore-ok" in result, result
+    assert "request_id=11111111111111111111111111111111" in result, result
+    assert "armed_at_unix_s=" in result, result
+    assert "expires_at_unix_s=" in result, result
+    assert "preboot_probe_sha256=" in result, result
+    assert "boot_probe_sha256=" in result, result
+    assert "restore_receipt_sha256=" in result, result
     machine.succeed("test -f /run/sovereign-boot-test/display-manager.started")
     machine.succeed("test ! -e /var/lib/sovereign-boot/physical-canary.request")
     machine.succeed("test ! -e /var/lib/sovereign-boot/physical-canary.request.inflight")
@@ -183,7 +187,7 @@ in
         "sha256sum ${fakeRenderer}/bin/quicken-fb | cut -d' ' -f1"
     ).strip()
     machine.succeed(
-        "printf 'device=/dev/dri/card99\\nseconds=1\\nartifact_sha256=%s\\n' " + sha + " > /var/lib/sovereign-boot/physical-canary.request"
+        "printf 'request_id=44444444444444444444444444444444\\ndevice=/dev/dri/card99\\nseconds=1\\nartifact_sha256=%s\\npreboot_probe_sha256=4444444444444444444444444444444444444444444444444444444444444444\\narmed_at_unix_s=%s\\nexpires_at_unix_s=%s\\n' " + sha + " \"$(date +%s)\" \"$(($(date +%s) + 900))\" > /var/lib/sovereign-boot/physical-canary.request"
     )
     machine.succeed("systemctl reset-failed sovereign-boot-physical-canary.service")
     machine.fail("systemctl start sovereign-boot-physical-canary.service")
@@ -202,8 +206,7 @@ in
         "sha256sum ${fakeRenderer}/bin/quicken-fb | cut -d' ' -f1"
     ).strip()
     machine.succeed(
-        "printf 'device=/dev/dri/card99\\nseconds=1\\nartifact_sha256=%s\\npreboot_probe_sha256=deadbeef\\narmed_at_unix_s=1\\nexpires_at_unix_s=2\\n' "
-        + stale_sha + " > /var/lib/sovereign-boot/physical-canary.request"
+        "printf 'request_id=55555555555555555555555555555555\\ndevice=/dev/dri/card99\\nseconds=1\\nartifact_sha256=%s\\npreboot_probe_sha256=deadbeef\\narmed_at_unix_s=1\\nexpires_at_unix_s=2\\n' " + stale_sha + " > /var/lib/sovereign-boot/physical-canary.request"
     )
     machine.succeed("systemctl reset-failed sovereign-boot-physical-canary.service")
     machine.fail("systemctl start sovereign-boot-physical-canary.service")
