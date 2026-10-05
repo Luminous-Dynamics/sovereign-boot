@@ -243,10 +243,11 @@ impl DrmFramebuffer {
 
     /// Copy from a row-major u32 buffer (width*height) into the DRM dumb buffer.
     /// Maps the buffer, writes, and unmaps each frame.
-    pub fn blit_from(&mut self, src: &[u32]) {
-        let Ok(mut mapping) = self.card.map_dumb_buffer(&mut self.dumb_buffer) else {
-            return;
-        };
+    pub fn blit_from(&mut self, src: &[u32]) -> Result<(), DrmError> {
+        let mut mapping = self
+            .card
+            .map_dumb_buffer(&mut self.dumb_buffer)
+            .map_err(DrmError::BufferMap)?;
 
         let stride_pixels = self.stride as usize / 4;
         let w = self.width as usize;
@@ -274,6 +275,7 @@ impl DrmFramebuffer {
             }
         }
         // mapping is dropped here, which flushes/unmaps
+        Ok(())
     }
 
     /// Probe a DRM device without creating a framebuffer or changing CRTC state.
