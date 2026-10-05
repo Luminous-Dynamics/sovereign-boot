@@ -41,10 +41,16 @@ fn main() {
 
     if args.probe {
         match DrmFramebuffer::probe(&args.device) {
-            Ok((width, height, refresh_hz)) => {
+            Ok(probe) => {
                 println!(
-                    "drm-ok device={} mode={}x{} refresh={}Hz",
-                    args.device, width, height, refresh_hz
+                    "drm-ok device={} connector={}{} crtc={:?} mode={}x{} refresh={}Hz",
+                    args.device,
+                    probe.connector_interface,
+                    probe.connector_interface_id,
+                    probe.crtc,
+                    probe.width,
+                    probe.height,
+                    probe.refresh_hz
                 );
                 return;
             }
