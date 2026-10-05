@@ -222,7 +222,7 @@ impl DrmFramebuffer {
         // Capture every connector currently attached to this CRTC. The legacy
         // SETCRTC restore must include connector attachment as well as
         // framebuffer/mode state.
-        let original_connectors = connected_connectors_for_crtc(&card, &res, crtc)?
+        let original_connectors = connected_connectors_for_crtc(&card, &res, crtc)?;
         let width = mode.size().0 as u32;
         let height = mode.size().1 as u32;
 
