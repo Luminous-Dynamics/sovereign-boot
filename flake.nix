@@ -40,6 +40,7 @@
             runtimeInputs = with pkgs; [
               coreutils
               gnugrep
+              sudo
               systemd
               util-linux
             ];
