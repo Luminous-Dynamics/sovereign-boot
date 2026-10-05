@@ -84,7 +84,7 @@ let
 
     if [[ "$device" != "${cfg.drmDevice}" ]]; then
       echo "sovereign-boot: request device does not match configured DRM device: $device" >&2
-      printf 'status=FAIL_DEVICE_MISMATCH\nboot_id=%s\ndevice=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$device" >"$result"
+      printf 'status=FAIL_DEVICE_MISMATCH\nboot_id=%s\ndevice=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$device" | write_atomic "$result"
       request_active=0
       rm -f "$inflight"
       exit 2
@@ -92,7 +92,7 @@ let
 
     if [[ ! "$requested_sha" =~ ^[0-9a-f]{64}$ ]] || [[ "$requested_sha" != "$actual_sha" ]]; then
       echo "sovereign-boot: renderer artifact digest mismatch" >&2
-      printf 'status=FAIL_ARTIFACT_MISMATCH\nboot_id=%s\nexpected_sha=%s\nactual_sha=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$requested_sha" "$actual_sha" >"$result"
+      printf 'status=FAIL_ARTIFACT_MISMATCH\nboot_id=%s\nexpected_sha=%s\nactual_sha=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$requested_sha" "$actual_sha" | write_atomic "$result"
       request_active=0
       rm -f "$inflight"
       exit 3
@@ -100,7 +100,7 @@ let
 
     if [[ "$device" != /dev/dri/card[0-9]* ]] || [[ ! -e "$device" ]]; then
       echo "sovereign-boot: invalid physical canary device request: $device" >&2
-      printf 'status=FAIL_INVALID_REQUEST\nboot_id=%s\n' "$(< /proc/sys/kernel/random/boot_id)" >"$result"
+      printf 'status=FAIL_INVALID_REQUEST\nboot_id=%s\n' "$(< /proc/sys/kernel/random/boot_id)" | write_atomic "$result"
       request_active=0
       rm -f "$inflight"
       exit 2
@@ -108,7 +108,7 @@ let
 
     if [[ ! "$seconds" =~ ^[0-9]+$ ]] || (( seconds < 1 || seconds > 30 )); then
       echo "sovereign-boot: invalid physical canary duration: $seconds" >&2
-      printf 'status=FAIL_INVALID_REQUEST\nboot_id=%s\n' "$(< /proc/sys/kernel/random/boot_id)" >"$result"
+      printf 'status=FAIL_INVALID_REQUEST\nboot_id=%s\n' "$(< /proc/sys/kernel/random/boot_id)" | write_atomic "$result"
       request_active=0
       rm -f "$inflight"
       exit 2
@@ -116,7 +116,7 @@ let
 
     if ${pkgs.systemd}/bin/systemctl is-active --quiet display-manager.service; then
       echo "sovereign-boot: display manager active; refusing canary" >&2
-      printf 'status=FAIL_DISPLAY_MANAGER\nboot_id=%s\n' "$(< /proc/sys/kernel/random/boot_id)" >"$result"
+      printf 'status=FAIL_DISPLAY_MANAGER\nboot_id=%s\n' "$(< /proc/sys/kernel/random/boot_id)" | write_atomic "$result"
       request_active=0
       rm -f "$inflight"
       exit 4
@@ -124,7 +124,7 @@ let
 
     probe_output="$("$artifact" --probe --device "$device" 2>&1)" || {
       echo "sovereign-boot: boot-time non-mutating DRM probe failed" >&2
-      printf 'status=FAIL_PROBE\nboot_id=%s\ndevice=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$device" >"$result"
+      printf 'status=FAIL_PROBE\nboot_id=%s\ndevice=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$device" | write_atomic "$result"
       request_active=0
       rm -f "$inflight"
       exit 5
@@ -135,7 +135,7 @@ let
         echo "sovereign-boot: boot-time DRM probe returned no valid receipt" >&2
         printf "%s\n" "$probe_output" | write_atomic "$canaryProbeReceipt"
         probe_sha="$(sha256sum "$canaryProbeReceipt" | cut -d' ' -f1)"
-        printf 'status=FAIL_PROBE_RECEIPT\nboot_id=%s\ndevice=%s\npreboot_probe_sha256=%s\nboot_probe_sha256=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$device" "$preboot_probe_sha" "$probe_sha" >"$result"
+        printf 'status=FAIL_PROBE_RECEIPT\nboot_id=%s\ndevice=%s\npreboot_probe_sha256=%s\nboot_probe_sha256=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$device" "$preboot_probe_sha" "$probe_sha" | write_atomic "$result"
         request_active=0
         rm -f "$inflight"
         exit 6
@@ -148,7 +148,7 @@ let
     active_vt="$(${pkgs.coreutils}/bin/cat /sys/class/tty/tty0/active 2>/dev/null || true)"
     if [[ "$active_vt" != "tty1" ]]; then
       echo "sovereign-boot: refusing physical canary because tty1 is not active (active=$active_vt)" >&2
-      printf 'status=FAIL_WRONG_VT\nboot_id=%s\nactive_vt=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$active_vt" >"$result"
+      printf 'status=FAIL_WRONG_VT\nboot_id=%s\nactive_vt=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$active_vt" | write_atomic "$result"
       request_active=0
       rm -f "$inflight"
       exit 3
