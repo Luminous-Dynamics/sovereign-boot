@@ -35,6 +35,9 @@ grep -q 'cargoLock.lockFile = ./Cargo.lock;' flake.nix
 grep -q 'connector_interface' crates/quicken-fb/src/framebuffer.rs
 grep -q 'connector_interface_id' crates/quicken-fb/src/framebuffer.rs
 grep -q 'original_connectors' crates/quicken-fb/src/framebuffer.rs
+grep -q 'pub fn restore' crates/quicken-fb/src/framebuffer.rs
+grep -q 'DrmRestoreReceipt' crates/quicken-fb/src/framebuffer.rs
+grep -q 'SourceBufferTooSmall' crates/quicken-fb/src/framebuffer.rs
 grep -q 'probe.connector_interface' crates/quicken-fb/src/main.rs
 
 # Multi-GPU hosts require an explicit DRM card; probe errors must include connector diagnostics.
@@ -65,3 +68,5 @@ grep -q 'SIGTSTP' crates/quicken-fb/src/main.rs
 test -s tests/boot-boundary.nix
 grep -q 'sovereign-boot-boundary' flake.nix
 grep -q 'runNixOSTest' flake.nix
+
+echo "sovereign-boot restoration/buffer contract: PASS"
