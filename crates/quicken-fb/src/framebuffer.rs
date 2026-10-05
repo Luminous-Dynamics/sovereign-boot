@@ -43,6 +43,7 @@ impl Card {
 pub enum DrmError {
     DeviceOpen(String, std::io::Error),
     NoConnector,
+    NoConnectedDisplay(String),
     NoMode,
     NoEncoder,
     NoCrtc,
@@ -58,7 +59,8 @@ impl std::fmt::Display for DrmError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::DeviceOpen(path, e) => write!(f, "cannot open DRM device {path}: {e}"),
-            Self::NoConnector => write!(f, "no connected display found"),
+            Self::NoConnector => write!(f, "no connector available"),
+            Self::NoConnectedDisplay(details) => write!(f, "no connected display found; {details}"),
             Self::NoMode => write!(f, "no display mode available"),
             Self::NoEncoder => write!(f, "no encoder for connector"),
             Self::NoCrtc => write!(f, "no CRTC available"),
@@ -208,6 +210,37 @@ impl DrmFramebuffer {
             return Ok((conn, mode));
         }
         Err(DrmError::NoConnector)
+    }
+
+    /// Describe the connectors visible from this DRM card without performing
+    /// a forced probe or changing modeset state.
+    pub fn probe_diagnostics(device_path: &str) -> Result<String, DrmError> {
+        let card = Card::open(device_path)?;
+        let res = card.resource_handles().map_err(DrmError::ResourceQuery)?;
+        let mut entries = Vec::new();
+
+        for &conn_handle in res.connectors() {
+            let conn = match card.get_connector(conn_handle, false) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            entries.push(format!(
+                "{}-{}:{:?}:modes={}",
+                conn.interface().as_str(),
+                conn.interface_id(),
+                conn.state(),
+                conn.modes().len()
+            ));
+        }
+
+        if entries.is_empty() {
+            return Err(DrmError::NoConnectedDisplay("card exposes no readable connectors".into()));
+        }
+
+        Err(DrmError::NoConnectedDisplay(format!(
+            "connectors=[{}]",
+            entries.join(",")
+        )))
     }
 
     /// Stride in bytes.
