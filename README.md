@@ -41,21 +41,24 @@ assume `card0`.
 
 A probe failure is a hardware/DRM compatibility result, not a reason to weaken the boot boundary.
 
-After the probe succeeds, run the first modesetting test from a text console, with
-a bounded canary so the process exits automatically:
+After the probe succeeds, the repository also provides a small VT launcher so you do not have to copy the long renderer command onto the Linux console. `openvt --switch --wait` attaches the child command to a real VT, switches to it while the command runs, and returns to the launching terminal afterward. citeturn867726search0
+
+From the repository checkout, use:
+
+```bash
+sudo ./scripts/launch-physical-canary.sh --device /dev/dri/card1 --seconds 5
+```
+
+The launcher re-probes the selected device, can auto-select the unique probe-successful DRM card when `--device` is omitted, and requires an explicit `drm-restore-ok` receipt before reporting success. It deliberately does **not** isolate or stop the desktop; the existing display-manager/VT ownership boundary remains a separate safety step. This shortens the operator path without hiding a destructive system-state transition inside a convenience command.
+
+For the manual VT path:
 
 ```bash
 # From a real, active Linux VT (for example Ctrl-Alt-F3), after logging in.
 # Keep a second recovery shell available on another VT or over SSH.
-# The bounded canary refuses graphical pseudo-terminals/inactive VTs, requires
-# display-manager.service to be inactive, and temporarily puts the active VT
-# into KD_GRAPHICS while DRM owns scanout:
-sudo systemctl isolate multi-user.target
-sudo systemctl is-active display-manager.service && echo "REFUSING: display manager still active" && exit 1
-sudo ./result/bin/quicken-fb \\
-  --genesis-phrase "Sovereign Boot" \\
-  --device /dev/dri/cardN \\
-  --canary-seconds 5
+# The launcher runs quicken-fb on a real VT, but refuses an active
+# display-manager.service rather than taking ownership from the desktop.
+sudo ./scripts/launch-physical-canary.sh --device /dev/dri/cardN --seconds 5
 sudo systemctl start display-manager.service
 ```
 
