@@ -50,7 +50,7 @@ a bounded canary so the process exits automatically:
 # The bounded canary refuses graphical pseudo-terminals/inactive VTs, requires
 # display-manager.service to be inactive, and temporarily puts the active VT
 # into KD_GRAPHICS while DRM owns scanout:
-sudo systemctl stop display-manager.service
+sudo systemctl isolate multi-user.target
 sudo systemctl is-active display-manager.service && echo "REFUSING: display manager still active" && exit 1
 sudo ./result/bin/quicken-fb \\
   --genesis-phrase "Sovereign Boot" \\
