@@ -37,6 +37,12 @@ while (($#)); do
   esac
 done
 
+if [[ $EUID -ne 0 ]]; then
+  echo "ERROR: this physical canary must be launched with root privileges." >&2
+  echo "Elevate the outer nix run command; do not elevate a package binary from /nix/store." >&2
+  exit 1
+fi
+
 [[ "$seconds" =~ ^[0-9]+$ ]] && ((seconds >= 1 && seconds <= 30)) || {
   echo "ERROR: --seconds must be an integer from 1 to 30" >&2
   exit 2
@@ -179,4 +185,4 @@ echo
 echo "CANARY RESULT: PASS"
 '
 
-exec sudo openvt --switch --wait -- bash -c "$inner" _ "$artifact" "$seconds" "$device" "$isolate"
+exec openvt --switch --wait -- bash -c "$inner" _ "$artifact" "$seconds" "$device" "$isolate"
