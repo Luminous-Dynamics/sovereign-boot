@@ -33,6 +33,77 @@ let
     exit 0
   '';
 
+
+  canaryRequestDir = "/var/lib/sovereign-boot";
+  canaryRequest = "${canaryRequestDir}/physical-canary.request";
+  canaryResult = "${canaryRequestDir}/physical-canary.result";
+
+  physicalCanaryRunner = pkgs.writeShellScript "sovereign-boot-physical-canary-runner" ''
+    set -euo pipefail
+
+    request=${lib.escapeShellArg canaryRequest}
+    result=${lib.escapeShellArg canaryResult}
+    artifact="${cfg.package}/bin/quicken-fb"
+
+    if [[ ! -f "$request" ]]; then
+      echo "sovereign-boot: no physical canary request; skipping"
+      exit 0
+    fi
+
+    device="$(${pkgs.gnused}/bin/sed -n 's/^device=//p' "$request")"
+    seconds="$(${pkgs.gnused}/bin/sed -n 's/^seconds=//p' "$request")"
+
+    if [[ "$device" != /dev/dri/card[0-9]* ]] || [[ ! -e "$device" ]]; then
+      echo "sovereign-boot: invalid physical canary device request: $device" >&2
+      printf 'status=FAIL_INVALID_REQUEST\nboot_id=%s\n' "$(< /proc/sys/kernel/random/boot_id)" >"$result"
+      rm -f "$request"
+      exit 2
+    fi
+
+    if [[ ! "$seconds" =~ ^[0-9]+$ ]] || (( seconds < 1 || seconds > 30 )); then
+      echo "sovereign-boot: invalid physical canary duration: $seconds" >&2
+      printf 'status=FAIL_INVALID_REQUEST\nboot_id=%s\n' "$(< /proc/sys/kernel/random/boot_id)" >"$result"
+      rm -f "$request"
+      exit 2
+    fi
+
+    active_vt="$(${pkgs.coreutils}/bin/cat /sys/class/tty/tty0/active 2>/dev/null || true)"
+    if [[ "$active_vt" != "tty1" ]]; then
+      echo "sovereign-boot: refusing physical canary because tty1 is not active (active=$active_vt)" >&2
+      printf 'status=FAIL_WRONG_VT\nboot_id=%s\nactive_vt=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$active_vt" >"$result"
+      rm -f "$request"
+      exit 3
+    fi
+
+    echo "Sovereign Boot: boot-scoped physical canary armed for this boot."
+    echo "Sovereign Boot: device=$device seconds=$seconds"
+    echo "Sovereign Boot: display-manager.service is intentionally not started yet."
+
+    set +e
+    "$artifact" --genesis-phrase "${lib.escapeShellArg cfg.genesisPhrase}" \
+      --device "$device" --canary-seconds "$seconds"
+    rc=$?
+    set -e
+
+    if (( rc == 0 )); then
+      status="PASS"
+    else
+      status="FAIL_RENDERER"
+    fi
+
+    printf 'status=%s\nboot_id=%s\ndevice=%s\nseconds=%s\nexit_code=%s\n' \
+      "$status" "$(< /proc/sys/kernel/random/boot_id)" "$device" "$seconds" "$rc" >"$result"
+    rm -f "$request"
+
+    if (( rc == 0 )); then
+      echo "Sovereign Boot: boot-scoped physical canary PASS"
+    else
+      echo "Sovereign Boot: boot-scoped physical canary FAIL (exit=$rc)" >&2
+    fi
+
+    exit "$rc"
+  '';
+
   progressArg =
     lib.optionalString (cfg.progressPipe != null)
       " --progress-pipe \${lib.escapeShellArg cfg.progressPipe}";
@@ -79,9 +150,58 @@ in
       }
     ];
 
+
     systemd.tmpfiles.rules = [
-      "d \${runtimeDir} 0755 root root -"
+      "d ${runtimeDir} 0755 root root -",
+      "d ${canaryRequestDir} 0755 root root -"
     ];
+
+    systemd.services.sovereign-boot-physical-canary = {
+      description = "Sovereign Boot one-shot physical DRM/KMS canary";
+      wantedBy = [ "multi-user.target" ];
+      before = [
+        "display-manager.service"
+        "getty@tty1.service"
+        "sovereign-boot-animation.service"
+      ];
+      unitConfig = {
+        ConditionPathExists = canaryRequest;
+        Conflicts = [
+          "display-manager.service"
+          "getty@tty1.service"
+          "sovereign-boot-animation.service"
+        ];
+      };
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = physicalCanaryRunner;
+        StandardInput = "tty";
+        StandardOutput = "journal";
+        StandardError = "journal";
+        TTYPath = "/dev/tty1";
+        TTYReset = true;
+        TTYVHangup = true;
+        TTYVTDisallocate = false;
+        User = "root";
+        SupplementaryGroups = [ "video" "render" ];
+        TimeoutStartSec = "35s";
+        NoNewPrivileges = true;
+        ProtectHome = true;
+        ProtectKernelTunables = true;
+        ProtectKernelModules = true;
+        ProtectControlGroups = true;
+        RestrictNamespaces = true;
+        LockPersonality = true;
+        PrivateTmp = true;
+        ProtectSystem = "strict";
+        RestrictSUIDSGID = true;
+        RestrictRealtime = true;
+        CapabilityBoundingSet = "";
+        DeviceAllow = "${cfg.drmDevice} rw";
+        ReadWritePaths = [ canaryRequestDir ];
+      };
+    };
+
 
     systemd.services.sovereign-boot-animation = {
       description = "Sovereign Boot procedural DRM/KMS animation";
