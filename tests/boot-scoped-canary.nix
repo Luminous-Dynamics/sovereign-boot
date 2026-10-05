@@ -100,6 +100,7 @@ in
     assert "exit_code=0" in result, result
     assert "artifact_sha256=" in result, result
     assert "probe_receipt=drm-ok" in result, result
+    assert "restore_receipt=drm-restore-ok" in result, result
     machine.succeed("test -f /run/sovereign-boot-test/display-manager.started")
     machine.succeed("test ! -e /var/lib/sovereign-boot/physical-canary.request")
     machine.succeed("test ! -e /var/lib/sovereign-boot/physical-canary.request.inflight")
