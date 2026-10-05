@@ -71,4 +71,9 @@ test -s tests/boot-boundary.nix
 grep -q 'sovereign-boot-boundary' flake.nix
 grep -q 'runNixOSTest' flake.nix
 
+# The service must be isolated from the desktop handoff and cannot become a
+# required target dependency.
+grep -q 'Conflicts = \[ "display-manager.service" \];' nix/modules/sovereign-boot.nix
+grep -q 'ProtectSystem = "strict";' nix/modules/sovereign-boot.nix
+
 echo "sovereign-boot restoration/buffer contract: PASS"
