@@ -53,3 +53,7 @@ grep -q 'KDGETMODE' crates/quicken-fb/src/vt.rs
 grep -q 'KD_GRAPHICS' crates/quicken-fb/src/vt.rs
 grep -q 'tty0/active' crates/quicken-fb/src/vt.rs
 grep -q 'SIGHUP' crates/quicken-fb/src/main.rs
+
+grep -q 'display-manager.service' crates/quicken-fb/src/vt.rs
+grep -q 'requires a real VT' crates/quicken-fb/src/vt.rs
+grep -q 'KDSETMODE' crates/quicken-fb/src/vt.rs
