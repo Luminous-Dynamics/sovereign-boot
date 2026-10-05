@@ -59,6 +59,8 @@ grep -q 'display-manager.service' scripts/launch-physical-canary.sh
 grep -q 'drm-restore-ok' scripts/launch-physical-canary.sh
 
 grep -q 'openvt --switch --wait' README.md
+bash -n scripts/launch-physical-canary.sh
+! grep -Eq 'systemctl (isolate|stop|start|restart|kill)' scripts/launch-physical-canary.sh
 
 # Bounded physical canary must have an explicit active-VT ownership guard.
 test -s crates/quicken-fb/src/vt.rs
