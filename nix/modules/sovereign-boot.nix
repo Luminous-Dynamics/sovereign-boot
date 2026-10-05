@@ -100,6 +100,14 @@ let
       exit 2
     fi
 
+    if ${pkgs.systemd}/bin/systemctl is-active --quiet display-manager.service; then
+      echo "sovereign-boot: display manager active; refusing canary" >&2
+      printf 'status=FAIL_DISPLAY_MANAGER\nboot_id=%s\n' "$(< /proc/sys/kernel/random/boot_id)" >"$result"
+      request_active=0
+      rm -f "$inflight"
+      exit 4
+    fi
+
     active_vt="$(${pkgs.coreutils}/bin/cat /sys/class/tty/tty0/active 2>/dev/null || true)"
     if [[ "$active_vt" != "tty1" ]]; then
       echo "sovereign-boot: refusing physical canary because tty1 is not active (active=$active_vt)" >&2
