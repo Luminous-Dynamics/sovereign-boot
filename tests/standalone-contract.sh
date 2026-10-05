@@ -39,6 +39,8 @@ grep -q 'pub fn restore' crates/quicken-fb/src/framebuffer.rs
 grep -q 'DrmRestoreReceipt' crates/quicken-fb/src/framebuffer.rs
 grep -q 'SourceBufferTooSmall' crates/quicken-fb/src/framebuffer.rs
 grep -q 'probe.connector_interface' crates/quicken-fb/src/main.rs
+grep -q 'probe.selection_source' crates/quicken-fb/src/main.rs
+grep -q 'free-compatible' crates/quicken-fb/src/framebuffer.rs
 
 # Multi-GPU hosts require an explicit DRM card; probe errors must include connector diagnostics.
 ! grep -q 'default = "/dev/dri/card0"' nix/modules/sovereign-boot.nix
