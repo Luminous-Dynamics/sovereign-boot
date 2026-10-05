@@ -42,6 +42,7 @@ let
     set -euo pipefail
 
     request=${lib.escapeShellArg canaryRequest}
+    inflight="$request.inflight"
     result=${lib.escapeShellArg canaryResult}
     artifact="${cfg.package}/bin/quicken-fb"
 
@@ -50,9 +51,21 @@ let
       exit 0
     fi
 
-    device="$(${pkgs.gnused}/bin/sed -n 's/^device=//p' "$request")"
-    seconds="$(${pkgs.gnused}/bin/sed -n 's/^seconds=//p' "$request")"
-    requested_sha="$(${pkgs.gnused}/bin/sed -n 's/^artifact_sha256=//p' "$request")"
+    # Consume the request before renderer execution so an interrupted boot
+    # cannot silently schedule the same destructive modeset on every reboot.
+    mv -f "$request" "$inflight"
+    request_active=1
+    cleanup_request() {
+      if ((request_active)); then
+        rm -f "$inflight"
+        request_active=0
+      fi
+    }
+    trap cleanup_request EXIT
+
+    device="$(${pkgs.gnused}/bin/sed -n 's/^device=//p' "$inflight")"
+    seconds="$(${pkgs.gnused}/bin/sed -n 's/^seconds=//p' "$inflight")"
+    requested_sha="$(${pkgs.gnused}/bin/sed -n 's/^artifact_sha256=//p' "$inflight")"
     actual_sha="$(${pkgs.coreutils}/bin/sha256sum "$artifact" | ${pkgs.coreutils}/bin/cut -d' ' -f1)"
 
     if [[ "$device" != "${cfg.drmDevice}" ]]; then
@@ -109,7 +122,8 @@ let
 
     printf 'status=%s\nboot_id=%s\ndevice=%s\nseconds=%s\nexit_code=%s\nartifact_sha256=%s\n' \
       "$status" "$(< /proc/sys/kernel/random/boot_id)" "$device" "$seconds" "$rc" "$actual_sha" >"$result"
-    rm -f "$request"
+    request_active=0
+    rm -f "$inflight"
 
     if (( rc == 0 )); then
       echo "Sovereign Boot: boot-scoped physical canary PASS"
@@ -213,6 +227,7 @@ in
         RestrictSUIDSGID = true;
         RestrictRealtime = true;
         CapabilityBoundingSet = "";
+        UMask = "0077";
         DeviceAllow = "${cfg.drmDevice} rw";
         ReadWritePaths = [ canaryRequestDir ];
       };
