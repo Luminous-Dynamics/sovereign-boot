@@ -254,6 +254,11 @@ in
         DeviceAllow = [
           "${cfg.drmDevice} rw"
           "/dev/tty1 rw"
+          "/dev/null rw"
+          "/dev/zero r"
+          "/dev/full r"
+          "/dev/random r"
+          "/dev/urandom r"
         ];
         ReadWritePaths = [ canaryRequestDir ];
       };
