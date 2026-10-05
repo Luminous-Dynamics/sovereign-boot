@@ -68,6 +68,8 @@
         checks = {
           sovereign-boot-boundary =
             pkgs.testers.runNixOSTest (import ./tests/boot-boundary.nix);
+          sovereign-boot-boot-scoped-canary =
+            pkgs.testers.runNixOSTest (import ./tests/boot-scoped-canary.nix);
         };
 
         formatter = pkgs.nixfmt;
