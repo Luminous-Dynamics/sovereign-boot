@@ -76,6 +76,9 @@ grep -q 'FAIL_ARTIFACT_MISMATCH' nix/modules/sovereign-boot.nix
 grep -q 'FAIL_DEVICE_MISMATCH' nix/modules/sovereign-boot.nix
 grep -q 'FAIL_RENDERER' nix/modules/sovereign-boot.nix
 grep -q 'FAIL_PROBE' nix/modules/sovereign-boot.nix
+grep -q 'FAIL_PROBE_RECEIPT' nix/modules/sovereign-boot.nix
+grep -q 'restore_receipt=' nix/modules/sovereign-boot.nix
+grep -q 'canary_output=' nix/modules/sovereign-boot.nix
 grep -q 'FAIL_DISPLAY_MANAGER' nix/modules/sovereign-boot.nix
 grep -q 'probe_output=' nix/modules/sovereign-boot.nix
 grep -q 'DevicePolicy = "strict";' nix/modules/sovereign-boot.nix
