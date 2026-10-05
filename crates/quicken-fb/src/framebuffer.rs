@@ -213,7 +213,7 @@ impl DrmFramebuffer {
         // Prefer the connector's currently active CRTC, but when the
         // compositor has released KMS there may be no current encoder. In that
         // early-boot state select a compatible CRTC that is presently free.
-        let (crtc, selection_source) = select_crtc(&card, &res, &connector)?;
+        let (crtc, _selection_source) = select_crtc(&card, &res, &connector)?;
 
         // Capture the original state before any modeset. Failing closed here
         // guarantees that every successful modeset has a restoration snapshot.
