@@ -61,3 +61,7 @@ grep -q 'KDSETMODE' crates/quicken-fb/src/vt.rs
 grep -q 'tcgetpgrp' crates/quicken-fb/src/vt.rs
 grep -q 'SIGQUIT' crates/quicken-fb/src/main.rs
 grep -q 'SIGTSTP' crates/quicken-fb/src/main.rs
+
+test -s tests/boot-boundary.nix
+grep -q 'sovereign-boot-boundary' flake.nix
+grep -q 'runNixOSTest' flake.nix
