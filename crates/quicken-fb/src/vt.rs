@@ -10,10 +10,10 @@
 
 use std::fs::OpenOptions;
 use std::os::fd::{AsRawFd, RawFd};
-use std::path::PathBuf;
+use std::path::Path;
 
 pub struct VirtualTerminalGuard {
-    tty: std::fs::File,
+    _tty: std::fs::File,
     fd: RawFd,
     original_mode: nix::libc::c_int,
 }
@@ -74,7 +74,7 @@ impl VirtualTerminalGuard {
         }
 
         Ok(Self {
-            tty,
+            _tty: tty,
             fd,
             original_mode,
         })
@@ -92,11 +92,10 @@ impl Drop for VirtualTerminalGuard {
                 self.original_mode as nix::libc::c_ulong,
             )
         };
-        let _ = &self.tty;
     }
 }
 
-fn tty_name(path: &PathBuf) -> Option<String> {
+fn tty_name(path: &Path) -> Option<String> {
     let name = path.file_name()?.to_str()?.to_string();
     let suffix = name.strip_prefix("tty")?;
     if suffix.is_empty() || !suffix.bytes().all(|b| b.is_ascii_digit()) {
