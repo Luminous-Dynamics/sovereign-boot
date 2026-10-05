@@ -45,10 +45,11 @@ After the probe succeeds, run the first modesetting test from a text console, wi
 a bounded canary so the process exits automatically:
 
 ```bash
-# From a real, active Linux VT (for example Ctrl-Alt-F3), after logging in. The
-bounded canary deliberately refuses Kitty/Wayland/X11 pseudo-terminals and
-inactive VTs, then temporarily puts the active VT into KD_GRAPHICS while DRM
-owns scanout:
+# From a real, active Linux VT (for example Ctrl-Alt-F3), after logging in.
+# Keep a second recovery shell available on another VT or over SSH.
+# The bounded canary refuses graphical pseudo-terminals/inactive VTs, requires
+# display-manager.service to be inactive, and temporarily puts the active VT
+# into KD_GRAPHICS while DRM owns scanout:
 sudo systemctl stop display-manager.service
 sudo systemctl is-active display-manager.service && echo "REFUSING: display manager still active" && exit 1
 sudo ./result/bin/quicken-fb \\
