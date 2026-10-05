@@ -41,3 +41,8 @@ grep -q 'probe.connector_interface' crates/quicken-fb/src/main.rs
 ! grep -q 'default = "/dev/dri/card0"' nix/modules/sovereign-boot.nix
 grep -q 'NoConnectedDisplay' crates/quicken-fb/src/framebuffer.rs
 grep -q 'connector_diagnostics' crates/quicken-fb/src/framebuffer.rs
+
+# The executable must require explicit multi-GPU selection and expose a bounded canary.
+grep -q -- '--canary-seconds' crates/quicken-fb/src/main.rs
+grep -q -- '--device is required' crates/quicken-fb/src/main.rs
+grep -q '1..=30' crates/quicken-fb/src/main.rs
