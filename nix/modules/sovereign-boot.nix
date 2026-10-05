@@ -89,6 +89,7 @@ in
       before = [ "display-manager.service" ];
       unitConfig = {
         ConditionPathExists = "/dev/dri";
+        Conflicts = [ "display-manager.service" ];
       };
       serviceConfig = {
         Type = "simple";
@@ -112,6 +113,9 @@ in
         RestrictNamespaces = true;
         LockPersonality = true;
         PrivateTmp = true;
+        ProtectSystem = "strict";
+        RestrictSUIDSGID = true;
+        RestrictRealtime = true;
         CapabilityBoundingSet = "";
         DeviceAllow = "\${cfg.drmDevice} rw";
         ReadWritePaths = [ runtimeDir ];
