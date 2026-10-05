@@ -74,6 +74,9 @@ grep -q 'artifact_sha256' nix/modules/sovereign-boot.nix
 grep -q 'FAIL_ARTIFACT_MISMATCH' nix/modules/sovereign-boot.nix
 grep -q 'FAIL_DEVICE_MISMATCH' nix/modules/sovereign-boot.nix
 grep -q 'FAIL_RENDERER' nix/modules/sovereign-boot.nix
+grep -q 'DevicePolicy = "strict";' nix/modules/sovereign-boot.nix
+grep -q '"/dev/tty1 rw"' nix/modules/sovereign-boot.nix
+grep -q 'request.inflight' nix/modules/sovereign-boot.nix
 bash -n scripts/launch-physical-canary.sh
 bash -n scripts/arm-physical-canary.sh
 
