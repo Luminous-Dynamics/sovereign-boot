@@ -78,7 +78,8 @@ install -d -m 0755 /var/lib/sovereign-boot
 tmp="$(mktemp /var/lib/sovereign-boot/physical-canary.request.XXXXXX)"
 trap 'rm -f "$tmp"' EXIT
 chmod 0600 "$tmp"
-printf 'device=%s\nseconds=%s\n' "$device" "$seconds" >"$tmp"
+artifact_sha256="$(sha256sum "$artifact" | cut -d' ' -f1)"
+printf 'device=%s\nseconds=%s\nartifact_sha256=%s\n' "$device" "$seconds" "$artifact_sha256" >"$tmp"
 mv -f "$tmp" "$request"
 sync
 
