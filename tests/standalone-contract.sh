@@ -30,3 +30,9 @@ echo "sovereign-boot standalone contract: PASS"
 grep -q 'src = ./\.;' flake.nix
 grep -q 'buildAndTestSubdir = "crates/quicken-fb";' flake.nix
 grep -q 'cargoLock.lockFile = ./Cargo.lock;' flake.nix
+
+# Probe must expose selected connector identity and CRTC in its receipt.
+grep -q 'connector_interface' crates/quicken-fb/src/framebuffer.rs
+grep -q 'connector_interface_id' crates/quicken-fb/src/framebuffer.rs
+grep -q 'original_connectors' crates/quicken-fb/src/framebuffer.rs
+grep -q 'probe.connector_interface' crates/quicken-fb/src/main.rs
