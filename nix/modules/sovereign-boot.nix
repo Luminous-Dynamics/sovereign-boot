@@ -46,7 +46,18 @@ let
     request=${lib.escapeShellArg canaryRequest}
     inflight="$request.inflight"
     result=${lib.escapeShellArg canaryResult}
+    canaryProbeReceipt=${lib.escapeShellArg canaryProbeReceipt}
+    canaryOutput=${lib.escapeShellArg canaryOutput}
     artifact="${cfg.package}/bin/quicken-fb"
+
+    write_atomic() {
+      local target="$1"
+      local tmp
+      tmp="$(mktemp "$target.tmp.XXXXXX")"
+      chmod 0600 "$tmp"
+      cat >"$tmp"
+      mv -f "$tmp" "$target"
+    }
 
     if [[ ! -f "$request" ]]; then
       echo "sovereign-boot: no physical canary request; skipping"
@@ -122,8 +133,7 @@ let
       drm-ok\ *) ;;
       *)
         echo "sovereign-boot: boot-time DRM probe returned no valid receipt" >&2
-        printf "%s\n" "$probe_output" >"$canaryProbeReceipt"
-        chmod 0600 "$canaryProbeReceipt"
+        printf "%s\n" "$probe_output" | write_atomic "$canaryProbeReceipt"
         probe_sha="$(sha256sum "$canaryProbeReceipt" | cut -d' ' -f1)"
         printf 'status=FAIL_PROBE_RECEIPT\nboot_id=%s\ndevice=%s\npreboot_probe_sha256=%s\nboot_probe_sha256=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$device" "$preboot_probe_sha" "$probe_sha" >"$result"
         request_active=0
@@ -131,8 +141,7 @@ let
         exit 6
         ;;
     esac
-    printf "%s\n" "$probe_output" >"$canaryProbeReceipt"
-    chmod 0600 "$canaryProbeReceipt"
+    printf "%s\n" "$probe_output" | write_atomic "$canaryProbeReceipt"
     probe_sha="$(sha256sum "$canaryProbeReceipt" | cut -d' ' -f1)"
     echo "Sovereign Boot: boot-time probe: $probe_output"
 
@@ -154,8 +163,7 @@ let
       --device "$device" --canary-seconds "$seconds" 2>&1)"
     rc=$?
     set -e
-    printf "%s\n" "$canary_output" >"$canaryOutput"
-    chmod 0600 "$canaryOutput"
+    printf "%s\n" "$canary_output" | write_atomic "$canaryOutput"
     printf "%s\n" "$canary_output"
 
     output_sha="$(sha256sum "$canaryOutput" | cut -d' ' -f1)"
@@ -174,7 +182,7 @@ let
       restore_sha="$(printf '%s\n' "$restore_receipt" | sha256sum | cut -d' ' -f1)"
     fi
     printf 'status=%s\nboot_id=%s\ndevice=%s\nseconds=%s\nexit_code=%s\nartifact_sha256=%s\npreboot_probe_sha256=%s\nboot_probe_sha256=%s\nrenderer_output_sha256=%s\nrestore_receipt_sha256=%s\n' \
-      "$status" "$(< /proc/sys/kernel/random/boot_id)" "$device" "$seconds" "$rc" "$actual_sha" "$preboot_probe_sha" "$probe_sha" "$output_sha" "$restore_sha" >"$result"
+      "$status" "$(< /proc/sys/kernel/random/boot_id)" "$device" "$seconds" "$rc" "$actual_sha" "$preboot_probe_sha" "$probe_sha" "$output_sha" "$restore_sha" | write_atomic "$result"
     request_active=0
     rm -f "$inflight"
 
