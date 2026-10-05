@@ -38,6 +38,11 @@
           default = quicken-fb;
         };
 
+        checks = {
+          sovereign-boot-boundary =
+            pkgs.testers.runNixOSTest (import ./tests/boot-boundary.nix);
+        };
+
         formatter = pkgs.nixfmt;
 
         devShells.default = pkgs.mkShell {
