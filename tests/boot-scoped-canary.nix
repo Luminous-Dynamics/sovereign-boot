@@ -41,6 +41,7 @@ in
     };
 
     services.displayManager.enable = false;
+    systemd.defaultUnit = "graphical.target";
 
     systemd.services.sovereign-boot-animation.wantedBy = pkgs.lib.mkForce [ ];
 
@@ -70,6 +71,7 @@ in
 
   testScript = ''
     machine.start()
+    machine.wait_for_unit("graphical.target")
     machine.wait_for_unit("multi-user.target")
 
     machine.succeed(
@@ -149,8 +151,8 @@ in
         "systemctl is-active multi-user.target"
     ).strip() == "active"
 
-    # Normal graphical startup remains possible after canary failure.
-    machine.succeed("systemctl start graphical.target")
+    # The fake display manager participates in the same boot transaction and
+    # can only report success after the canary result exists.
     machine.wait_for_unit("display-manager.service")
     machine.succeed(
         "test -f /run/sovereign-boot-test/display-manager.started"
