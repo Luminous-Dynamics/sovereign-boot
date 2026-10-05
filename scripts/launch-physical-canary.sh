@@ -5,7 +5,6 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 artifact="${SOVEREIGN_BOOT_ARTIFACT:-$root/result/bin/quicken-fb}"
 seconds=5
 device=""
-isolate=0
 
 while (($#)); do
   case "$1" in
@@ -18,10 +17,6 @@ while (($#)); do
       [[ $# -ge 2 ]] || { echo "ERROR: --seconds needs a value" >&2; exit 2; }
       seconds="$2"
       shift 2
-      ;;
-    --isolate)
-      isolate=1
-      shift
       ;;
     -h|--help)
       echo "Usage: launch-physical-canary.sh [--device /dev/dri/cardN] [--seconds N] [--isolate]"
@@ -62,45 +57,9 @@ inner='set -euo pipefail
 artifact="$1"
 seconds="$2"
 device="$3"
-isolate="$4"
-did_isolate=0
-
-cleanup() {
-  rc=$?
-  if ((did_isolate)); then
-    echo
-    echo "Recovering graphical.target..."
-    if ! systemctl isolate graphical.target; then
-      echo "WARNING: graphical.target recovery failed; use the recovery shell." >&2
-      rc=1
-    elif ! systemctl is-active --quiet graphical.target; then
-      echo "WARNING: graphical.target is not active after recovery." >&2
-      rc=1
-    elif ! systemctl is-active --quiet display-manager.service; then
-      echo "WARNING: display-manager.service is not active after recovery." >&2
-      rc=1
-    else
-      echo "Graphical recovery: PASS"
-    fi
-  fi
-  exit "$rc"
-}
-trap cleanup EXIT
-
-if [[ "$isolate" == "1" ]]; then
-  if systemctl is-active --quiet graphical.target; then
-    echo "Opt-in isolation requested; this VT was acquired before graphical.target isolation."
-    did_isolate=1
-    systemctl isolate multi-user.target
-  else
-    echo "REFUSING: --isolate requires graphical.target to be active" >&2
-    exit 1
-  fi
-fi
-
 if systemctl is-active --quiet display-manager.service; then
   echo "REFUSING: display-manager.service is active" >&2
-  echo "Use --isolate for an explicit automated graphical handoff." >&2
+  echo "Use the boot-scoped physical-canary arm path for automated qualification; it reboots instead of terminating the desktop." >&2
   exit 1
 fi
 
@@ -185,4 +144,4 @@ echo
 echo "CANARY RESULT: PASS"
 '
 
-exec openvt --switch --wait -- bash -c "$inner" _ "$artifact" "$seconds" "$device" "$isolate"
+exec openvt --switch --wait -- bash -c "$inner" _ "$artifact" "$seconds" "$device"
