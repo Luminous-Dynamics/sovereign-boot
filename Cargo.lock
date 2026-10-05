@@ -856,6 +856,7 @@ name = "symthaea-quicken-fb"
 version = "0.1.0"
 dependencies = [
  "blake3",
+ "bytemuck",
  "drm",
  "drm-ffi",
  "nix 0.29.0",
