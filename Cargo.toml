@@ -7,4 +7,4 @@ members = [
 [workspace.package]
 edition = "2024"
 license = "AGPL-3.0-or-later"
-authors = ["Luminous Dynamics <tristan.stoltz@evolvingresonantcocreationism.com"]
+authors = ["Luminous Dynamics <tristan.stoltz@evolvingresonantcocreationism.com>"]
