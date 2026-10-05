@@ -35,7 +35,9 @@ let
     mkdir -p /dev/dri /run/sovereign-boot-test /var/lib/sovereign-boot
     : > /dev/dri/card99
     sha256="$(sha256sum \${fakeRenderer}/bin/quicken-fb | cut -d' ' -f1)"
-    printf 'device=/dev/dri/card99\nseconds=1\nartifact_sha256=%s\n' "$sha256" > /var/lib/sovereign-boot/physical-canary.request
+    probe_sha="1111111111111111111111111111111111111111111111111111111111111111"
+    now="$(date +%s)"
+    printf 'request_id=%s\ndevice=/dev/dri/card99\nseconds=1\nartifact_sha256=%s\npreboot_probe_sha256=%s\narmed_at_unix_s=%s\nexpires_at_unix_s=%s\n' 11111111111111111111111111111111 "$sha256" "$probe_sha" "$now" "$((now + 900))" > /var/lib/sovereign-boot/physical-canary.request
   '';
 
   fakeDisplayManager = pkgs.writeShellScript "fake-display-manager" ''
