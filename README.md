@@ -27,25 +27,37 @@ The repository intentionally does not pretend that an extracted source tree is a
 Before allowing the renderer to take display ownership, probe the DRM path without creating a framebuffer or changing CRTC state:
 
 ```bash
-sudo ./result/bin/quicken-fb --probe --device /dev/dri/card0
+sudo ./result/bin/quicken-fb --probe --device /dev/dri/cardN
 ```
 
 Expected shape:
 
 ```
-drm-ok device=/dev/dri/card0 mode=1920x1080 refresh=60Hz
+drm-ok device=/dev/dri/cardN connector=eDP-1 crtc=... mode=1920x1080 refresh=144Hz
 ```
+
+On multi-GPU systems, select the card that owns the connected connector; do not
+assume `card0`.
 
 A probe failure is a hardware/DRM compatibility result, not a reason to weaken the boot boundary.
 
-After the probe succeeds, the actual renderer can be tested from a text console, with the display manager stopped, using a disposable build:
+After the probe succeeds, run the first modesetting test from a text console, with
+a bounded canary so the process exits automatically:
 
 ```bash
+# From a real TTY (for example Ctrl-Alt-F3), after logging in:
 sudo systemctl stop display-manager.service
-sudo ./result/bin/quicken-fb --genesis-phrase "Sovereign Boot" --device /dev/dri/card0
+sudo ./result/bin/quicken-fb \\
+  --genesis-phrase "Sovereign Boot" \\
+  --device /dev/dri/cardN \\
+  --canary-seconds 5
+sudo systemctl start display-manager.service
 ```
 
-Terminate with Ctrl-C. The renderer attempts to restore the original CRTC state on exit.
+The bounded canary exits after at most 30 seconds and drops `DrmFramebuffer`,
+which attempts to restore the original CRTC framebuffer, mode, position, and
+connector attachment set. Treat successful desktop recovery after the canary as
+separate evidence from successful rendering.
 
 Do **not** make this unit part of a machine's required boot target until the CI/VM gates below are green and the physical canary has been reviewed.
 
@@ -64,7 +76,7 @@ The exported module is intentionally renderer-only:
     enable = true;
     package = inputs.sovereign-boot.packages.${pkgs.system}.quicken-fb;
     genesisPhrase = "Sovereign Boot";
-    drmDevice = "/dev/dri/card0";
+    drmDevice = "/dev/dri/cardN";
   };
 }
 ```
