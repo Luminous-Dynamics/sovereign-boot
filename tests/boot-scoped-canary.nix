@@ -192,6 +192,8 @@ in
     )
     assert "status=FAIL_RESTORE_RECEIPT" in result, result
     assert "exit_code=7" in result, result
+    assert "restore_receipt_sha256=" in result, result
+    assert "renderer_output_sha256=" in result, result
     machine.succeed("test ! -e /var/lib/sovereign-boot/physical-canary.request.inflight")
     machine.succeed("rm -f /run/sovereign-boot-test/no-restore")
 
