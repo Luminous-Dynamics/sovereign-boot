@@ -156,7 +156,7 @@ let
       exit 3
     fi
 
-    if [[ ! "$armed_at_unix_s" =~ ^[0-9]+$ ]] || [[ ! "$expires_at_unix_s" =~ ^[0-9]+$ ]] || (( expires_at_unix_s < armed_at_unix_s )); then
+    if [[ ! "$preboot_probe_sha" =~ ^[0-9a-f]{64}$ ]] || [[ ! "$armed_at_unix_s" =~ ^[0-9]+$ ]] || [[ ! "$expires_at_unix_s" =~ ^[0-9]+$ ]] || (( expires_at_unix_s < armed_at_unix_s )) || (( expires_at_unix_s - armed_at_unix_s > 900 )); then
       echo "sovereign-boot: invalid canary request expiry" >&2
       printf 'status=FAIL_INVALID_REQUEST\nboot_id=%s\n' "$(< /proc/sys/kernel/random/boot_id)" | write_atomic "$result"
       request_active=0
@@ -165,6 +165,13 @@ let
     fi
 
     now_unix_s="$(${pkgs.coreutils}/bin/date +%s)"
+    if (( armed_at_unix_s > now_unix_s + 300 )); then
+      echo "sovereign-boot: physical canary request is too far in the future" >&2
+      printf 'status=FAIL_INVALID_REQUEST\nboot_id=%s\nrequest_id=%s\narmed_at_unix_s=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$armed_at_unix_s" | write_atomic "$result"
+      request_active=0
+      rm -f "$inflight"
+      exit 2
+    fi
     if (( now_unix_s > expires_at_unix_s )); then
       echo "sovereign-boot: physical canary request has expired; refusing execution" >&2
       printf 'status=FAIL_EXPIRED_REQUEST\nboot_id=%s\nrequest_id=%s\narmed_at_unix_s=%s\nexpires_at_unix_s=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$armed_at_unix_s" "$expires_at_unix_s" | write_atomic "$result"
