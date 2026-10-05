@@ -10,7 +10,7 @@ repository. Green means the exact evidence named in the row exists.
 | CLI/module alignment | PASS_STATIC | Module invokes only arguments implemented by quicken-fb. |
 | DRM probe | UNQUALIFIED | Physical or VM run of quicken-fb --probe. |
 | Renderer execution | UNQUALIFIED | Captured manual canary run with CRTC restoration evidence. |
-| Nix package build | PENDING_HOSTED | Successful hosted nix build .#quicken-fb. |
+| Nix package build | PASS_LOCAL_OBSERVED / PENDING_HOSTED | Local x86_64-linux `nix build .#quicken-fb` completed successfully on 2026-10-05; hosted build still pending. |
 | VM boot integration | BLOCKED | Requires successful package + VM gates first. |
 | Physical boot integration | BLOCKED | Must remain outside the boot-critical path until VM qualification. |
 | Lifecycle/state/LKG integration | NOT_EXPORTED | Requires standalone binaries and independent evidence contracts. |
@@ -30,5 +30,4 @@ The Nix package source boundary was also corrected to include the workspace root
 use `buildAndTestSubdir = "crates/quicken-fb"` so the root Cargo.lock is available
 without widening the Cargo build target.
 
-This evidence upgrades the lock/source review only; it does not qualify the actual
-Nix build until a clean hosted or local `nix build .#quicken-fb` succeeds.
+This evidence upgrades the lock/source review. The local x86_64-linux package build has now completed successfully; hosted CI remains pending.
