@@ -93,6 +93,9 @@ fn main() {
 
     let frame_duration = Duration::from_nanos(1_000_000_000 / TARGET_FPS as u64);
     let start_time = Instant::now();
+    let canary_deadline = args
+        .canary_seconds
+        .map(|seconds| start_time + Duration::from_secs(seconds));
     let mut last_frame = Instant::now();
 
     // Animation state
@@ -172,15 +175,28 @@ fn main() {
         // Render
         network.render(&mut render_buf);
 
-        // Blit to framebuffer
-        fb.blit_from(&render_buf);
+        // Blit to framebuffer. A mapping failure is a renderer failure, not
+        // something we silently continue through during a boot canary.
+        if let Err(e) = fb.blit_from(&render_buf) {
+            eprintln!("quicken-fb: framebuffer blit failed: {e}");
+            break;
+        }
+
+        if let Some(deadline) = canary_deadline {
+            if now >= deadline {
+                eprintln!("quicken-fb: bounded canary duration elapsed");
+                break;
+            }
+        }
     }
 
     // Clean exit — clear to black
     for pixel in render_buf.iter_mut() {
         *pixel = 0;
     }
-    fb.blit_from(&render_buf);
+    if let Err(e) = fb.blit_from(&render_buf) {
+        eprintln!("quicken-fb: final framebuffer clear failed: {e}");
+    }
 
     eprintln!("quicken-fb: clean exit");
 }
@@ -191,6 +207,7 @@ struct Args {
     progress_pipe: Option<String>,
     device: String,
     probe: bool,
+    canary_seconds: Option<u64>,
 }
 
 /// Minimal argument parser (no clap dependency to keep binary small).
@@ -198,8 +215,9 @@ fn parse_args() -> Args {
     let args: Vec<String> = std::env::args().collect();
     let mut genesis_phrase = None;
     let mut progress_pipe = None;
-    let mut device = "/dev/dri/card0".to_string();
+    let mut device = None;
     let mut probe = false;
+    let mut canary_seconds = None;
 
     let mut i = 1;
     while i < args.len() {
@@ -219,8 +237,29 @@ fn parse_args() -> Args {
             "--device" => {
                 i += 1;
                 if i < args.len() {
-                    device = args[i].clone();
+                    device = Some(args[i].clone());
+                } else {
+                    eprintln!("quicken-fb: --device requires a path");
+                    print_usage();
+                    std::process::exit(1);
                 }
+            }
+            "--canary-seconds" => {
+                i += 1;
+                if i >= args.len() {
+                    eprintln!("quicken-fb: --canary-seconds requires a value");
+                    print_usage();
+                    std::process::exit(1);
+                }
+                let value = match args[i].parse::<u64>() {
+                    Ok(value) if (1..=30).contains(&value) => value,
+                    _ => {
+                        eprintln!("quicken-fb: --canary-seconds must be an integer from 1 to 30");
+                        print_usage();
+                        std::process::exit(1);
+                    }
+                };
+                canary_seconds = Some(value);
             }
             "--probe" => {
                 probe = true;
@@ -238,6 +277,21 @@ fn parse_args() -> Args {
         i += 1;
     }
 
+    let device = match device {
+        Some(device) => device,
+        None => {
+            eprintln!("quicken-fb: --device is required");
+            print_usage();
+            std::process::exit(1);
+        }
+    };
+
+    if canary_seconds.is_some() && probe {
+        eprintln!("quicken-fb: --canary-seconds cannot be combined with --probe");
+        print_usage();
+        std::process::exit(1);
+    }
+
     let genesis_phrase = match genesis_phrase {
         Some(p) => p,
         None if probe => String::new(),
@@ -253,6 +307,7 @@ fn parse_args() -> Args {
         progress_pipe,
         device,
         probe,
+        canary_seconds,
     }
 }
 
@@ -263,7 +318,8 @@ fn print_usage() {
          Options:\n\
          \x20 --genesis-phrase <PHRASE>   Genesis phrase for deterministic pattern seeding\n\
          \x20 --progress-pipe <PATH>      Named pipe for installer progress events\n\
-         \x20 --device <PATH>             DRM device path (default: /dev/dri/card0)\n\
+         \x20 --device <PATH>             DRM card device path (required)\n\
+         \x20 --canary-seconds <1-30>     Bounded modeset canary duration\n\
          \x20 --probe                     Probe DRM/display capability without modesetting\n\
          \x20 --help                      Show this help"
     );
