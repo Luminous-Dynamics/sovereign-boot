@@ -62,6 +62,39 @@ grep -q 'openvt --switch --wait' README.md
 grep -q 'physical-canary = pkgs.writeShellApplication' flake.nix
 grep -q 'SOVEREIGN_BOOT_ARTIFACT' flake.nix
 grep -q -- '--isolate' scripts/launch-physical-canary.sh
+grep -q 'EUID -ne 0' scripts/launch-physical-canary.sh
+! grep -q '^[[:space:]]*sudo[[:space:]]*grep -q 'systemctl isolate graphical.target' scripts/launch-physical-canary.sh
+grep -q 'trap cleanup EXIT' scripts/launch-physical-canary.sh
+bash -n scripts/launch-physical-canary.sh
+
+# Bounded physical canary must have an explicit active-VT ownership guard.
+test -s crates/quicken-fb/src/vt.rs
+grep -q 'KDGETMODE' crates/quicken-fb/src/vt.rs
+grep -q 'KD_GRAPHICS' crates/quicken-fb/src/vt.rs
+grep -q 'tty0/active' crates/quicken-fb/src/vt.rs
+grep -q 'SIGHUP' crates/quicken-fb/src/main.rs
+
+grep -q 'display-manager.service' crates/quicken-fb/src/vt.rs
+grep -q 'requires a real VT' crates/quicken-fb/src/vt.rs
+grep -q 'KDSETMODE' crates/quicken-fb/src/vt.rs
+
+grep -q 'tcgetpgrp' crates/quicken-fb/src/vt.rs
+grep -q 'SIGQUIT' crates/quicken-fb/src/main.rs
+grep -q 'SIGTSTP' crates/quicken-fb/src/main.rs
+
+test -s tests/boot-boundary.nix
+grep -q 'sovereign-boot-boundary' flake.nix
+grep -q 'runNixOSTest' flake.nix
+grep -q 'nix flake check --no-update-lock-file --no-write-lock-file' .github/workflows/ci.yml
+grep -q 'nix build .#quicken-fb --no-update-lock-file --no-write-lock-file' .github/workflows/ci.yml
+
+# The service must be isolated from the desktop handoff and cannot become a
+# required target dependency.
+grep -q 'Conflicts = \[ "display-manager.service" \];' nix/modules/sovereign-boot.nix
+grep -q 'ProtectSystem = "strict";' nix/modules/sovereign-boot.nix
+
+echo "sovereign-boot restoration/buffer contract: PASS"
+ flake.nix
 grep -q 'systemctl isolate multi-user.target' scripts/launch-physical-canary.sh
 grep -q 'systemctl isolate graphical.target' scripts/launch-physical-canary.sh
 grep -q 'trap cleanup EXIT' scripts/launch-physical-canary.sh
