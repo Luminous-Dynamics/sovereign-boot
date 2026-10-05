@@ -20,6 +20,7 @@ use std::time::{Duration, Instant};
 use symthaea_quicken_fb::framebuffer::DrmFramebuffer;
 use symthaea_quicken_fb::mycelium::MycelialNetwork;
 use symthaea_quicken_fb::progress::{ProgressEvent, ProgressMonitor};
+use symthaea_quicken_fb::vt::VirtualTerminalGuard;
 
 /// Target frame rate for the animation.
 const TARGET_FPS: u32 = 30;
@@ -60,6 +61,21 @@ fn main() {
             }
         }
     }
+
+    // The bounded physical canary must own a real active VT. This prevents
+    // accidental modesetting from a graphical terminal emulator and puts the
+    // VT in graphics mode while DRM directly owns scanout.
+    let _vt_guard = if args.canary_seconds.is_some() {
+        match VirtualTerminalGuard::enter() {
+            Ok(guard) => Some(guard),
+            Err(e) => {
+                eprintln!("quicken-fb: refusing bounded canary: {e}");
+                std::process::exit(1);
+            }
+        }
+    } else {
+        None
+    };
 
     // Install signal handlers
     install_signal_handlers();
@@ -334,6 +350,7 @@ fn install_signal_handlers() {
             signal_handler as nix::libc::sighandler_t,
         );
         nix::libc::signal(nix::libc::SIGINT, signal_handler as nix::libc::sighandler_t);
+        nix::libc::signal(nix::libc::SIGHUP, signal_handler as nix::libc::sighandler_t);
     }
 }
 
