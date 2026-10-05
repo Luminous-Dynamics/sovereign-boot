@@ -24,7 +24,8 @@
           quicken-fb = pkgs.rustPlatform.buildRustPackage {
             pname = "quicken-fb";
             version = "0.1.0";
-            src = ./crates/quicken-fb;
+            src = ./.;
+            buildAndTestSubdir = "crates/quicken-fb";
             cargoLock.lockFile = ./Cargo.lock;
             doCheck = true;
             meta = with pkgs.lib; {
@@ -37,7 +38,7 @@
           default = quicken-fb;
         };
 
-        formatter = pkgs.nixfmt-rfc-style;
+        formatter = pkgs.nixfmt;
 
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
@@ -45,7 +46,7 @@
             rustc
             pkg-config
             nil
-            nixfmt-rfc-style
+            nixfmt
           ];
         };
       }
