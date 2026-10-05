@@ -20,3 +20,9 @@ grep -q -- '--probe' crates/quicken-fb/src/main.rs
 ! grep -q '\.\./\.\./\.\./' flake.nix nix/modules/sovereign-boot.nix
 
 echo "sovereign-boot standalone contract: PASS"
+
+# Nix must package from the repository root so the root Cargo.lock is present,
+# while compiling/testing only the quicken-fb workspace member.
+grep -q 'src = ./\.;' flake.nix
+grep -q 'buildAndTestSubdir = "crates/quicken-fb";' flake.nix
+grep -q 'cargoLock.lockFile = ./Cargo.lock;' flake.nix
