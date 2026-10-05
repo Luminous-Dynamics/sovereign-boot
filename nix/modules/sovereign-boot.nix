@@ -115,10 +115,18 @@ let
     # cannot silently schedule the same destructive modeset on every reboot.
     mv -f "$request" "$inflight"
     request_active=1
+    archive_inflight() {
+      request_active=0
+      if [[ "${request_id:-}" =~ ^[0-9a-f]{32}$ ]]; then
+        mkdir -p "$archive_dir"
+        mv -f "$inflight" "$archive_dir/${request_id}.request"
+      else
+        rm -f "$inflight"
+      fi
+    }
     cleanup_request() {
       if ((request_active)); then
-        rm -f "$inflight"
-        request_active=0
+        archive_inflight
       fi
     }
     trap cleanup_request EXIT
@@ -133,8 +141,7 @@ let
     if [[ ! "$request_id" =~ ^[0-9a-f]{32}$ ]]; then
       echo "sovereign-boot: invalid physical canary request identity" >&2
       printf 'status=FAIL_INVALID_REQUEST\nboot_id=%s\nrequest_id=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$request_id" | write_atomic "$result"
-      request_active=0
-      rm -f "$inflight"
+      archive_inflight
       exit 2
     fi
 
