@@ -29,6 +29,8 @@
           default = quicken-fb;
         };
 
+        formatter = pkgs.nixfmt-rfc-style;
+
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
             cargo
