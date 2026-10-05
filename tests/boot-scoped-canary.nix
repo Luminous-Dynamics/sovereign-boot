@@ -224,7 +224,7 @@ in
         "sha256sum \${fakeRenderer}/bin/quicken-fb | cut -d' ' -f1"
     ).strip()
     machine.succeed(
-        "printf 'device=/dev/dri/card99\nseconds=1\nartifact_sha256=%s\n' " + sha + " > /var/lib/sovereign-boot/physical-canary.request"
+        "printf 'request_id=66666666666666666666666666666666\ndevice=/dev/dri/card99\nseconds=1\nartifact_sha256=%s\npreboot_probe_sha256=6666666666666666666666666666666666666666666666666666666666666666\narmed_at_unix_s=%s\nexpires_at_unix_s=%s\n' " + sha + " \"$(date +%s)\" \"$(($(date +%s) + 900))\" > /var/lib/sovereign-boot/physical-canary.request"
     )
     machine.succeed("systemctl reset-failed sovereign-boot-physical-canary.service")
     machine.fail("systemctl start sovereign-boot-physical-canary.service")
