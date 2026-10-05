@@ -4,7 +4,20 @@ let
     set -euo pipefail
     [[ "$(< /sys/class/tty/tty0/active)" == "tty1" ]]
     [[ "$(readlink /proc/self/fd/0)" == "/dev/tty1" ]]
-    if [[ -e /run/sovereign-boot-test/fail ]]; then
+    is_probe=0
+    is_canary=0
+    while (($#)); do
+      case "$1" in
+        --probe) is_probe=1 ;;
+        --canary-seconds) is_canary=1; shift ;;
+      esac
+      shift
+    done
+    if ((is_probe)); then
+      echo "drm-ok device=/dev/dri/card99 connector=VM-1 crtc=fake selection=current mode=1024x768 refresh=60Hz"
+      exit 0
+    fi
+    if ((is_canary)) && [[ -e /run/sovereign-boot-test/fail ]]; then
       echo "fake quicken-fb: intentional qualification failure" >&2
       exit 7
     fi
@@ -86,6 +99,7 @@ in
     assert "seconds=1" in result, result
     assert "exit_code=0" in result, result
     assert "artifact_sha256=" in result, result
+    assert "probe_receipt=drm-ok" in result, result
     machine.succeed("test -f /run/sovereign-boot-test/display-manager.started")
     machine.succeed("test ! -e /var/lib/sovereign-boot/physical-canary.request")
     machine.succeed("test ! -e /var/lib/sovereign-boot/physical-canary.request.inflight")
