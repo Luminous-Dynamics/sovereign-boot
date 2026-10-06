@@ -120,9 +120,7 @@ let
     # Consume the request before renderer execution so an interrupted boot
     # cannot silently schedule the same destructive modeset on every reboot.
     mv -f "$request" "$inflight"
-    request_active=1
     archive_inflight() {
-      request_active=0
       if [[ "${request_id:-}" =~ ^[0-9a-f]{32}$ ]]; then
         mkdir -p "$archive_dir"
         mv -f "$inflight" "$archive_dir/${request_id}.request"
@@ -130,12 +128,6 @@ let
         rm -f "$inflight"
       fi
     }
-    cleanup_request() {
-      if ((request_active)); then
-        archive_inflight
-      fi
-    }
-    trap cleanup_request EXIT
 
     request_id="$(${pkgs.gnused}/bin/sed -n 's/^request_id=//p' "$inflight")"
     device="$(${pkgs.gnused}/bin/sed -n 's/^device=//p' "$inflight")"
@@ -156,8 +148,7 @@ let
     if [[ "$device" != "${cfg.drmDevice}" ]]; then
       echo "sovereign-boot: request device does not match configured DRM device: $device" >&2
       printf 'status=FAIL_DEVICE_MISMATCH\nboot_id=%s\nrequest_id=%s\narmed_at_unix_s=%s\ndevice=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$armed_at_unix_s" "$device" | write_atomic "$result"
-      request_active=0
-      rm -f "$inflight"
+      archive_inflight
       exit 2
     fi
 
@@ -231,8 +222,7 @@ let
         printf "%s\n" "$probe_output" | write_atomic "$canaryProbeReceipt"
         probe_sha="$(sha256sum "$canaryProbeReceipt" | cut -d' ' -f1)"
         printf 'status=FAIL_PROBE_RECEIPT\nboot_id=%s\ndevice=%s\npreboot_probe_sha256=%s\nboot_probe_sha256=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$device" "$preboot_probe_sha" "$probe_sha" | write_atomic "$result"
-        request_active=0
-        rm -f "$inflight"
+        archive_inflight
         exit 6
         ;;
     esac
@@ -278,7 +268,6 @@ let
     fi
     printf 'status=%s\nboot_id=%s\nrequest_id=%s\narmed_at_unix_s=%s\nexpires_at_unix_s=%s\ndevice=%s\nseconds=%s\nexit_code=%s\nartifact_sha256=%s\npreboot_probe_sha256=%s\nboot_probe_sha256=%s\nrenderer_output_sha256=%s\nrestore_receipt_sha256=%s\n' \
       "$status" "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$armed_at_unix_s" "$expires_at_unix_s" "$device" "$seconds" "$rc" "$actual_sha" "$preboot_probe_sha" "$probe_sha" "$output_sha" "$restore_sha" | write_atomic "$result"
-    request_active=0
     mkdir -p "$archive_dir"
     mv -f "$inflight" "$archive_dir/$request_id.request"
 
