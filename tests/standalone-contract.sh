@@ -80,6 +80,7 @@ grep -q 'FAIL_PROBE_RECEIPT' nix/modules/sovereign-boot.nix
 grep -q 'FAIL_EXPIRED_REQUEST' nix/modules/sovereign-boot.nix
 grep -q 'FAIL_SERVICE_TIMEOUT' nix/modules/sovereign-boot.nix
 grep -q 'ExecStopPost = physicalCanaryPostStop;' nix/modules/sovereign-boot.nix
+grep -q 'SERVICE_RESULT:-unknown' nix/modules/sovereign-boot.nix
 grep -q 'expires_at_unix_s' scripts/arm-physical-canary.sh
 grep -q 'restore_receipt=' nix/modules/sovereign-boot.nix
 grep -q 'canary_output=' nix/modules/sovereign-boot.nix
