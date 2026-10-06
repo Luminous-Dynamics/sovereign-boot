@@ -120,9 +120,11 @@ grep -q 'nix flake check --no-update-lock-file --no-write-lock-file' .github/wor
 grep -q 'nix build .#quicken-fb --no-update-lock-file --no-write-lock-file' .github/workflows/ci.yml
 grep -q 'nix build .#arm-physical-canary --no-update-lock-file --no-write-lock-file' .github/workflows/ci.yml
 
-# The service must be isolated from the desktop handoff and cannot become a
-# required target dependency.
-grep -q 'Conflicts = \[ "display-manager.service" \];' nix/modules/sovereign-boot.nix
+# The boot-scoped canary must order before the desktop without adding a
+# destructive Conflicts= stop relationship.
+grep -q 'StandardInput = "tty-fail";' nix/modules/sovereign-boot.nix
+grep -Fq 'Before = [' nix/modules/sovereign-boot.nix
+! sed -n '/systemd.services.sovereign-boot-physical-canary = {/,/systemd.services.sovereign-boot-animation = {/p' nix/modules/sovereign-boot.nix | grep -q 'Conflicts'
 grep -q 'ProtectSystem = "strict";' nix/modules/sovereign-boot.nix
 
 echo "sovereign-boot restoration/buffer contract: PASS"
