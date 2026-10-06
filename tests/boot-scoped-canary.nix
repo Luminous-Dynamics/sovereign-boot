@@ -38,7 +38,10 @@ let
     mkdir -p /dev/dri /run/sovereign-boot-test /var/lib/sovereign-boot
     : > /dev/dri/card99
     sha256="$(sha256sum \${fakeRenderer}/bin/quicken-fb | cut -d' ' -f1)"
-    probe_sha="1111111111111111111111111111111111111111111111111111111111111111"
+    probe='drm-ok device=/dev/dri/card99 connector=VM-1 crtc=fake selection=current mode=1024x768 refresh=60Hz'
+    printf '%s\n' "$probe" > /var/lib/sovereign-boot/physical-canary.preboot-probe
+    chmod 0600 /var/lib/sovereign-boot/physical-canary.preboot-probe
+    probe_sha="$(sha256sum /var/lib/sovereign-boot/physical-canary.preboot-probe | cut -d' ' -f1)"
     now="$(date +%s)"
     printf 'request_id=%s\ndevice=/dev/dri/card99\nseconds=1\nartifact_sha256=%s\npreboot_probe_sha256=%s\narmed_at_unix_s=%s\nexpires_at_unix_s=%s\n' 11111111111111111111111111111111 "$sha256" "$probe_sha" "$now" "$((now + 900))" > /var/lib/sovereign-boot/physical-canary.request
   '';
