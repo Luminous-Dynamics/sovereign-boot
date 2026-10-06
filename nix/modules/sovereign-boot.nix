@@ -121,6 +121,7 @@ let
     result=${lib.escapeShellArg canaryResult}
     canaryProbeReceipt=${lib.escapeShellArg canaryProbeReceipt}
     canaryOutput=${lib.escapeShellArg canaryOutput}
+    canaryPrebootProbe=${lib.escapeShellArg canaryPrebootProbe}
     archive_dir=${lib.escapeShellArg canaryArchiveDir}
     artifact="${cfg.package}/bin/quicken-fb"
 
@@ -155,6 +156,10 @@ let
         fi
         if [[ -e "$canaryPrebootProbe" ]]; then
           copy_atomic "$canaryPrebootProbe" "$archive_dir/${request_id}.preboot-probe"
+        fi
+        if [[ -e "$archive_dir/${request_id}.request" || -e "$archive_dir/${request_id}.result" ]]; then
+          echo "sovereign-boot: refusing to overwrite existing historical canary archive for request_id=$request_id" >&2
+          exit 70
         fi
         mv -f "$inflight" "$archive_dir/${request_id}.request"
       else
