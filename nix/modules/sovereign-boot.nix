@@ -205,7 +205,7 @@ let
 
     if [[ ! "$preboot_probe_sha" =~ ^[0-9a-f]{64}$ ]] || [[ ! "$armed_at_unix_s" =~ ^[0-9]+$ ]] || [[ ! "$expires_at_unix_s" =~ ^[0-9]+$ ]] || (( expires_at_unix_s < armed_at_unix_s )) || (( expires_at_unix_s - armed_at_unix_s > 900 )); then
       echo "sovereign-boot: invalid canary request expiry" >&2
-      printf 'status=FAIL_INVALID_REQUEST\nboot_id=%s\n' "$(< /proc/sys/kernel/random/boot_id)" | write_atomic "$result"
+      printf 'status=FAIL_INVALID_REQUEST\nboot_id=%s\nrequest_id=%s\narmed_at_unix_s=%s\nexpires_at_unix_s=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$armed_at_unix_s" "$expires_at_unix_s" | write_atomic "$result"
       archive_inflight
       exit 2
     fi
@@ -240,14 +240,14 @@ let
 
     if ${pkgs.systemd}/bin/systemctl is-active --quiet display-manager.service; then
       echo "sovereign-boot: display manager active; refusing canary" >&2
-      printf 'status=FAIL_DISPLAY_MANAGER\nboot_id=%s\n' "$(< /proc/sys/kernel/random/boot_id)" | write_atomic "$result"
+      printf 'status=FAIL_DISPLAY_MANAGER\nboot_id=%s\nrequest_id=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$request_id" | write_atomic "$result"
       archive_inflight
       exit 4
     fi
 
     probe_output="$("$artifact" --probe --device "$device" 2>&1)" || {
       echo "sovereign-boot: boot-time non-mutating DRM probe failed" >&2
-      printf 'status=FAIL_PROBE\nboot_id=%s\ndevice=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$device" | write_atomic "$result"
+      printf 'status=FAIL_PROBE\nboot_id=%s\nrequest_id=%s\ndevice=%s\npreboot_probe_sha256=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$device" "$preboot_probe_sha" | write_atomic "$result"
       archive_inflight
       exit 5
     }
@@ -269,7 +269,7 @@ let
     active_vt="$(${pkgs.coreutils}/bin/cat /sys/class/tty/tty0/active 2>/dev/null || true)"
     if [[ "$active_vt" != "tty1" ]]; then
       echo "sovereign-boot: refusing physical canary because tty1 is not active (active=$active_vt)" >&2
-      printf 'status=FAIL_WRONG_VT\nboot_id=%s\nactive_vt=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$active_vt" | write_atomic "$result"
+      printf 'status=FAIL_WRONG_VT\nboot_id=%s\nrequest_id=%s\nactive_vt=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$active_vt" | write_atomic "$result"
       archive_inflight
       exit 3
     fi
