@@ -80,7 +80,7 @@ let
     if [[ -e "$result" ]]; then
       result_request_id="$(${pkgs.gnused}/bin/sed -n 's/^request_id=//p' "$result")"
     fi
-    if [[ "$result_request_id" == "$request_id" ]]; then
+    if [[ "$result_request_id" == "$request_id" ]] && [[ "\${SERVICE_RESULT:-unknown}" == "success" ]]; then
       if [[ "$request_id" =~ ^[0-9a-f]{32}$ ]]; then
         mkdir -p "$archive_dir"
         mv -f "$inflight" "$archive_dir/$request_id.request"
