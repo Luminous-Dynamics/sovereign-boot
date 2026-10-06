@@ -213,7 +213,7 @@ let
     now_unix_s="$(${pkgs.coreutils}/bin/date +%s)"
     if (( armed_at_unix_s > now_unix_s + 300 )); then
       echo "sovereign-boot: physical canary request is too far in the future" >&2
-      printf 'status=FAIL_INVALID_REQUEST\nboot_id=%s\nrequest_id=%s\narmed_at_unix_s=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$armed_at_unix_s" | write_atomic "$result"
+      printf 'status=FAIL_INVALID_REQUEST\nboot_id=%s\nrequest_id=%s\ndevice=%s\nseconds=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$device" "$seconds" | write_atomic "$result"
       archive_inflight
       exit 2
     fi
@@ -226,7 +226,7 @@ let
 
     if [[ "$device" != /dev/dri/card[0-9]* ]] || [[ ! -e "$device" ]]; then
       echo "sovereign-boot: invalid physical canary device request: $device" >&2
-      printf 'status=FAIL_INVALID_REQUEST\nboot_id=%s\n' "$(< /proc/sys/kernel/random/boot_id)" | write_atomic "$result"
+      printf 'status=FAIL_INVALID_REQUEST\nboot_id=%s\nrequest_id=%s\narmed_at_unix_s=%s\nexpires_at_unix_s=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$armed_at_unix_s" "$expires_at_unix_s" | write_atomic "$result"
       archive_inflight
       exit 2
     fi
@@ -257,7 +257,7 @@ let
         echo "sovereign-boot: boot-time DRM probe returned no valid receipt" >&2
         printf "%s\n" "$probe_output" | write_atomic "$canaryProbeReceipt"
         probe_sha="$(sha256sum "$canaryProbeReceipt" | cut -d' ' -f1)"
-        printf 'status=FAIL_PROBE_RECEIPT\nboot_id=%s\ndevice=%s\npreboot_probe_sha256=%s\npreboot_probe_actual_sha256=%s\nboot_probe_sha256=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$device" "$preboot_probe_sha" "$probe_sha" | write_atomic "$result"
+        printf 'status=FAIL_PROBE_RECEIPT\nboot_id=%s\nrequest_id=%s\ndevice=%s\npreboot_probe_sha256=%s\npreboot_probe_actual_sha256=%s\nboot_probe_sha256=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$device" "$preboot_probe_sha" "$preboot_probe_actual_sha" "$probe_sha" | write_atomic "$result"
         archive_inflight
         exit 6
         ;;
