@@ -351,11 +351,6 @@ in
       ];
       unitConfig = {
         ConditionPathExists = canaryRequest;
-        Conflicts = [
-          "display-manager.service"
-          "getty@tty1.service"
-          "sovereign-boot-animation.service"
-        ];
       };
       serviceConfig = {
         Type = "oneshot";
