@@ -134,6 +134,20 @@ in
         "sed -n 's/^preboot_probe_sha256=//p' /var/lib/sovereign-boot/requests/11111111111111111111111111111111.request"
     ).strip()
     assert archived_probe_sha == requested_probe_sha, (archived_probe_sha, requested_probe_sha)
+    archived_manifest_probe_sha = machine.succeed(
+        "sed -n 's/^boot_probe_sha256=//p' /var/lib/sovereign-boot/requests/11111111111111111111111111111111.result"
+    ).strip()
+    recomputed_probe_sha = machine.succeed(
+        "sha256sum /var/lib/sovereign-boot/requests/11111111111111111111111111111111.probe | cut -d' ' -f1"
+    ).strip()
+    assert archived_manifest_probe_sha == recomputed_probe_sha, (archived_manifest_probe_sha, recomputed_probe_sha)
+    archived_output_sha = machine.succeed(
+        "sed -n 's/^renderer_output_sha256=//p' /var/lib/sovereign-boot/requests/11111111111111111111111111111111.result"
+    ).strip()
+    recomputed_output_sha = machine.succeed(
+        "sha256sum /var/lib/sovereign-boot/requests/11111111111111111111111111111111.output | cut -d' ' -f1"
+    ).strip()
+    assert archived_output_sha == recomputed_output_sha, (archived_output_sha, recomputed_output_sha)
     permissions = machine.succeed("stat -c %a /var/lib/sovereign-boot/physical-canary.result").strip()
     assert permissions == "600", permissions, result
 
