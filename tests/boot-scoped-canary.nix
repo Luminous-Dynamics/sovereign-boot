@@ -127,7 +127,7 @@ in
         "systemctl cat sovereign-boot-physical-canary.service"
     )
     assert "ConditionPathExists=/var/lib/sovereign-boot/physical-canary.request" in unit
-    assert "StandardInput=tty" in unit
+    assert "StandardInput=tty-fail" in unit
     assert "TTYPath=/dev/tty1" in unit
     assert "Before=display-manager.service" in unit
     assert "Before=getty@tty1.service" in unit
