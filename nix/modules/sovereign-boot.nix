@@ -62,6 +62,16 @@ let
       mv -f "$tmp" "$target"
     }
 
+    copy_atomic() {
+      local source="$1"
+      local target="$2"
+      local tmp
+      tmp="$(mktemp "$target.tmp.XXXXXX")"
+      chmod 0600 "$tmp"
+      cat "$source" >"$tmp"
+      mv -f "$tmp" "$target"
+    }
+
     [[ -e "$inflight" ]] || exit 0
     request_id="$(${pkgs.gnused}/bin/sed -n 's/^request_id=//p' "$inflight")"
     device="$(${pkgs.gnused}/bin/sed -n 's/^device=//p' "$inflight")"
@@ -132,16 +142,13 @@ let
         mkdir -p "$archive_dir"
         mv -f "$inflight" "$archive_dir/${request_id}.request"
         if [[ -e "$result" ]]; then
-          cp -f "$result" "$archive_dir/${request_id}.result"
-          chmod 0600 "$archive_dir/${request_id}.result"
+          copy_atomic "$result" "$archive_dir/${request_id}.result"
         fi
         if [[ -e "$canaryProbeReceipt" ]]; then
-          cp -f "$canaryProbeReceipt" "$archive_dir/${request_id}.probe"
-          chmod 0600 "$archive_dir/${request_id}.probe"
+          copy_atomic "$canaryProbeReceipt" "$archive_dir/${request_id}.probe"
         fi
         if [[ -e "$canaryOutput" ]]; then
-          cp -f "$canaryOutput" "$archive_dir/${request_id}.output"
-          chmod 0600 "$archive_dir/${request_id}.output"
+          copy_atomic "$canaryOutput" "$archive_dir/${request_id}.output"
         fi
         if [[ -e "$canaryPrebootProbe" ]]; then
           cp -f "$canaryPrebootProbe" "$archive_dir/${request_id}.preboot-probe"
