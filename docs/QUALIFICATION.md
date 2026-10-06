@@ -110,3 +110,18 @@ cannot mask a new failure.
 
 This preserves the distinction between renderer-level receipts and
 service-orchestration failures.
+
+
+### Live-session non-interference
+
+The physical-canary service intentionally uses ordering dependencies
+(`Before=display-manager.service`, `Before=getty@tty1.service`) without a
+`Conflicts=` relationship against those units. A conflicting unit could create a
+stop transaction against an already-running display manager or getty if an
+operator accidentally started the canary manually from a live system. The
+canary instead checks `display-manager.service` at execution time and refuses
+with `FAIL_DISPLAY_MANAGER`, while `StandardInput=tty-fail` prevents silent
+fallback when the required controlling VT is unavailable.
+
+This preserves a non-interference invariant: an accidental canary invocation
+must fail closed without intentionally tearing down the active desktop.
