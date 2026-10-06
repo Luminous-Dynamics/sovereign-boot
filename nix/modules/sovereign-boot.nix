@@ -84,9 +84,9 @@ let
       if [[ "$request_id" =~ ^[0-9a-f]{32}$ ]]; then
         mkdir -p "$archive_dir"
         mv -f "$inflight" "$archive_dir/$request_id.request"
-        if [[ -e "$result" ]]; then cp -f "$result" "$archive_dir/$request_id.result"; chmod 0600 "$archive_dir/$request_id.result"; fi
-        if [[ -e "$canaryProbeReceipt" ]]; then cp -f "$canaryProbeReceipt" "$archive_dir/$request_id.probe"; chmod 0600 "$archive_dir/$request_id.probe"; fi
-        if [[ -e "$canaryOutput" ]]; then cp -f "$canaryOutput" "$archive_dir/$request_id.output"; chmod 0600 "$archive_dir/$request_id.output"; fi
+        if [[ -e "$result" ]]; then copy_atomic "$result" "$archive_dir/$request_id.result"; fi
+        if [[ -e "$canaryProbeReceipt" ]]; then copy_atomic "$canaryProbeReceipt" "$archive_dir/$request_id.probe"; fi
+        if [[ -e "$canaryOutput" ]]; then copy_atomic "$canaryOutput" "$archive_dir/$request_id.output"; fi
       else
         rm -f "$inflight"
       fi
@@ -104,6 +104,10 @@ let
     if [[ "$request_id" =~ ^[0-9a-f]{32}$ ]]; then
       mkdir -p "$archive_dir"
       mv -f "$inflight" "$archive_dir/$request_id.request"
+      if [[ -e "$result" ]]; then copy_atomic "$result" "$archive_dir/$request_id.result"; fi
+      if [[ -e "$canaryProbeReceipt" ]]; then copy_atomic "$canaryProbeReceipt" "$archive_dir/$request_id.probe"; fi
+      if [[ -e "$canaryOutput" ]]; then copy_atomic "$canaryOutput" "$archive_dir/$request_id.output"; fi
+      if [[ -e "$canaryPrebootProbe" ]]; then copy_atomic "$canaryPrebootProbe" "$archive_dir/$request_id.preboot-probe"; fi
     else
       rm -f "$inflight"
     fi
@@ -151,8 +155,7 @@ let
           copy_atomic "$canaryOutput" "$archive_dir/${request_id}.output"
         fi
         if [[ -e "$canaryPrebootProbe" ]]; then
-          cp -f "$canaryPrebootProbe" "$archive_dir/${request_id}.preboot-probe"
-          chmod 0600 "$archive_dir/${request_id}.preboot-probe"
+          copy_atomic "$canaryPrebootProbe" "$archive_dir/${request_id}.preboot-probe"
         fi
       else
         rm -f "$inflight"
