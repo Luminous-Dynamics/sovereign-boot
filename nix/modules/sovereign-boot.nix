@@ -83,10 +83,15 @@ let
     if [[ "$result_request_id" == "$request_id" ]] && [[ "\${SERVICE_RESULT:-unknown}" == "success" ]]; then
       if [[ "$request_id" =~ ^[0-9a-f]{32}$ ]]; then
         mkdir -p "$archive_dir"
-        mv -f "$inflight" "$archive_dir/$request_id.request"
+        if [[ -e "$archive_dir/$request_id.request" || -e "$archive_dir/$request_id.result" || -e "$archive_dir/$request_id.probe" || -e "$archive_dir/$request_id.output" || -e "$archive_dir/$request_id.preboot-probe" ]]; then
+          echo "sovereign-boot: refusing to overwrite existing historical canary archive for request_id=$request_id" >&2
+          exit 70
+        fi
         if [[ -e "$result" ]]; then copy_atomic "$result" "$archive_dir/$request_id.result"; fi
         if [[ -e "$canaryProbeReceipt" ]]; then copy_atomic "$canaryProbeReceipt" "$archive_dir/$request_id.probe"; fi
         if [[ -e "$canaryOutput" ]]; then copy_atomic "$canaryOutput" "$archive_dir/$request_id.output"; fi
+        if [[ -e "$canaryPrebootProbe" ]]; then copy_atomic "$canaryPrebootProbe" "$archive_dir/$request_id.preboot-probe"; fi
+        mv -f "$inflight" "$archive_dir/$request_id.request"
       else
         rm -f "$inflight"
       fi
@@ -145,19 +150,7 @@ let
     archive_inflight() {
       if [[ "${request_id:-}" =~ ^[0-9a-f]{32}$ ]]; then
         mkdir -p "$archive_dir"
-        if [[ -e "$result" ]]; then
-          copy_atomic "$result" "$archive_dir/${request_id}.result"
-        fi
-        if [[ -e "$canaryProbeReceipt" ]]; then
-          copy_atomic "$canaryProbeReceipt" "$archive_dir/${request_id}.probe"
-        fi
-        if [[ -e "$canaryOutput" ]]; then
-          copy_atomic "$canaryOutput" "$archive_dir/${request_id}.output"
-        fi
-        if [[ -e "$canaryPrebootProbe" ]]; then
-          copy_atomic "$canaryPrebootProbe" "$archive_dir/${request_id}.preboot-probe"
-        fi
-        if [[ -e "$archive_dir/${request_id}.request" || -e "$archive_dir/${request_id}.result" ]]; then
+        if [[ -e "$archive_dir/${request_id}.request" || -e "$archive_dir/${request_id}.result" || -e "$archive_dir/${request_id}.probe" || -e "$archive_dir/${request_id}.output" || -e "$archive_dir/${request_id}.preboot-probe" ]]; then
           echo "sovereign-boot: refusing to overwrite existing historical canary archive for request_id=$request_id" >&2
           exit 70
         fi
@@ -309,7 +302,7 @@ let
     printf 'status=%s\nboot_id=%s\nrequest_id=%s\narmed_at_unix_s=%s\nexpires_at_unix_s=%s\ndevice=%s\nseconds=%s\nexit_code=%s\nartifact_sha256=%s\npreboot_probe_sha256=%s\nboot_probe_sha256=%s\nrenderer_output_sha256=%s\nrestore_receipt_sha256=%s\n' \
       "$status" "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$armed_at_unix_s" "$expires_at_unix_s" "$device" "$seconds" "$rc" "$actual_sha" "$preboot_probe_sha" "$preboot_probe_actual_sha" "$probe_sha" "$output_sha" "$restore_sha" | write_atomic "$result"
     mkdir -p "$archive_dir"
-    if [[ -e "$archive_dir/$request_id.request" || -e "$archive_dir/$request_id.result" ]]; then
+    if [[ -e "$archive_dir/$request_id.request" || -e "$archive_dir/$request_id.result" || -e "$archive_dir/$request_id.probe" || -e "$archive_dir/$request_id.output" || -e "$archive_dir/$request_id.preboot-probe" ]]; then
       echo "sovereign-boot: refusing to overwrite existing historical canary archive for request_id=$request_id" >&2
       exit 70
     fi
