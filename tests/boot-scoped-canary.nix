@@ -152,6 +152,24 @@ in
     ).strip()
     assert active == "active", active
 
+    # Starting the canary while the display manager is active must be a
+    # non-destructive refusal, not a stop-job against the desktop.
+    live_sha = machine.succeed(
+        "sha256sum ${fakeRenderer}/bin/quicken-fb | cut -d' ' -f1"
+    ).strip()
+    machine.succeed(
+        "printf 'request_id=88888888888888888888888888888888\\ndevice=/dev/dri/card99\\nseconds=1\\nartifact_sha256=%s\\npreboot_probe_sha256=8888888888888888888888888888888888888888888888888888888888888888\\narmed_at_unix_s=%s\\nexpires_at_unix_s=%s\\n' " + live_sha + " \"$(date +%s)\" \"$(($(date +%s) + 900))\" > /var/lib/sovereign-boot/physical-canary.request"
+    )
+    machine.succeed("systemctl reset-failed sovereign-boot-physical-canary.service")
+    machine.fail("systemctl start sovereign-boot-physical-canary.service")
+    result = machine.succeed(
+        "cat /var/lib/sovereign-boot/physical-canary.result"
+    )
+    assert "status=FAIL_DISPLAY_MANAGER" in result, result
+    machine.succeed("test -s /var/lib/sovereign-boot/requests/88888888888888888888888888888888.request")
+    assert machine.succeed("systemctl is-active display-manager.service").strip() == "active"
+    machine.succeed("test ! -e /var/lib/sovereign-boot/physical-canary.request.inflight")
+
     # Leave the display-manager stopped while exercising subsequent
     # boot-scoped requests; the real service would only run before it starts.
     machine.succeed("systemctl stop display-manager.service")
