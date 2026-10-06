@@ -364,7 +364,7 @@ in
         Type = "oneshot";
         ExecStart = physicalCanaryRunner;
         ExecStopPost = physicalCanaryPostStop;
-        StandardInput = "tty";
+        StandardInput = "tty-fail";
         StandardOutput = "journal";
         StandardError = "journal";
         TTYPath = "/dev/tty1";
