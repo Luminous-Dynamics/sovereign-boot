@@ -155,16 +155,14 @@ let
     if [[ ! "$requested_sha" =~ ^[0-9a-f]{64}$ ]] || [[ "$requested_sha" != "$actual_sha" ]]; then
       echo "sovereign-boot: renderer artifact digest mismatch" >&2
       printf 'status=FAIL_ARTIFACT_MISMATCH\nboot_id=%s\nrequest_id=%s\narmed_at_unix_s=%s\nexpected_sha=%s\nactual_sha=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$armed_at_unix_s" "$requested_sha" "$actual_sha" | write_atomic "$result"
-      request_active=0
-      rm -f "$inflight"
+      archive_inflight
       exit 3
     fi
 
     if [[ ! "$preboot_probe_sha" =~ ^[0-9a-f]{64}$ ]] || [[ ! "$armed_at_unix_s" =~ ^[0-9]+$ ]] || [[ ! "$expires_at_unix_s" =~ ^[0-9]+$ ]] || (( expires_at_unix_s < armed_at_unix_s )) || (( expires_at_unix_s - armed_at_unix_s > 900 )); then
       echo "sovereign-boot: invalid canary request expiry" >&2
       printf 'status=FAIL_INVALID_REQUEST\nboot_id=%s\n' "$(< /proc/sys/kernel/random/boot_id)" | write_atomic "$result"
-      request_active=0
-      rm -f "$inflight"
+      archive_inflight
       exit 2
     fi
 
@@ -172,47 +170,41 @@ let
     if (( armed_at_unix_s > now_unix_s + 300 )); then
       echo "sovereign-boot: physical canary request is too far in the future" >&2
       printf 'status=FAIL_INVALID_REQUEST\nboot_id=%s\nrequest_id=%s\narmed_at_unix_s=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$armed_at_unix_s" | write_atomic "$result"
-      request_active=0
-      rm -f "$inflight"
+      archive_inflight
       exit 2
     fi
     if (( now_unix_s > expires_at_unix_s )); then
       echo "sovereign-boot: physical canary request has expired; refusing execution" >&2
       printf 'status=FAIL_EXPIRED_REQUEST\nboot_id=%s\nrequest_id=%s\narmed_at_unix_s=%s\nexpires_at_unix_s=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$armed_at_unix_s" "$expires_at_unix_s" | write_atomic "$result"
-      request_active=0
-      rm -f "$inflight"
+      archive_inflight
       exit 8
     fi
 
     if [[ "$device" != /dev/dri/card[0-9]* ]] || [[ ! -e "$device" ]]; then
       echo "sovereign-boot: invalid physical canary device request: $device" >&2
       printf 'status=FAIL_INVALID_REQUEST\nboot_id=%s\n' "$(< /proc/sys/kernel/random/boot_id)" | write_atomic "$result"
-      request_active=0
-      rm -f "$inflight"
+      archive_inflight
       exit 2
     fi
 
     if [[ ! "$seconds" =~ ^[0-9]+$ ]] || (( seconds < 1 || seconds > 30 )); then
       echo "sovereign-boot: invalid physical canary duration: $seconds" >&2
       printf 'status=FAIL_INVALID_REQUEST\nboot_id=%s\n' "$(< /proc/sys/kernel/random/boot_id)" | write_atomic "$result"
-      request_active=0
-      rm -f "$inflight"
+      archive_inflight
       exit 2
     fi
 
     if ${pkgs.systemd}/bin/systemctl is-active --quiet display-manager.service; then
       echo "sovereign-boot: display manager active; refusing canary" >&2
       printf 'status=FAIL_DISPLAY_MANAGER\nboot_id=%s\n' "$(< /proc/sys/kernel/random/boot_id)" | write_atomic "$result"
-      request_active=0
-      rm -f "$inflight"
+      archive_inflight
       exit 4
     fi
 
     probe_output="$("$artifact" --probe --device "$device" 2>&1)" || {
       echo "sovereign-boot: boot-time non-mutating DRM probe failed" >&2
       printf 'status=FAIL_PROBE\nboot_id=%s\ndevice=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$device" | write_atomic "$result"
-      request_active=0
-      rm -f "$inflight"
+      archive_inflight
       exit 5
     }
     case "$probe_output" in
@@ -234,8 +226,7 @@ let
     if [[ "$active_vt" != "tty1" ]]; then
       echo "sovereign-boot: refusing physical canary because tty1 is not active (active=$active_vt)" >&2
       printf 'status=FAIL_WRONG_VT\nboot_id=%s\nactive_vt=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$active_vt" | write_atomic "$result"
-      request_active=0
-      rm -f "$inflight"
+      archive_inflight
       exit 3
     fi
 
