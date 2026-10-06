@@ -47,6 +47,8 @@ let
     request=${lib.escapeShellArg canaryRequest}
     inflight="$request.inflight"
     result=${lib.escapeShellArg canaryResult}
+    canaryProbeReceipt=${lib.escapeShellArg canaryProbeReceipt}
+    canaryOutput=${lib.escapeShellArg canaryOutput}
     archive_dir=${lib.escapeShellArg canaryArchiveDir}
 
     write_atomic() {
