@@ -80,6 +80,11 @@ probe_output="$("$artifact" --probe --device "$device" 2>&1)" || {
 printf "%s\n" "$probe_output"
 
 install -d -m 0700 /var/lib/sovereign-boot
+read -r request_owner request_group request_mode < <(stat -c "%U %G %a" /var/lib/sovereign-boot)
+if [[ "$request_owner" != "root" || "$request_group" != "root" || "$request_mode" != "700" ]]; then
+  echo "ERROR: /var/lib/sovereign-boot must be root:root mode 0700." >&2
+  exit 1
+fi
 if [[ -e "$request" ]] || [[ -e "$request.inflight" ]]; then
   echo "ERROR: a physical canary request is already pending or in-flight." >&2
   echo "Refusing to overwrite an existing qualification request." >&2
