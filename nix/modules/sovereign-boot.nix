@@ -103,11 +103,11 @@ let
 
     if [[ "$request_id" =~ ^[0-9a-f]{32}$ ]]; then
       mkdir -p "$archive_dir"
-      mv -f "$inflight" "$archive_dir/$request_id.request"
       if [[ -e "$result" ]]; then copy_atomic "$result" "$archive_dir/$request_id.result"; fi
       if [[ -e "$canaryProbeReceipt" ]]; then copy_atomic "$canaryProbeReceipt" "$archive_dir/$request_id.probe"; fi
       if [[ -e "$canaryOutput" ]]; then copy_atomic "$canaryOutput" "$archive_dir/$request_id.output"; fi
       if [[ -e "$canaryPrebootProbe" ]]; then copy_atomic "$canaryPrebootProbe" "$archive_dir/$request_id.preboot-probe"; fi
+      mv -f "$inflight" "$archive_dir/$request_id.request"
     else
       rm -f "$inflight"
     fi
@@ -144,7 +144,6 @@ let
     archive_inflight() {
       if [[ "${request_id:-}" =~ ^[0-9a-f]{32}$ ]]; then
         mkdir -p "$archive_dir"
-        mv -f "$inflight" "$archive_dir/${request_id}.request"
         if [[ -e "$result" ]]; then
           copy_atomic "$result" "$archive_dir/${request_id}.result"
         fi
@@ -157,6 +156,7 @@ let
         if [[ -e "$canaryPrebootProbe" ]]; then
           copy_atomic "$canaryPrebootProbe" "$archive_dir/${request_id}.preboot-probe"
         fi
+        mv -f "$inflight" "$archive_dir/${request_id}.request"
       else
         rm -f "$inflight"
       fi
