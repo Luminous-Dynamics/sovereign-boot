@@ -126,6 +126,7 @@ in
     machine.succeed("test -s /var/lib/sovereign-boot/requests/11111111111111111111111111111111.result")
     machine.succeed("test -s /var/lib/sovereign-boot/requests/11111111111111111111111111111111.probe")
     machine.succeed("test -s /var/lib/sovereign-boot/requests/11111111111111111111111111111111.output")
+    machine.succeed("test -s /var/lib/sovereign-boot/requests/11111111111111111111111111111111.preboot-probe")
     permissions = machine.succeed("stat -c %a /var/lib/sovereign-boot/physical-canary.result").strip()
     assert permissions == "600", permissions, result
 
@@ -222,7 +223,7 @@ in
         "sha256sum ${fakeRenderer}/bin/quicken-fb | cut -d' ' -f1"
     ).strip()
     machine.succeed(
-        "printf 'request_id=44444444444444444444444444444444\\ndevice=/dev/dri/card99\\nseconds=1\\nartifact_sha256=%s\\npreboot_probe_sha256=4444444444444444444444444444444444444444444444444444444444444444\\narmed_at_unix_s=%s\\nexpires_at_unix_s=%s\\n' " + sha + " \"$(date +%s)\" \"$(($(date +%s) + 900))\" > /var/lib/sovereign-boot/physical-canary.request"
+        "printf 'request_id=44444444444444444444444444444444\\ndevice=/dev/dri/card99\\nseconds=1\\nartifact_sha256=%s\\npreboot_probe_sha256=32d2589e89bde7b3a00a939e390d74b997b7909307c3ed7ea4b2a07b63b82708\\narmed_at_unix_s=%s\\nexpires_at_unix_s=%s\\n' " + sha + " \"$(date +%s)\" \"$(($(date +%s) + 900))\" > /var/lib/sovereign-boot/physical-canary.request"
     )
     machine.succeed("systemctl reset-failed sovereign-boot-physical-canary.service")
     machine.fail("systemctl start sovereign-boot-physical-canary.service")
@@ -237,6 +238,7 @@ in
     machine.succeed("test -s /var/lib/sovereign-boot/requests/44444444444444444444444444444444.request")
     machine.succeed("test -s /var/lib/sovereign-boot/requests/44444444444444444444444444444444.result")
     machine.succeed("test -s /var/lib/sovereign-boot/requests/44444444444444444444444444444444.output")
+    machine.succeed("test -s /var/lib/sovereign-boot/requests/44444444444444444444444444444444.preboot-probe")
     machine.succeed("rm -f /run/sovereign-boot-test/no-restore")
 
     # An expired request must never execute the renderer.
@@ -288,7 +290,7 @@ in
         "sha256sum ${fakeRenderer}/bin/quicken-fb | cut -d' ' -f1"
     ).strip()
     machine.succeed(
-        "printf 'request_id=77777777777777777777777777777777\\ndevice=/dev/dri/card99\\nseconds=1\\nartifact_sha256=%s\\npreboot_probe_sha256=7777777777777777777777777777777777777777777777777777777777777777\\narmed_at_unix_s=%s\\nexpires_at_unix_s=%s\\n' " + sha + " \"$(date +%s)\" \"$(($(date +%s) + 900))\" > /var/lib/sovereign-boot/physical-canary.request"
+        "printf 'request_id=77777777777777777777777777777777\\ndevice=/dev/dri/card99\\nseconds=1\\nartifact_sha256=%s\\npreboot_probe_sha256=32d2589e89bde7b3a00a939e390d74b997b7909307c3ed7ea4b2a07b63b82708\\narmed_at_unix_s=%s\\nexpires_at_unix_s=%s\\n' " + sha + " \"$(date +%s)\" \"$(($(date +%s) + 900))\" > /var/lib/sovereign-boot/physical-canary.request"
     )
     machine.succeed("systemctl reset-failed sovereign-boot-physical-canary.service")
     machine.fail("systemctl start sovereign-boot-physical-canary.service")
