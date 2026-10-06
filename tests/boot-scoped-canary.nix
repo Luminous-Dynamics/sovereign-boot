@@ -120,6 +120,9 @@ in
     machine.succeed("test ! -e /var/lib/sovereign-boot/physical-canary.request")
     machine.succeed("test ! -e /var/lib/sovereign-boot/physical-canary.request.inflight")
     machine.succeed("test -s /var/lib/sovereign-boot/requests/11111111111111111111111111111111.request")
+    machine.succeed("test -s /var/lib/sovereign-boot/requests/11111111111111111111111111111111.result")
+    machine.succeed("test -s /var/lib/sovereign-boot/requests/11111111111111111111111111111111.probe")
+    machine.succeed("test -s /var/lib/sovereign-boot/requests/11111111111111111111111111111111.output")
     permissions = machine.succeed("stat -c %a /var/lib/sovereign-boot/physical-canary.result").strip()
     assert permissions == "600", permissions, result
 
@@ -171,6 +174,7 @@ in
         "test ! -e /var/lib/sovereign-boot/physical-canary.request.inflight"
     )
     machine.succeed("test -s /var/lib/sovereign-boot/requests/22222222222222222222222222222222.request")
+    machine.succeed("test -s /var/lib/sovereign-boot/requests/22222222222222222222222222222222.result")
     assert machine.succeed(
         "systemctl is-active multi-user.target"
     ).strip() == "active"
@@ -210,6 +214,8 @@ in
     assert "renderer_output_sha256=" in result, result
     machine.succeed("test ! -e /var/lib/sovereign-boot/physical-canary.request.inflight")
     machine.succeed("test -s /var/lib/sovereign-boot/requests/44444444444444444444444444444444.request")
+    machine.succeed("test -s /var/lib/sovereign-boot/requests/44444444444444444444444444444444.result")
+    machine.succeed("test -s /var/lib/sovereign-boot/requests/44444444444444444444444444444444.output")
     machine.succeed("rm -f /run/sovereign-boot-test/no-restore")
 
     # An expired request must never execute the renderer.
@@ -275,6 +281,7 @@ in
         "test ! -e /var/lib/sovereign-boot/physical-canary.request.inflight"
     )
     machine.succeed("test -s /var/lib/sovereign-boot/requests/77777777777777777777777777777777.request")
+    machine.succeed("test -s /var/lib/sovereign-boot/requests/77777777777777777777777777777777.result")
     assert machine.succeed(
         "systemctl is-active multi-user.target"
     ).strip() == "active"
