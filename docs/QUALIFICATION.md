@@ -87,12 +87,13 @@ cross-boot receipt for the consumed request.
 
 ### Evidence artifact layout
 
-A completed boot-scoped canary produces a structured manifest plus two raw evidence
+A completed boot-scoped canary produces a structured manifest plus three raw evidence
 captures:
 
 - `physical-canary.result`: stable key/value qualification manifest.
 - `physical-canary.probe`: exact boot-time non-mutating probe receipt.
 - `physical-canary.output`: exact bounded renderer output.
+- `physical-canary.preboot-probe`: exact non-mutating probe captured before reboot.
 
 The manifest records SHA-256 digests of the renderer artifact, preboot probe,
 boot-time probe, renderer output, and restoration receipt. The raw evidence files
