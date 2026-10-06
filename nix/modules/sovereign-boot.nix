@@ -40,6 +40,7 @@ let
   canaryArchiveDir = "${canaryRequestDir}/requests";
   canaryProbeReceipt = "${canaryRequestDir}/physical-canary.probe";
   canaryOutput = "${canaryRequestDir}/physical-canary.output";
+  canaryPrebootProbe = "${canaryRequestDir}/physical-canary.preboot-probe";
 
   physicalCanaryPostStop = pkgs.writeShellScript "sovereign-boot-physical-canary-post-stop" ''
     set -u
@@ -49,6 +50,7 @@ let
     result=${lib.escapeShellArg canaryResult}
     canaryProbeReceipt=${lib.escapeShellArg canaryProbeReceipt}
     canaryOutput=${lib.escapeShellArg canaryOutput}
+    canaryPrebootProbe=${lib.escapeShellArg canaryPrebootProbe}
     archive_dir=${lib.escapeShellArg canaryArchiveDir}
 
     write_atomic() {
@@ -141,6 +143,10 @@ let
           cp -f "$canaryOutput" "$archive_dir/${request_id}.output"
           chmod 0600 "$archive_dir/${request_id}.output"
         fi
+        if [[ -e "$canaryPrebootProbe" ]]; then
+          cp -f "$canaryPrebootProbe" "$archive_dir/${request_id}.preboot-probe"
+          chmod 0600 "$archive_dir/${request_id}.preboot-probe"
+        fi
       else
         rm -f "$inflight"
       fi
@@ -151,6 +157,10 @@ let
     seconds="$(${pkgs.gnused}/bin/sed -n 's/^seconds=//p' "$inflight")"
     requested_sha="$(${pkgs.gnused}/bin/sed -n 's/^artifact_sha256=//p' "$inflight")"
     preboot_probe_sha="$(${pkgs.gnused}/bin/sed -n 's/^preboot_probe_sha256=//p' "$inflight")"
+    preboot_probe_actual_sha=""
+    if [[ -e "$canaryPrebootProbe" ]]; then
+      preboot_probe_actual_sha="$(${pkgs.coreutils}/bin/sha256sum "$canaryPrebootProbe" | ${pkgs.coreutils}/bin/cut -d' ' -f1)"
+    fi
     armed_at_unix_s="$(${pkgs.gnused}/bin/sed -n 's/^armed_at_unix_s=//p' "$inflight")"
     expires_at_unix_s="$(${pkgs.gnused}/bin/sed -n 's/^expires_at_unix_s=//p' "$inflight")"
     if [[ ! "$request_id" =~ ^[0-9a-f]{32}$ ]]; then
@@ -174,6 +184,13 @@ let
       printf 'status=FAIL_ARTIFACT_MISMATCH\nboot_id=%s\nrequest_id=%s\narmed_at_unix_s=%s\nexpected_sha=%s\nactual_sha=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$armed_at_unix_s" "$requested_sha" "$actual_sha" | write_atomic "$result"
       archive_inflight
       exit 3
+    fi
+
+    if [[ ! "$preboot_probe_sha" =~ ^[0-9a-f]{64}$ ]] || [[ "$preboot_probe_sha" != "$preboot_probe_actual_sha" ]]; then
+      echo "sovereign-boot: preboot probe evidence missing or mismatched" >&2
+      printf 'status=FAIL_PREBOOT_PROBE_MISMATCH\nboot_id=%s\nrequest_id=%s\nexpected_sha=%s\nactual_sha=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$preboot_probe_sha" "$preboot_probe_actual_sha" | write_atomic "$result"
+      archive_inflight
+      exit 9
     fi
 
     if [[ ! "$preboot_probe_sha" =~ ^[0-9a-f]{64}$ ]] || [[ ! "$armed_at_unix_s" =~ ^[0-9]+$ ]] || [[ ! "$expires_at_unix_s" =~ ^[0-9]+$ ]] || (( expires_at_unix_s < armed_at_unix_s )) || (( expires_at_unix_s - armed_at_unix_s > 900 )); then
@@ -230,7 +247,7 @@ let
         echo "sovereign-boot: boot-time DRM probe returned no valid receipt" >&2
         printf "%s\n" "$probe_output" | write_atomic "$canaryProbeReceipt"
         probe_sha="$(sha256sum "$canaryProbeReceipt" | cut -d' ' -f1)"
-        printf 'status=FAIL_PROBE_RECEIPT\nboot_id=%s\ndevice=%s\npreboot_probe_sha256=%s\nboot_probe_sha256=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$device" "$preboot_probe_sha" "$probe_sha" | write_atomic "$result"
+        printf 'status=FAIL_PROBE_RECEIPT\nboot_id=%s\ndevice=%s\npreboot_probe_sha256=%s\npreboot_probe_actual_sha256=%s\nboot_probe_sha256=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$device" "$preboot_probe_sha" "$probe_sha" | write_atomic "$result"
         archive_inflight
         exit 6
         ;;
@@ -275,7 +292,7 @@ let
       restore_sha="$(printf '%s\n' "$restore_receipt" | sha256sum | cut -d' ' -f1)"
     fi
     printf 'status=%s\nboot_id=%s\nrequest_id=%s\narmed_at_unix_s=%s\nexpires_at_unix_s=%s\ndevice=%s\nseconds=%s\nexit_code=%s\nartifact_sha256=%s\npreboot_probe_sha256=%s\nboot_probe_sha256=%s\nrenderer_output_sha256=%s\nrestore_receipt_sha256=%s\n' \
-      "$status" "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$armed_at_unix_s" "$expires_at_unix_s" "$device" "$seconds" "$rc" "$actual_sha" "$preboot_probe_sha" "$probe_sha" "$output_sha" "$restore_sha" | write_atomic "$result"
+      "$status" "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$armed_at_unix_s" "$expires_at_unix_s" "$device" "$seconds" "$rc" "$actual_sha" "$preboot_probe_sha" "$preboot_probe_actual_sha" "$probe_sha" "$output_sha" "$restore_sha" | write_atomic "$result"
     mkdir -p "$archive_dir"
     mv -f "$inflight" "$archive_dir/$request_id.request"
 
