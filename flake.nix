@@ -39,6 +39,10 @@
           spore-boot-tools = quicken-fb;
         };
 
+        checks = {
+          renderer = self.packages.${system}.quicken-fb;
+        };
+
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
             cargo
@@ -49,8 +53,4 @@
           ];
         };
       });
-
-      checks = {
-        renderer = self.packages.${system}.quicken-fb;
-      };
 }
