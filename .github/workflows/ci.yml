@@ -66,3 +66,32 @@ jobs:
 
       - name: Build renderer
         run: nix build .#quicken-fb --no-link --no-update-lock-file --no-write-lock-file
+  provenance:
+    name: Signed renderer provenance
+    needs: nix
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.nix.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      - name: Build exact renderer
+        run: nix build .#quicken-fb --no-update-lock-file --no-write-lock-file
+
+      - name: Generate signed SLSA provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: ${{ github.workspace }}/result/bin/quicken-fb
+          show-summary: true
