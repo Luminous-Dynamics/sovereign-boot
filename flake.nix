@@ -1,5 +1,5 @@
 {
-  description = "Sovereign Boot Ecology — DRM/KMS framebuffer renderer, fail-open state machine, and Linux recovery executor for NixOS";
+  description = "Sovereign Boot Ecology — standalone DRM/KMS framebuffer renderer and NixOS host-integration shell; lifecycle state/recovery extraction pending";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
