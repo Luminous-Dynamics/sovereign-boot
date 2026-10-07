@@ -26,7 +26,7 @@
             pname = "quicken-fb";
             version = "0.3.4";
             src = ./crates/quicken-fb;
-            cargoLock.lockFile = ./crates/quicken-fb/Cargo.lock;
+            cargoLock.lockFile = ./Cargo.lock;
             doCheck = false;
             meta = with pkgs.lib; {
               description = "DRM/KMS bare-metal boot animation renderer";
@@ -49,4 +49,8 @@
           ];
         };
       });
+
+      checks = {
+        renderer = self.packages.${system}.quicken-fb;
+      };
 }
