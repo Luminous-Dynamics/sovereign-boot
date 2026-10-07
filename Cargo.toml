@@ -2,9 +2,12 @@
 resolver = "2"
 members = [
     "crates/quicken-fb",
-    "crates/spore-kernel",
 ]
+# spore-kernel is deliberately excluded while the monorepo extraction is
+# unresolved. Retaining the source does not make it part of the standalone
+# build or qualification surface.
 exclude = [
+    "crates/spore-kernel",
     "crates/spore-kernel/fuzz",
 ]
 
@@ -14,6 +17,8 @@ license = "AGPL-3.0-or-later"
 authors = ["Luminous Dynamics <tristan.stoltz@evolvingresonantcocreationism.com>"]
 
 [workspace.dependencies]
+blake3 = "1.5"
+proptest = "1"
+rand = "0.8"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-proptest = "1"
