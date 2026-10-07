@@ -66,6 +66,7 @@ jobs:
 
       - name: Build renderer
         run: nix build .#quicken-fb --no-link --no-update-lock-file --no-write-lock-file
+
   provenance:
     name: Signed renderer provenance
     needs: nix
@@ -94,4 +95,52 @@ jobs:
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
           subject-path: ${{ github.workspace }}/result/bin/quicken-fb
+          show-summary: true
+
+      - name: Emit renderer CI qualification predicate
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > renderer-qualification-predicate.json <<JSON
+          {
+            "schema": "luminous-sovereign-boot-renderer-ci-qualification-v1",
+            "qualified_commit": "${GITHUB_SHA}",
+            "workflow_run_id": "${GITHUB_RUN_ID}",
+            "scope": {
+              "component": "quicken-fb",
+              "hosted_ci": true,
+              "physical_boot": false,
+              "lifecycle_state_recovery": false
+            },
+            "gates": {
+              "standalone_contract": "pass",
+              "cargo_format": "pass",
+              "cargo_check": "pass",
+              "cargo_test": "pass",
+              "cargo_clippy": "pass",
+              "nix_flake_check": "pass",
+              "nix_format": "pass",
+              "physical_canary_app_build": "pass",
+              "boot_canary_helper_build": "pass",
+              "renderer_build": "pass"
+            },
+            "non_claims": [
+              "physical renderer execution qualification",
+              "verified DRM restoration on target hardware or VM",
+              "lifecycle/state/LKG integration qualification"
+            ],
+            "source": {
+              "git_tree": "$(git rev-parse HEAD^{tree})",
+              "cargo_lock_sha256": "$(sha256sum Cargo.lock | cut -d' ' -f1)",
+              "flake_lock_sha256": "$(sha256sum flake.lock | cut -d' ' -f1)"
+            }
+          }
+          JSON
+
+      - name: Generate signed renderer CI qualification attestation
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: ${{ github.workspace }}/result/bin/quicken-fb
+          predicate-type: https://github.com/Luminous-Dynamics/sovereign-boot/attestations/renderer-ci-qualification/v1
+          predicate-path: renderer-qualification-predicate.json
           show-summary: true
