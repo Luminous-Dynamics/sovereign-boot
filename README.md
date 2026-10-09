@@ -22,6 +22,10 @@ The safety rule is therefore explicit:
 
 The repository intentionally does not pretend that an extracted source tree is a qualified executable surface.
 
+## Cross-platform direction
+
+The long-term architecture and honest per-platform boundaries are documented in [Platform Portability](docs/PLATFORM_PORTABILITY.md). This is a roadmap, not a claim that Windows, macOS, mobile, or TV adapters exist today.
+
 ## Safe first test
 
 Before allowing the renderer to take display ownership, probe the DRM path without creating a framebuffer or changing CRTC state:
