@@ -126,7 +126,7 @@ grep -q 'nix build .#arm-physical-canary --no-update-lock-file --no-write-lock-f
 # The boot-scoped canary must order before the desktop without adding a
 # destructive Conflicts= stop relationship.
 grep -q 'StandardInput = "tty-fail";' nix/modules/sovereign-boot.nix
-grep -Fq 'Before = [' nix/modules/sovereign-boot.nix
+grep -Fq 'before = [' nix/modules/sovereign-boot.nix
 ! sed -n '/systemd.services.sovereign-boot-physical-canary = {/,/systemd.services.sovereign-boot-animation = {/p' nix/modules/sovereign-boot.nix | grep -q 'Conflicts'
 grep -q 'ProtectSystem = "strict";' nix/modules/sovereign-boot.nix
 
