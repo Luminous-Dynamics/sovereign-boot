@@ -5,12 +5,7 @@
 //! acquires a host dependency, instantiation fails until that capability is
 //! reviewed and explicitly granted by the host policy.
 
-use std::{
-    env,
-    error::Error,
-    io,
-    path::PathBuf,
-};
+use std::{env, error::Error, io, path::PathBuf};
 
 use wasmtime::{
     Config, Engine, Store,
