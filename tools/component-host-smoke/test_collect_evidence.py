@@ -26,10 +26,22 @@ class EvidenceCollectorTests(unittest.TestCase):
         self.assertEqual([], collector.missing_required_markers(log))
 
     def test_each_required_assertion_marker_is_mandatory(self) -> None:
+        prefix = collector.REQUIRED_MARKERS[0]
         for missing in collector.REQUIRED_MARKERS:
             with self.subTest(marker=missing):
-                log = " ".join(m for m in collector.REQUIRED_MARKERS if m != missing)
-                self.assertIn(missing, collector.missing_required_markers(log))
+                if missing == prefix:
+                    # Without the receipt prefix, the collector must reject the
+                    # whole line as a receipt rather than treating log fragments as one.
+                    log = " ".join(m for m in collector.REQUIRED_MARKERS[1:])
+                    self.assertIn(
+                        "exactly one component_runtime receipt line",
+                        collector.missing_required_markers(log),
+                    )
+                else:
+                    log = " ".join(
+                        m for m in collector.REQUIRED_MARKERS if m != missing
+                    )
+                    self.assertIn(missing, collector.missing_required_markers(log))
 
     def test_markers_split_across_lines_do_not_form_a_receipt(self) -> None:
         midpoint = len(collector.REQUIRED_MARKERS) // 2
