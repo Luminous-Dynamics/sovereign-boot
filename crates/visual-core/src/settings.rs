@@ -4,12 +4,11 @@
 //! module accepts only typed values, validates limits, and defines the numeric
 //! seed encoding used by the additive Scene Pack construction path.
 
-use std::{error::Error, fmt, mem::size_of};
+use std::{error::Error, fmt};
 
 use crate::{
     color::{LEAF_GREEN, LICHEN_GREY, MOSS_DEEP, MYCELIAL_WHITE, Rgba, SOLAR_GOLD},
     contract::{self, DimensionsError},
-    mycelium::Branch,
 };
 
 pub const MAX_SCENE_BRANCHES: u32 = 8192;
@@ -19,6 +18,8 @@ pub const MAX_TICKS_PER_BATCH: u32 = 120;
 pub const MIN_MEMORY_MIB: u32 = 16;
 pub const MAX_MEMORY_MIB: u32 = 2048;
 const BYTES_PER_MIB: u64 = 1024 * 1024;
+// Stable, conservative accounting unit rather than target-dependent size_of.
+const ESTIMATED_BRANCH_BYTES: u64 = 64;
 
 /// Semantic palette slots consumed by the CPU reference renderer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -186,7 +187,7 @@ impl SceneSettings {
             .checked_mul(12)
             .ok_or(SceneSettingsError::MemoryEstimateOverflow)?;
         let branch_bytes = u64::from(self.branch_limit)
-            .checked_mul(size_of::<Branch>() as u64)
+            .checked_mul(ESTIMATED_BRANCH_BYTES)
             .and_then(|bytes| bytes.checked_mul(2))
             .ok_or(SceneSettingsError::MemoryEstimateOverflow)?;
         let estimate = frame_bytes
