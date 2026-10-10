@@ -123,8 +123,8 @@ impl GuestVisualScene for VisualScene {
     fn render(&self) -> Frame {
         let network = self.network.borrow();
         Frame {
-            width: network.width,
-            height: network.height,
+            width: network.width(),
+            height: network.height(),
             rgba: network.render_rgba(),
         }
     }
@@ -135,26 +135,22 @@ impl GuestVisualScene for VisualScene {
             .render_static_fallback(brightness)
             .map_err(|error| error.to_string())?;
         Ok(Frame {
-            width: network.width,
-            height: network.height,
+            width: network.width(),
+            height: network.height(),
             rgba,
         })
     }
 
     fn width(&self) -> u32 {
-        self.network.borrow().width
+        self.network.borrow().width()
     }
 
     fn height(&self) -> u32 {
-        self.network.borrow().height
+        self.network.borrow().height()
     }
 
     fn branch_count(&self) -> u32 {
-        self.network
-            .borrow()
-            .branches
-            .len()
-            .min(u32::MAX as usize) as u32
+        self.network.borrow().branch_count()
     }
 }
 
