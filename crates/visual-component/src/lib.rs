@@ -80,8 +80,10 @@ impl GuestVisualScene for VisualScene {
 
     fn advance(&self, dt_seconds: f32, activity: f32) -> Result<(), String> {
         contract::validate_step(dt_seconds, activity).map_err(step_error)?;
-        self.network.borrow_mut().grow(dt_seconds, activity);
-        Ok(())
+        self.network
+            .borrow_mut()
+            .advance_variable_delta(dt_seconds, activity)
+            .map_err(|error| error.to_string())
     }
 
     fn pulse(&self) {
