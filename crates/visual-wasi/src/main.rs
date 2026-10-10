@@ -3,12 +3,9 @@
 //! Renders a deterministic PPM frame to stdout. A WASI runtime/host decides
 //! where stdout goes; this executable does not claim direct display access.
 
-use sovereign_visual_core::mycelium::MycelialNetwork;
+use sovereign_visual_core::{contract, mycelium::MycelialNetwork};
 use std::io::{self, Write};
 use std::process::ExitCode;
-
-const MAX_DIMENSION: u32 = 4096;
-const MAX_PIXELS: u64 = 8_294_400;
 
 #[derive(Debug)]
 struct Options {
@@ -82,19 +79,13 @@ fn parse_options() -> Result<Options, String> {
 }
 
 fn validate_options(options: &Options) -> Result<(), String> {
-    let pixels = u64::from(options.width) * u64::from(options.height);
-    if options.width == 0
-        || options.height == 0
-        || options.width > MAX_DIMENSION
-        || options.height > MAX_DIMENSION
-        || pixels > MAX_PIXELS
-    {
+    if contract::validate_dimensions(options.width, options.height).is_err() {
         return Err("dimensions must be nonzero, <=4096 per side, and <=8,294,400 pixels".into());
     }
     if options.steps > 10_000 {
         return Err("--steps must be <= 10000".into());
     }
-    if !options.activity.is_finite() || !(0.0..=1.0).contains(&options.activity) {
+    if contract::validate_step(0.0, options.activity).is_err() {
         return Err("--activity must be finite and in 0..=1".into());
     }
     Ok(())
