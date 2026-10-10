@@ -146,8 +146,11 @@ fn render_scene_pack_rgba(
 ) -> Result<Vec<u8>, String> {
     if !pack.assets().is_empty() {
         return Err(
-            "this WASI renderer has no safe asset resolver/hash provider; asset-bearing packs are unsupported"
-                .into(),
+            concat!(
+                "this WASI renderer has no safe asset resolver/hash provider; ",
+                "asset-bearing packs are unsupported",
+            )
+            .into(),
         );
     }
     if !pack.capabilities().required.is_empty() {
@@ -353,6 +356,38 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn presentation_selector_defaults_to_boot_and_rejects_unknown_values() {
+        assert_eq!(
+            parse_presentation(None).unwrap(),
+            PresentationVariant::Boot
+        );
+        assert_eq!(
+            parse_presentation(Some("staticFallback")).unwrap(),
+            PresentationVariant::StaticFallback
+        );
+        assert!(parse_presentation(Some("secretDesktop")).is_err());
+    }
+
+    #[test]
+    fn scene_pack_mode_rejects_unsupported_host_metadata() {
+        let fixture = PACK_FIXTURE;
+        let with_input = fixture.replace(
+            r#""inputs": []"#,
+            r#""inputs": [{
+                "id": "local-time",
+                "enabledByDefault": false,
+                "consentRequired": true
+            }]"#,
+        );
+        let pack = parse_scene_pack_v1(with_input.as_bytes()).unwrap();
+        assert!(
+            render_scene_pack_rgba(&pack, PresentationVariant::StaticFallback, 16, 16, 0, 1.0)
+                .unwrap_err()
+                .contains("inputs")
+        );
+    }
 
     #[test]
     fn rejects_unbounded_work() {
