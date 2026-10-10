@@ -97,8 +97,9 @@ The existing animation algorithm uses a pixel buffer, so frame transfer can be a
 ## Qualification requirements
 
 Do not label these targets supported until CI and test evidence establish:
-- native core unit tests and deterministic output hashes/fixtures;
-- browser-target compilation and binding generation;
+- native core unit tests and deterministic output fixtures;
+- byte-for-byte parity between a native Rust reference frame and browser-WASM output for the same seeded scene;
+- browser-target compilation, pinned binding generation, Node WebAssembly runtime smoke, and host-script syntax checks;
 - WASI-target compilation and execution under a named runtime;
 - explicit bounds and invalid-input tests;
 - identical defined scene semantics across native, browser-WASM and WASI;
