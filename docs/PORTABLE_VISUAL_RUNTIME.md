@@ -42,7 +42,9 @@ The deterministic canvas-to-substrate static gradient renderer is implemented in
 
 The separate `sovereign-visual-pack` crate is now the strict manifest boundary: bounded JSON input, duplicate-key rejection, unknown-field rejection, typed version/range checks, safe-relative-path validation, presentation/safe-region checks, consent invariants and dual branch-budget validation. `ValidatedScenePack` preserves host-facing metadata, exposes immutable typed renderer settings, and can instantiate the same core scene used by the other adapters.
 
-The parser intentionally has no filesystem authority. The host must explicitly supply an `AssetHashProvider` whose implementation safely resolves an asset under the pack root and computes SHA-256; the parser fails closed on resolver errors or digest mismatch. This does not yet constitute a fully wired production host loader or a complete schema-conformance claim. Exact-head CI and a schema-generated conformance corpus remain prerequisites.
+The parser intentionally has no filesystem authority. The capability-denied Wasmtime qualification harness and the WASI CLI now use it directly. The CLI accepts a bounded manifest through stdin and supports the centered-network boot composition plus the gradient-only static fallback; it rejects asset-bearing packs because it has no `AssetHashProvider`, and refuses required capabilities, inputs, safe regions or unsupported compositions rather than ignoring them. A browser demo adapter that directly consumes `ValidatedScenePack` and host-specific safe asset resolution remain outstanding.
+
+A trusted host must explicitly supply an `AssetHashProvider` whose implementation safely resolves an asset under the pack root (including symlink checks) and computes SHA-256; the parser fails closed on resolver errors or digest mismatch. This is not yet a complete schema-conformance claim. Exact-head CI and a schema-generated positive/negative conformance corpus remain prerequisites.
 
 ## Determinism and reproducibility
 
