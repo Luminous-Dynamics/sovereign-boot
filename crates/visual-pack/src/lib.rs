@@ -19,6 +19,8 @@ use sovereign_visual_core::settings::{ScenePalette, SceneSettings, SceneSettings
 /// Maximum accepted manifest size. The schema caps collection sizes too, but
 /// bounding input before parsing limits unnecessary allocation from hostile input.
 pub const MAX_MANIFEST_BYTES: usize = 1_048_576;
+/// Engine build currently implemented by the shared Scene Pack reference core.
+pub const SUPPORTED_ENGINE_VERSION: &str = "1.0.0";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ScenePackError {
@@ -329,6 +331,7 @@ struct RawSimulationParameters {
 pub struct ValidatedScenePack {
     scene_id: String,
     scene_version: String,
+    engine_version: String,
     title: String,
     description: Option<String>,
     license: SceneLicense,
@@ -350,6 +353,10 @@ impl ValidatedScenePack {
 
     pub fn scene_version(&self) -> &str {
         &self.scene_version
+    }
+
+    pub fn engine_version(&self) -> &str {
+        &self.engine_version
     }
 
     pub fn title(&self) -> &str {
@@ -516,6 +523,12 @@ pub fn parse_scene_pack_v1(bytes: &[u8]) -> Result<ValidatedScenePack, ScenePack
         ));
     }
     validate_semver("simulation.engineVersion", &raw.simulation.engine_version)?;
+    if raw.simulation.engine_version != SUPPORTED_ENGINE_VERSION {
+        return Err(invalid_value(
+            "simulation.engineVersion",
+            "this renderer only implements engine version 1.0.0",
+        ));
+    }
     if !(1..=120).contains(&raw.simulation.fixed_step_hz) {
         return Err(invalid_value("simulation.fixedStepHz", "must be in 1..=120"));
     }
@@ -583,6 +596,7 @@ pub fn parse_scene_pack_v1(bytes: &[u8]) -> Result<ValidatedScenePack, ScenePack
     Ok(ValidatedScenePack {
         scene_id: raw.scene_id,
         scene_version: raw.scene_version,
+        engine_version: raw.simulation.engine_version,
         title: raw.title,
         description: raw.description,
         license: raw.license,
@@ -1113,6 +1127,7 @@ mod tests {
         let pack = parse_scene_pack_v1(FIXTURE.as_bytes()).unwrap();
         assert_eq!(pack.scene_id(), "luminous.first-germination");
         assert_eq!(pack.scene_version(), "0.1.0");
+        assert_eq!(pack.engine_version(), SUPPORTED_ENGINE_VERSION);
         assert_eq!(pack.seed(), 20261010);
         let scene = pack.instantiate(32, 24).unwrap();
         assert_eq!((scene.width(), scene.height()), (32, 24));
@@ -1179,6 +1194,19 @@ mod tests {
         assert!(matches!(
             parse_scene_pack_v1(null_description.as_bytes()),
             Err(ScenePackError::SchemaViolation(_))
+        ));
+    }
+
+    #[test]
+    fn rejects_unsupported_engine_versions() {
+        let invalid = FIXTURE.replace(
+            r#""engineVersion": "1.0.0""#,
+            r#""engineVersion": "1.1.0""#,
+        );
+        assert!(matches!(
+            parse_scene_pack_v1(invalid.as_bytes()),
+            Err(ScenePackError::InvalidValue { field, .. })
+                if field == "simulation.engineVersion"
         ));
     }
 
