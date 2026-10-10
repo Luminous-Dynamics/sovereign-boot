@@ -155,7 +155,8 @@ impl MycelialNetwork {
         if !activity.is_finite() || !(0.0..=1.0).contains(&activity) {
             return Err(SceneSettingsError::InvalidActivity);
         }
-        if ticks > MAX_TICKS_PER_BATCH {
+        let max_batch = self.settings.fixed_step_hz.min(MAX_TICKS_PER_BATCH);
+        if ticks > max_batch {
             return Err(SceneSettingsError::TickBatchOutOfRange);
         }
         for _ in 0..ticks {
