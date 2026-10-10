@@ -178,6 +178,55 @@ mod tests {
         assert_eq!(guest.render().rgba, native.render_rgba());
     }
 
+    fn sample_wit_settings(branch_limit: u32) -> WitSceneSettings {
+        WitSceneSettings {
+            seed: 20261010,
+            branch_limit,
+            max_depth: 10,
+            growth_rate: 0.28,
+            fixed_step_hz: 30,
+            pulse_period_seconds: 7.5,
+            drift_amplitude: 0.12,
+            max_memory_mib: 128,
+            palette: WitScenePalette {
+                canvas: Rgb { r: 10, g: 16, b: 14 },
+                substrate: Rgb { r: 26, g: 46, b: 34 },
+                filament: Rgb { r: 126, g: 200, b: 160 },
+                node: Rgb { r: 232, g: 197, b: 71 },
+                lichen: Rgb { r: 90, g: 107, b: 94 },
+                glow: Rgb { r: 118, g: 217, b: 193 },
+            },
+        }
+    }
+
+    #[test]
+    fn wit_settings_configure_the_same_core_and_rgba_output() {
+        let guest = <VisualScene as GuestVisualScene>::new(16, 16, "legacy".to_owned());
+        guest.configure(32, 24, sample_wit_settings(2048)).unwrap();
+        assert_eq!(guest.contract_version(), u32::from(contract::SCENE_CONTRACT_VERSION));
+
+        guest.advance_ticks(120, 0.7).unwrap();
+        let guest_frame = guest.render();
+        assert_eq!(guest_frame.width, 32);
+        assert_eq!(guest_frame.height, 24);
+        assert_eq!(guest_frame.rgba.len(), 32 * 24 * 4);
+        assert!(guest.branch_count() <= 2048);
+
+        let native_settings = settings_from_wit(sample_wit_settings(2048)).1;
+        let mut native =
+            MycelialNetwork::with_settings(32, 24, 20261010, native_settings).unwrap();
+        native.advance_ticks(120, 0.7).unwrap();
+        assert_eq!(guest_frame.rgba, native.render_rgba());
+    }
+
+    #[test]
+    fn failed_wit_reconfiguration_is_atomic_and_batches_are_bounded() {
+        let guest = <VisualScene as GuestVisualScene>::new(32, 24, "legacy".to_owned());
+        assert!(guest.configure(48, 24, sample_wit_settings(8193)).is_err());
+        assert_eq!((guest.width(), guest.height()), (32, 24));
+        assert!(guest.advance_ticks(121, 0.7).is_err());
+    }
+
     #[test]
     fn guest_rejects_invalid_step_inputs_and_non_finite_progress() {
         let guest = <VisualScene as GuestVisualScene>::new(16, 16, "bounds".to_owned());
