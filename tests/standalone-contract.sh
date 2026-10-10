@@ -34,6 +34,12 @@ test -s tests/visual-wasm-smoke.mjs
 test -s crates/visual-wasm/www/index.html
 test -s crates/visual-wasm/www/app.js
 test -s crates/visual-wasm/build-demo.sh
+grep -q 'createFromScenePack' crates/visual-wasm/src/lib.rs
+grep -q 'parse_scene_pack_v1' crates/visual-wasm/src/lib.rs
+grep -q 'createFromScenePack' crates/visual-wasm/www/app.js
+grep -q 'fetch("./pkg/first-germination.scene.json"' crates/visual-wasm/www/app.js
+grep -q 'first-germination.scene.json' crates/visual-wasm/build-demo.sh
+grep -q 'renderPresentedRgba' crates/visual-wasm/www/app.js
 grep -q 'prefers-reduced-motion' crates/visual-wasm/www/app.js
 grep -q 'visibilitychange' crates/visual-wasm/www/app.js
 grep -q 'wasm-bindgen --target web' crates/visual-wasm/build-demo.sh
