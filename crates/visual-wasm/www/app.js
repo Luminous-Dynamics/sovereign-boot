@@ -4,29 +4,22 @@ const canvas = document.querySelector("#scene");
 const context = canvas.getContext("2d", { alpha: false });
 const status = document.querySelector("#status");
 const pauseButton = document.querySelector("#pause");
-const regenerateButton = document.querySelector("#regenerate");
+const restartButton = document.querySelector("#restart");
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
-const TARGET_FPS = 30;
-const FIXED_STEP_HZ = 30;
-const FIXED_STEP_SECONDS = 1 / FIXED_STEP_HZ;
 const MAX_HOST_DELTA_SECONDS = 0.25;
-const PALETTE_RGB = Uint8Array.from([
-  10, 16, 14,       // canvas
-  26, 46, 34,       // substrate
-  126, 200, 160,    // filament
-  232, 197, 71,     // node
-  90, 107, 94,      // lichen
-  118, 217, 193,    // glow
-]);
 
+let scenePackBytes = null;
 let scene = null;
 let imageData = null;
-let generation = 0;
 let paused = false;
 let frameHandle = 0;
 let lastFrameTime = 0;
 let tickAccumulator = 0;
+let fixedStepHz = 30;
+let fixedStepSeconds = 1 / fixedStepHz;
+let targetFps = 30;
+let loadedPresentation = "boot";
 
 function stopLoop() {
   if (frameHandle !== 0) {
@@ -40,42 +33,35 @@ function stopLoop() {
 
 function renderFrame() {
   if (!scene || !context || !imageData) return;
-  const rgba = scene.render_rgba();
+  const rgba = scene.renderPresentedRgba();
   imageData.data.set(rgba);
   context.putImageData(imageData, 0, 0);
 }
 
 function updateControls() {
-  if (reducedMotion.matches) {
-    pauseButton.disabled = true;
-    pauseButton.setAttribute("aria-pressed", "true");
-    pauseButton.textContent = "Motion disabled by system preference";
-  } else {
-    pauseButton.disabled = !scene;
-    pauseButton.setAttribute("aria-pressed", String(paused));
-    pauseButton.textContent = paused ? "Resume animation" : "Pause animation";
-  }
-  regenerateButton.disabled = !scene;
-}
-
-function showStaticFallback() {
-  // A real no-animation fallback: no ticking, GPU dependency or scene mutation.
-  const rgba = scene.render_static_fallback(0.58);
-  imageData.data.set(rgba);
-  context.putImageData(imageData, 0, 0);
+  const isStatic = !scene || scene.isStaticFallback() || reducedMotion.matches;
+  pauseButton.disabled = isStatic;
+  pauseButton.setAttribute("aria-pressed", String(paused));
+  pauseButton.textContent = isStatic
+    ? "Motion disabled by presentation"
+    : paused ? "Resume animation" : "Pause animation";
+  restartButton.disabled = !scene;
 }
 
 function animate(now) {
   frameHandle = 0;
-  if (!scene || paused || document.hidden || reducedMotion.matches) return;
+  if (!scene || paused || document.hidden || scene.isStaticFallback() || reducedMotion.matches) {
+    return;
+  }
 
-  if (lastFrameTime !== 0 && now - lastFrameTime < 1000 / TARGET_FPS) {
+  const frameInterval = 1000 / Math.max(1, targetFps);
+  if (lastFrameTime !== 0 && now - lastFrameTime < frameInterval) {
     frameHandle = requestAnimationFrame(animate);
     return;
   }
 
   const delta = lastFrameTime === 0
-    ? FIXED_STEP_SECONDS
+    ? fixedStepSeconds
     : Math.min((now - lastFrameTime) / 1000, MAX_HOST_DELTA_SECONDS);
   lastFrameTime = now;
   tickAccumulator = Math.min(
@@ -83,10 +69,12 @@ function animate(now) {
     MAX_HOST_DELTA_SECONDS,
   );
 
-  const ticks = Math.floor(tickAccumulator / FIXED_STEP_SECONDS);
+  const ticks = Math.floor(tickAccumulator / fixedStepSeconds);
   if (ticks > 0) {
+    // The core also enforces at most one simulated second per call. This
+    // accumulator is tighter: it never catches up across a hidden/suspended gap.
     scene.advance_ticks(ticks, 0.55);
-    tickAccumulator -= ticks * FIXED_STEP_SECONDS;
+    tickAccumulator -= ticks * fixedStepSeconds;
   }
   renderFrame();
   frameHandle = requestAnimationFrame(animate);
@@ -94,14 +82,14 @@ function animate(now) {
 
 function startLoop() {
   stopLoop();
-  if (!scene || paused || document.hidden || reducedMotion.matches) return;
-  // Render one deterministic fixed step promptly, then follow requestAnimationFrame.
-  tickAccumulator = FIXED_STEP_SECONDS;
+  if (!scene || paused || document.hidden || scene.isStaticFallback() || reducedMotion.matches) return;
   frameHandle = requestAnimationFrame(animate);
 }
 
 function makeScene() {
   stopLoop();
+  if (!scenePackBytes) return;
+
   if (scene) {
     scene.free();
     scene = null;
@@ -115,39 +103,36 @@ function makeScene() {
   canvas.width = width;
   canvas.height = height;
   imageData = context.createImageData(width, height);
-  const seed = (20261010 + generation) >>> 0;
-  scene = VisualScene.createConfigured(
+
+  // The browser host supplies manifest bytes. The WASM parser has no fetch,
+  // filesystem, network or display capabilities. Reduced-motion selects the
+  // manifest's required gradient-only fallback; the normal demo selects boot.
+  loadedPresentation = reducedMotion.matches ? "staticFallback" : "boot";
+  scene = VisualScene.createFromScenePack(
     width,
     height,
-    seed,
-    2048,             // scene-requested branch limit
-    2048,             // independent aggregate resource branch ceiling
-    10,               // max depth
-    0.28,             // growth rate
-    FIXED_STEP_HZ,
-    7.5,              // pulse period in seconds
-    0.12,             // deterministic drift amplitude
-    128,              // conservative renderer memory budget, MiB
-    PALETTE_RGB,
+    scenePackBytes,
+    loadedPresentation,
   );
+  fixedStepHz = scene.fixedStepHz();
+  fixedStepSeconds = 1 / fixedStepHz;
+  targetFps = scene.presentationMaxFps();
 
-  if (reducedMotion.matches) {
-    showStaticFallback();
-    status.textContent = "Reduced motion is enabled; showing the deterministic gradient fallback.";
+  renderFrame();
+  if (scene.isStaticFallback()) {
+    status.textContent = "Showing the manifest's deterministic static fallback; animation is disabled.";
   } else if (paused) {
-    renderFrame();
-    status.textContent = "Animation paused.";
+    status.textContent = "Animation paused. Restart reinitializes the same pinned Scene Pack seed.";
   } else {
-    renderFrame();
-    status.textContent = "Configured scene running locally in WebAssembly at a bounded 30 FPS.";
+    status.textContent =
+      `First Germination · Scene Pack ${scene.sceneVersion()} · ${targetFps} FPS cap · local WebAssembly rendering.`;
     startLoop();
   }
-
   updateControls();
 }
 
 pauseButton.addEventListener("click", () => {
-  if (!scene || reducedMotion.matches) return;
+  if (!scene || scene.isStaticFallback() || reducedMotion.matches) return;
   paused = !paused;
   if (paused) {
     stopLoop();
@@ -160,16 +145,15 @@ pauseButton.addEventListener("click", () => {
   updateControls();
 });
 
-regenerateButton.addEventListener("click", () => {
-  generation += 1;
+restartButton.addEventListener("click", () => {
   makeScene();
-  status.textContent = `Created deterministic scene ${generation + 1}.`;
+  status.textContent = `Reinitialized ${scene?.sceneTitle() ?? "Scene Pack"} from its declared seed.`;
 });
 
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
     stopLoop();
-  } else if (!reducedMotion.matches && !paused) {
+  } else if (!reducedMotion.matches && !paused && scene && !scene.isStaticFallback()) {
     startLoop();
   }
 });
@@ -191,11 +175,28 @@ if ("ResizeObserver" in window) {
 
 try {
   await init();
+
+  // This is an explicit host fetch of a same-origin static asset. The guest
+  // sees only the bounded bytes; it cannot fetch arbitrary URLs or open paths.
+  const response = await fetch("./pkg/first-germination.scene.json", { cache: "no-cache" });
+  if (!response.ok) {
+    throw new Error(`Scene Pack request failed with HTTP ${response.status}`);
+  }
+  const manifest = await response.arrayBuffer();
+  if (manifest.byteLength === 0 || manifest.byteLength > 1_048_576) {
+    throw new Error("Scene Pack byte length is outside the accepted 1 MiB bound");
+  }
+  scenePackBytes = new Uint8Array(manifest);
   makeScene();
 } catch (error) {
   console.error("Sovereign Visual Core failed to initialize:", error);
+  stopLoop();
+  if (scene) {
+    scene.free();
+    scene = null;
+  }
   status.textContent =
-    "WebAssembly failed to load. Build the WASM demo package and serve this directory over HTTP.";
+    "WebAssembly or the pinned Scene Pack could not be loaded. Rebuild the demo and serve the generated directory over HTTP.";
   pauseButton.disabled = true;
-  regenerateButton.disabled = true;
+  restartButton.disabled = true;
 }
