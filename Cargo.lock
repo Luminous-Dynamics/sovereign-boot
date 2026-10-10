@@ -1334,3 +1334,11 @@ dependencies = [
  "wasm-bindgen",
 ]
 
+[[package]]
+name = "sovereign-visual-component"
+version = "0.1.0"
+dependencies = [
+ "sovereign-visual-core",
+ "wit-bindgen 0.57.1",
+]
+
