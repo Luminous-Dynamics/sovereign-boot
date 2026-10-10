@@ -15,6 +15,7 @@ struct Options {
     steps: u32,
     activity: f32,
     help: bool,
+    contract_version: bool,
 }
 
 impl Default for Options {
@@ -26,6 +27,7 @@ impl Default for Options {
             steps: 90,
             activity: 1.0,
             help: false,
+            contract_version: false,
         }
     }
 }
@@ -37,6 +39,7 @@ fn parse_options() -> Result<Options, String> {
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--help" | "-h" => out.help = true,
+            "--contract-version" => out.contract_version = true,
             "--width" => {
                 out.width = args
                     .next()
@@ -72,7 +75,7 @@ fn parse_options() -> Result<Options, String> {
         }
     }
 
-    if !out.help {
+    if !out.help && !out.contract_version {
         validate_options(&out)?;
     }
     Ok(out)
@@ -130,6 +133,11 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+
+    if options.contract_version {
+        println!("{}", contract::SCENE_CONTRACT_VERSION);
+        return ExitCode::SUCCESS;
+    }
 
     if options.help {
         eprintln!(
