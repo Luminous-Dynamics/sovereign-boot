@@ -102,17 +102,30 @@ function renderConfiguredFixture() {
   assert.equal(scene.width(), 32);
   assert.equal(scene.height(), 24);
   const beforeFallback = Buffer.from(scene.render_rgba());
-  const staticFallback = Buffer.from(scene.render_static_fallback(1.0));
-  assert.equal(staticFallback.length, 32 * 24 * 4);
+  const fullBrightnessGradient = Buffer.from(scene.render_static_fallback(1.0));
+  assert.equal(fullBrightnessGradient.length, 32 * 24 * 4);
   assert.deepEqual(
-    staticFallback.subarray(0, 4),
+    fullBrightnessGradient.subarray(0, 4),
     Buffer.from([10, 16, 14, 255]),
     "static gradient starts at the configured canvas color",
   );
   assert.deepEqual(
-    staticFallback.subarray(staticFallback.length - 4),
+    fullBrightnessGradient.subarray(fullBrightnessGradient.length - 4),
     Buffer.from([26, 46, 34, 255]),
     "static gradient ends at the configured substrate color",
+  );
+  const manifestFallback = Buffer.from(
+    scene.render_static_fallback(staticFallback.brightness),
+  );
+  assert.deepEqual(
+    manifestFallback.subarray(0, 4),
+    Buffer.from([6, 9, 8, 255]),
+    "fixture static-fallback brightness is applied at the canvas endpoint",
+  );
+  assert.deepEqual(
+    manifestFallback.subarray(manifestFallback.length - 4),
+    Buffer.from([15, 27, 20, 255]),
+    "fixture static-fallback brightness is applied at the substrate endpoint",
   );
   assert.deepEqual(
     Buffer.from(scene.render_rgba()),
