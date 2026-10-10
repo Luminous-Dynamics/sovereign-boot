@@ -1,14 +1,14 @@
 # Scene Pack v1 Interoperability Contract
 
-**Status:** integration design and gap inventory; the Scene Pack is not yet consumed by this renderer  
+**Status:** strict production parser and typed core mapping implemented on the hardening branch; exact-head qualification pending  
 **Source contract:** [Luminous Platform Scene Pack v1 schema](https://github.com/Luminous-Dynamics/luminous-platform/blob/a9ba54242d19579f5d84e03e8fae483678aa3f24/contracts/ambient-scene-pack-v1.schema.json)  
 **Source example:** [First Germination](https://github.com/Luminous-Dynamics/luminous-platform/blob/a9ba54242d19579f5d84e03e8fae483678aa3f24/contracts/examples/first-germination.scene.json)
 
 ## Decision
 
-Do not create a second mycelial simulation and do not pretend the current seed-phrase renderer is already a Scene Pack consumer. Qualify the existing visual core, then add a typed adapter from the validated Scene Pack to a versioned core-settings API.
+Do not create a second mycelial simulation. The hardening branch now contains `crates/visual-pack`, a strict parser for the pinned Scene Pack v1 contract that maps valid manifests into the existing `SceneSettings` API. It remains separate from the render loop and has no filesystem, network, display, GPU or OS lifecycle authority.
 
-The Scene Pack remains data, not executable code. JSON Schema validation, duplicate-key rejection, path and asset-hash checks belong in the loader/adapter boundary, outside the frame loop. The renderer receives an already-validated, bounded typed configuration.
+The parser rejects duplicate JSON object keys, unknown fields, invalid versions/IDs/colors/ranges, unsafe relative asset paths, duplicate identifiers, invalid safe regions, inconsistent branch budgets, unconsented inputs and unsupported required capabilities. It returns a private-field `ValidatedScenePack` with read-only getters plus a method to instantiate the shared core. Asset declarations are not read automatically: a host must supply an explicit `AssetHashProvider` whose implementation safely resolves files under the pack root and computes their SHA-256 digest; mismatch or unsafe resolution fails closed. This is a capability boundary, not a claim that the parser itself accesses files or computes hashes.
 
 ## Implemented core/API slice on the hardening branch
 
@@ -20,11 +20,11 @@ The canonical upstream First Germination JSON is pinned byte-for-byte at `tests/
 
 The renderer’s branch storage, dimensions and simulation timing state are now private to `visual-core`; adapters receive read-only accessors. Hosts cannot mutate a validated scene object to bypass dimension and branch settings after construction.
 
-**Still not implemented:** JSON/Scene Pack parsing and manifest/schema/path/hash validation, presentation-variant/safe-region selection, full adapter lifecycle enforcement, and whole-process memory accounting. The deterministic static gradient pixel generator now exists in core and is exposed through browser WASM and WIT; selection, presentation, visibility/suspend policy and static-fallback integration still belong to each host. Exact-head execution of the expanded WIT/Wasmtime path is still pending; source presence and unit-test definitions are not a pass. Therefore the project must not yet claim complete Scene Pack v1 compatibility or runtime qualification across WASM and WASI.
+**Still not implemented or qualified:** execution of the new parser's unit tests on the exact PR head; integration of `sovereign-visual-pack` into the production browser and Wasmtime host entry points; host-side safe asset resolution plus actual file SHA-256 verification; signed-pack/attribution policy; general composition mapping for all presentation variants and normalized safe regions; complete OS lock/suspend/wake lifecycle policy; and whole-process/runtime/compositor memory accounting. The parser validates the pinned conformance profile and provides a safe typed boundary, but the overall product must not yet be called fully Scene Pack v1 compatible. Exact-head CI and real runtime qualification remain pending.
 
 ## Current gaps to resolve
 
-The current core is a deterministic CPU reference, but the exposed APIs do not implement every Scene Pack v1 semantic.
+The core is a deterministic CPU reference and the parser validates the Scene Pack v1 manifest contract, but validated metadata is not yet consumed by every browser/WASI/native production host.
 
 | Scene Pack field | Meaning | Required implementation rule | Current implementation status |
 |---|---|---|---|
@@ -47,7 +47,7 @@ The current core is a deterministic CPU reference, but the exposed APIs do not i
 | `presentations.staticFallback` | Safe no-motion fallback | Produce a visible static fallback when animation/GPU is unavailable | **Primitive implemented.** Fixed-point gradient in core, browser WASM and WIT; selection/activation remains host policy |
 | `lifecycle.*` | Visibility/suspend/wake policy | Enforce in each host adapter | **Partial.** Browser pauses when hidden; lock/suspend/wake semantics for each OS are not qualified |
 
-The current core has hard ceilings of 8,192 branches and depth 24; default depth is 12. The scene-requested branch limit and `resourceBudget.maxBranches` are separate fields, each constrained by the hard ceiling, with the request required to fit the host ceiling. The configured memory estimate covers only the modeled renderer allocations described in `SceneSettings`; it does not cap the process, WASM runtime, compositor or browser allocations. A declared value must affect runtime behavior or fail closed.
+The current core has hard ceilings of 8,192 branches and depth 24; default depth is 12. The scene-requested branch limit and `resourceBudget.maxBranches` are separate fields, each constrained by the hard ceiling, with the request required to fit the host ceiling. The configured memory estimate covers only modeled renderer allocations; it does not cap the process, WASM runtime, compositor or browser allocations. For host-facing fields not implemented by the renderer, the parser preserves validated metadata so the selected adapter can apply it or explicitly decline an unsupported presentation/capability.
 
 ## Proposed typed settings boundary
 
@@ -91,6 +91,16 @@ Before claiming Scene Pack v1 support:
 The capability-denied Wasmtime host is the qualification path for the actual resource-based WIT API. The expanded harness now creates a configured scene, advances bounded fixed ticks, compares two independent WIT replays byte-for-byte, checks branch/memory limits, verifies failed reconfiguration is atomic, and explicitly disposes every resource. This test implementation is not evidence of a passing run until CI executes it against the exact head.
 
 Presentation and host lifecycle policy stay outside the guest. In particular, this component never authenticates users, changes the lock state, controls the boot transaction, or obtains direct display access.
+
+## Production parser API
+
+- Crate: `sovereign-visual-pack` in `crates/visual-pack`.
+- Entry point: `parse_scene_pack_v1(&[u8]) -> Result<ValidatedScenePack, ScenePackError>`.
+- Boundaries: 1 MiB manifest input; duplicate-key-aware JSON parsing; unknown-field rejection; typed versioned metadata; strict field/range and cross-field checks.
+- Host handoff: `ValidatedScenePack::settings()` exposes immutable effective settings; `instantiate(width, height)` constructs the same `MycelialNetwork` used by other adapters; `verify_asset_hashes(provider)` requires a trusted host-supplied resolver/digest provider.
+- Fixture: tests parse `tests/fixtures/first-germination.scene.json`, the byte-identical snapshot of the pinned upstream example. Tests are authored to reject duplicate keys, unknown fields, invalid IDs, budget contradictions, null optional values, asset traversal, invalid safe-region bounds and mismatched asset digests.
+
+The hand-written validator implements the v1 constraints used by the pinned schema rather than depending on a general JSON Schema engine. CI still has to compile/run this crate against the exact head, and an independent conformance corpus should compare schema-valid/schema-invalid examples against the upstream Draft 2020-12 schema before calling the parser fully qualified.
 
 ## Traceable source
 
