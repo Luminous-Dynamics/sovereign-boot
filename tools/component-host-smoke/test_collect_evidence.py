@@ -2,9 +2,16 @@
 """Unit tests for the source-bound Component Model evidence collector."""
 from __future__ import annotations
 
+import contextlib
+import hashlib
 import importlib.util
+import io
+import json
+import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 SCRIPT = Path(__file__).with_name("collect-evidence.py")
 SPEC = importlib.util.spec_from_file_location("component_evidence_collector", SCRIPT)
@@ -37,6 +44,69 @@ class EvidenceCollectorTests(unittest.TestCase):
     def test_source_path_must_exist(self) -> None:
         with self.assertRaises(ValueError):
             collector.file_record("does-not-exist-for-evidence-test.file")
+
+    def test_missing_assertion_prevents_pass_receipt(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            log = root / "runtime.log"
+            output = root / "qualification.json"
+            log.write_text(" ".join(collector.REQUIRED_MARKERS[:-1]), encoding="utf-8")
+            argv = [
+                str(SCRIPT),
+                "--component", str(root / "component.wasm"),
+                "--fixture", str(collector.ROOT / "tests/fixtures/first-germination.scene.json"),
+                "--lockfile", str(root / "Cargo.lock"),
+                "--runtime-log", str(log),
+                "--rustc-version", "rustc test-version",
+                "--output", str(output),
+            ]
+            with patch.object(sys, "argv", argv), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(2, collector.main())
+            self.assertFalse(output.exists(), "failed assertions must not produce a pass receipt")
+
+    def test_complete_record_binds_receipt_to_artifact_hashes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            component = root / "component.wasm"
+            lockfile = root / "Cargo.lock"
+            log = root / "runtime.log"
+            output = root / "qualification.json"
+            component_bytes = b"synthetic component bytes for collector unit test"
+            lock_bytes = b"synthetic host lock for collector unit test"
+            component.write_bytes(component_bytes)
+            lockfile.write_bytes(lock_bytes)
+            log.write_text(" ".join(collector.REQUIRED_MARKERS), encoding="utf-8")
+            fixture = collector.ROOT / "tests/fixtures/first-germination.scene.json"
+            argv = [
+                str(SCRIPT),
+                "--component", str(component),
+                "--fixture", str(fixture),
+                "--lockfile", str(lockfile),
+                "--runtime-log", str(log),
+                "--rustc-version", "rustc test-version",
+                "--output", str(output),
+            ]
+            mock_records = lambda relative: {"path": relative, "bytes": 1, "sha256": "a" * 64}
+            with (
+                patch.object(sys, "argv", argv),
+                patch.object(collector, "git_output", side_effect=["commit-test", "tree-test"]),
+                patch.object(collector, "file_record", side_effect=mock_records),
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                self.assertEqual(0, collector.main())
+            evidence = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual("pass", evidence["result"])
+            self.assertEqual("commit-test", evidence["source"]["commit"])
+            self.assertEqual("tree-test", evidence["source"]["tree"])
+            self.assertEqual(
+                hashlib.sha256(component_bytes).hexdigest(),
+                evidence["artifacts"]["component"]["sha256"],
+            )
+            self.assertEqual(
+                hashlib.sha256(lock_bytes).hexdigest(),
+                evidence["artifacts"]["host_lockfile"]["sha256"],
+            )
+            self.assertFalse(evidence["scope"]["physical_boot"])
 
 
 if __name__ == "__main__":
