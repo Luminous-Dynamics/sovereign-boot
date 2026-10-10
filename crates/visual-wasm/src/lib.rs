@@ -332,6 +332,9 @@ mod web {
     mod tests {
         use super::*;
 
+        const SCENE_PACK_FIXTURE: &str =
+            include_str!("../../../tests/fixtures/first-germination.scene.json");
+
         #[test]
         fn dimension_limits_are_shared_with_the_portable_core() {
             assert!(contract::validate_dimensions(0, 100).is_err());
@@ -361,6 +364,46 @@ mod web {
             assert_eq!(&fallback[fallback.len() - 4..], &[26, 46, 34, 255]);
             assert_eq!(scene.render_rgba(), before);
             assert!(scene.render_static_fallback(f32::NAN).is_err());
+        }
+
+        #[test]
+        fn scene_pack_loader_uses_shared_parser_and_selected_presentation() {
+            let scene = VisualScene::create_from_scene_pack(
+                32,
+                24,
+                SCENE_PACK_FIXTURE.as_bytes(),
+                "boot",
+            )
+            .unwrap();
+            assert_eq!(scene.scene_id(), "luminous.first-germination");
+            assert_eq!(scene.scene_version(), "0.1.0");
+            assert_eq!(scene.scene_title(), "First Germination");
+            assert_eq!(scene.fixed_step_hz(), 30);
+            assert_eq!(scene.presentation_max_fps(), 30);
+            assert!(!scene.is_static_fallback());
+
+            let static_scene = VisualScene::create_from_scene_pack(
+                16,
+                16,
+                SCENE_PACK_FIXTURE.as_bytes(),
+                "staticFallback",
+            )
+            .unwrap();
+            assert!(static_scene.is_static_fallback());
+            let fallback = static_scene.render_presented_rgba().unwrap();
+            assert_eq!(&fallback[0..4], &[6, 9, 8, 255]);
+            assert_eq!(&fallback[fallback.len() - 4..], &[15, 27, 20, 255]);
+
+            assert!(
+                VisualScene::create_from_scene_pack(
+                    32,
+                    24,
+                    SCENE_PACK_FIXTURE.as_bytes(),
+                    "desktop",
+                )
+                .is_err(),
+                "unsupported edge-biased/safe-region metadata must fail closed",
+            );
         }
 
         #[test]
