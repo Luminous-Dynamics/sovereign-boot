@@ -43,6 +43,11 @@ mod web {
             })
         }
 
+        /// Host-independent scene semantics version.
+        pub fn contract_version(&self) -> u32 {
+            u32::from(contract::SCENE_CONTRACT_VERSION)
+        }
+
         /// Advance by the shared portable step contract and normalized activity.
         pub fn advance(&mut self, dt_seconds: f32, activity: f32) -> Result<(), JsError> {
             contract::validate_step(dt_seconds, activity).map_err(step_error)?;
