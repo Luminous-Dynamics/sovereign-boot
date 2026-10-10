@@ -31,6 +31,25 @@ class EvidenceCollectorTests(unittest.TestCase):
                 log = " ".join(m for m in collector.REQUIRED_MARKERS if m != missing)
                 self.assertIn(missing, collector.missing_required_markers(log))
 
+    def test_markers_split_across_lines_do_not_form_a_receipt(self) -> None:
+        midpoint = len(collector.REQUIRED_MARKERS) // 2
+        first = " ".join(collector.REQUIRED_MARKERS[:midpoint])
+        second = " ".join(collector.REQUIRED_MARKERS[midpoint:])
+        self.assertIn(
+            "exactly one component_runtime receipt line",
+            collector.missing_required_markers(first + "\\n" + second),
+        )
+
+    def test_duplicate_receipt_lines_are_rejected(self) -> None:
+        line = " ".join(collector.REQUIRED_MARKERS)
+        self.assertIn(
+            "exactly one component_runtime receipt line",
+            collector.missing_required_markers(line + "\\n" + line),
+        )
+
+    def test_generated_host_lock_is_artifact_not_committed_source(self) -> None:
+        self.assertNotIn("tools/component-host-smoke/Cargo.lock", collector.SOURCE_PATHS)
+
     def test_source_file_record_has_byte_count_and_sha256(self) -> None:
         record = collector.file_record("tests/fixtures/first-germination.scene.json")
         self.assertEqual("tests/fixtures/first-germination.scene.json", record["path"])

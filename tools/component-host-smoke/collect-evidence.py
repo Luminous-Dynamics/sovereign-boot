@@ -21,8 +21,14 @@ REQUIRED_MARKERS = (
     "resources=dropped",
 )
 def missing_required_markers(log_text: str) -> list[str]:
-    """Return success markers not present in the component host's receipt line."""
-    return [marker for marker in REQUIRED_MARKERS if marker not in log_text]
+    """Require one explicit host receipt line containing every assertion marker."""
+    receipt_lines = [
+        line for line in log_text.splitlines()
+        if line.startswith("component_runtime=")
+    ]
+    if len(receipt_lines) != 1:
+        return ["exactly one component_runtime receipt line"]
+    return [marker for marker in REQUIRED_MARKERS if marker not in receipt_lines[0]]
 
 
 SOURCE_PATHS = (
@@ -34,7 +40,6 @@ SOURCE_PATHS = (
     "crates/visual-component/wit/visual.wit",
     "tools/component-host-smoke/Cargo.toml",
     "tools/component-host-smoke/src/main.rs",
-    "tools/component-host-smoke/Cargo.lock",
 )
 
 
