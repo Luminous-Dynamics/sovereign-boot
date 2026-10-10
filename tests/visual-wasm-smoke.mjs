@@ -25,6 +25,32 @@ assert.equal(typeof bindings.VisualScene, "function");
 assert.equal(typeof bindings.initSync, "function");
 bindings.initSync({ module: wasmModule });
 
+// Use the pinned upstream Scene Pack example as shared test data. This smoke
+// test maps known fields into the typed API; it is not a schema/manifest loader.
+const scenePack = JSON.parse(
+  await readFile(resolve("tests/fixtures/first-germination.scene.json"), "utf8"),
+);
+assert.equal(scenePack.schemaVersion, 1);
+assert.equal(scenePack.simulation.engine, "mycelial-network-v1");
+const simulation = scenePack.simulation;
+const parameters = simulation.parameters;
+const resourceBudget = scenePack.resourceBudget;
+const staticFallback = scenePack.presentations.staticFallback;
+const rgb = (hex) => {
+  assert.match(hex, /^#[0-9A-Fa-f]{6}$/);
+  return [0, 2, 4].map((offset) => Number.parseInt(hex.slice(offset + 1, offset + 3), 16));
+};
+const scenePackPalette = Uint8Array.from([
+  ...rgb(scenePack.palette.canvas),
+  ...rgb(scenePack.palette.substrate),
+  ...rgb(scenePack.palette.filament),
+  ...rgb(scenePack.palette.node),
+  ...rgb(scenePack.palette.lichen),
+  ...rgb(scenePack.palette.glow),
+]);
+assert.ok(parameters.branchLimit <= resourceBudget.maxBranches);
+assert.ok(simulation.fixedStepHz >= 1 && simulation.fixedStepHz <= 120);
+
 function renderFixture(seed) {
   const scene = new bindings.VisualScene(32, 24, seed);
   assert.equal(scene.width(), 32);
@@ -59,19 +85,17 @@ assert.equal(
   "browser adapter exposes the configured numeric-seed constructor",
 );
 
-const scenePackPalette = Uint8Array.from([
-  10, 16, 14,       // canvas
-  26, 46, 34,       // substrate
-  126, 200, 160,    // filament
-  232, 197, 71,     // node
-  90, 107, 94,      // lichen
-  118, 217, 193,    // glow
-]);
 
 function renderConfiguredFixture() {
   const scene = bindings.VisualScene.createConfigured(
-    32, 24, 20261010,
-    2048, 10, 0.28, 30, 7.5, 0.12, 128,
+    32, 24, simulation.seed,
+    parameters.branchLimit,
+    parameters.maxDepth,
+    parameters.growthRate,
+    simulation.fixedStepHz,
+    parameters.pulsePeriodSeconds,
+    parameters.driftAmplitude,
+    resourceBudget.maxMemoryMiB,
     scenePackPalette,
   );
   assert.equal(scene.contract_version(), 1);
@@ -105,16 +129,16 @@ function renderConfiguredFixture() {
     "configured canvas color is applied before stepping",
   );
   assert.throws(
-    () => scene.advance_ticks(121, 0.7),
+    () => scene.advance_ticks(simulation.fixedStepHz + 1, 0.7),
     /tick batch must/i,
     "simulation catch-up cannot exceed the core batch ceiling",
   );
-  for (let i = 0; i < 120; i += 1) {
+  for (let i = 0; i < simulation.fixedStepHz * 4; i += 1) {
     scene.advance_ticks(1, 0.7);
   }
   const frame = Buffer.from(scene.render_rgba());
   assert.equal(frame.length, 32 * 24 * 4);
-  assert.ok(scene.branch_count() <= 2048);
+  assert.ok(scene.branch_count() <= resourceBudget.maxBranches);
   scene.free();
   return frame;
 }
@@ -135,7 +159,9 @@ assert.throws(
 variableModeScene.free();
 
 const fixedModeScene = bindings.VisualScene.createConfigured(
-  16, 16, 20261010, 2048, 10, 0.28, 30, 7.5, 0.12, 128, scenePackPalette,
+  16, 16, simulation.seed, parameters.branchLimit, parameters.maxDepth,
+  parameters.growthRate, simulation.fixedStepHz, parameters.pulsePeriodSeconds,
+  parameters.driftAmplitude, resourceBudget.maxMemoryMiB, scenePackPalette,
 );
 fixedModeScene.advance_ticks(1, 0.7);
 assert.throws(
@@ -146,13 +172,17 @@ assert.throws(
 fixedModeScene.free();
 assert.throws(
   () => bindings.VisualScene.createConfigured(
-    32, 24, 20261010, 0, 10, 0.28, 30, 7.5, 0.12, 128, scenePackPalette,
+    32, 24, simulation.seed, 0, parameters.maxDepth, parameters.growthRate,
+    simulation.fixedStepHz, parameters.pulsePeriodSeconds, parameters.driftAmplitude,
+    resourceBudget.maxMemoryMiB, scenePackPalette,
   ),
   /branch_limit/i,
 );
 assert.throws(
   () => bindings.VisualScene.createConfigured(
-    32, 24, 20261010, 2048, 10, 0.28, 30, 7.5, 0.12, 128, new Uint8Array(17),
+    32, 24, simulation.seed, parameters.branchLimit, parameters.maxDepth,
+    parameters.growthRate, simulation.fixedStepHz, parameters.pulsePeriodSeconds,
+    parameters.driftAmplitude, resourceBudget.maxMemoryMiB, new Uint8Array(17),
   ),
   /18 bytes/i,
 );
