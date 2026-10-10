@@ -1,6 +1,6 @@
 # Platform Portability: Sovereign Visual System
 
-**Status:** architecture proposal; not a claim of current platform support  
+**Status:** architecture plus an initial portable-core/WASM/WASI implementation slice; compile/test qualification and all native surface integrations remain pending  
 **Reviewed:** 2026-10-10  
 **Scope:** the long-term visual system built around Sovereign Boot's Rust animation work
 
@@ -14,11 +14,11 @@ Sovereign Boot must remain optional and fail safely. It must never become necess
 
 ## Separate the portable core from the host
 
-Target architecture (proposed; these crates/interfaces are not all implemented yet):
+Target architecture; the first visual-core, browser-WASM and headless-WASI packages have been added on the hardening branch, but exact-head qualification is pending and native desktop/mobile/TV/privileged adapters remain unimplemented:
 
-- **Visual core (Rust):** scene state, procedural growth, deterministic seeds, palette/theme, animation timeline, accessibility settings, lifecycle-independent transitions, and bounded resource policies. No DRM, window handles, Android services, UIKit, or OS-specific filesystem assumptions.
+- **Visual core (Rust):** `crates/visual-core` now owns the extracted mycelial scene state, deterministic seed, palette and CPU pixel renderer with no DRM dependency. Accessibility settings, schema-versioned lifecycle events, serializable scene state and power/thermal policy are still work to add.
 - **Scene contract:** versioned, typed inputs and events; explicit dimensions, scale, color space, frame timing, lifecycle, reduced-motion, pause/resume, and power/thermal hints. Scene state must be serializable for deterministic replay and cross-platform regression tests.
-- **Renderer backends:** keep direct DRM/KMS as a Linux boot-only backend; add compositor/window-backed desktop rendering; use native mobile rendering surfaces; add web/canvas or GPU-backed implementations where their runtime is available. Use a CPU/static-frame fallback for constrained targets.
+- **Renderer backends:** direct DRM/KMS remains the Linux boot-only backend. `crates/visual-wasm` returns RGBA frame bytes for a host-owned browser canvas, and `crates/visual-wasi` emits a headless PPM frame; neither owns a display. Compositor/window, native mobile/TV, component-model WIT, and GPU-backed implementations remain future work.
 - **Native adapters:** thin Swift/SwiftUI, Kotlin/Android, Windows, browser, and TV platform glue where each platform requires it. Keep substantive animation/state logic in Rust and expose a small stable C ABI or the platform's supported Rust bridge. Do not force a single UI toolkit into privileged shell, mobile, and TV surfaces.
 - **Surface-specific lifecycle adapters:** boot splash, desktop wallpaper, screensaver/ambient mode, app visualizer, widgets/at-a-glance UI, and system lock/login surfaces are different integrations—not one generic full-screen process.
 
@@ -112,4 +112,4 @@ These official references illustrate why separate adapters are required; they ar
 
 ## Current truth
 
-As of this document's review date, Sovereign Boot is not a cross-platform product. The public repository's immediate deliverable is a Linux DRM/KMS renderer and its NixOS integration; cross-platform scene-core extraction and all other adapters are planned work. This document defines the architecture and evidence required to earn those claims, not completed compatibility.
+As of this document's review date, Sovereign Boot is not a cross-platform product. The hardening branch now contains a portable Rust scene crate, a browser-oriented WASM binding crate, and a headless WASI PPM-output executable; their exact-head CI builds and tests are pending. Symthaea separately already has its own browser-targeted Spore WASM kernel, but that is not the same ABI as the visual renderer. No desktop wallpaper, phone wallpaper, TV screensaver, lock/login screen, firmware splash, or OEM integration is implied by a successful portable-core build. This document defines the evidence required to earn those claims.
