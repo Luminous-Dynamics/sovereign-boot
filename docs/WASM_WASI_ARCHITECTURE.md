@@ -82,7 +82,7 @@ A dedicated `sovereign-visual-pack` crate now parses the pinned Scene Pack v1 ma
 
 The parser does not open asset paths or call operating-system APIs. Asset verification is delegated through an explicit `AssetHashProvider` so the host can enforce pack-root containment (including symlink checks) and compute SHA-256 under its own policy. This is the correct trust boundary for browser/native hosts and keeps the WASM/WASI guest capability-denied.
 
-This is implementation presence, not a qualification pass: exact-head CI is still pending, and the parser must be compared against a negative/positive corpus generated from the authoritative Draft 2020-12 schema before claiming complete schema conformance. Wiring the validated pack directly into the browser app and the production Wasmtime/WASI host, plus host-specific asset resolution and lifecycle/presentation policy, remains follow-on work.
+The WASI CLI now accepts `--scene-pack-stdin` and renders the centered-network `boot` profile or gradient-only `staticFallback`; unsupported compositions, safe regions, inputs, required capabilities and packs with assets fail closed. The capability-denied Wasmtime qualification harness uses the same production parser before adapting the typed settings into WIT. This is implementation presence, not a qualification pass: exact-head CI is still pending, and the parser must be compared against a positive/negative corpus generated from the authoritative Draft 2020-12 schema before claiming complete schema conformance. The browser demo, general host asset resolver, and full lifecycle/presentation adapters remain follow-on work.
 
 ## WASM and WASI are complementary, not interchangeable
 
