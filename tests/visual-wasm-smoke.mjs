@@ -25,8 +25,9 @@ assert.equal(typeof bindings.VisualScene, "function");
 assert.equal(typeof bindings.initSync, "function");
 bindings.initSync({ module: wasmModule });
 
-// Use the pinned upstream Scene Pack example as shared test data. This smoke
-// test maps known fields into the typed API; it is not a schema/manifest loader.
+// Use the byte-pinned upstream Scene Pack as the shared cross-target input.
+// The test covers both direct typed-API compatibility and the production strict
+// parser path; it runs under Node and does not claim real-browser presentation.
 const scenePackBytes = await readFile(
   resolve("tests/fixtures/first-germination.scene.json"),
 );
