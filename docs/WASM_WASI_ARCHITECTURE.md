@@ -76,6 +76,14 @@ The WIT Component Model now carries the same typed settings record (numeric seed
 
 The core now generates Scene Pack v1's deterministic canvas-to-substrate gradient as an opaque RGBA8 frame, and both browser WASM and WIT expose it as a non-mutating static-fallback operation with brightness bounds. This is the fallback renderer primitive, not a loader or presentation-selection system. The project still does not parse Scene Pack JSON, interpret presentation variants/safe regions, enforce lifecycle across hosts, or prove a whole-process memory limit. Do not call the overall product Scene Pack v1 compatible until those gaps are implemented and qualified.
 
+## Scene Pack validation boundary
+
+A dedicated `sovereign-visual-pack` crate now parses the pinned Scene Pack v1 manifest outside the real-time renderer. It rejects duplicate JSON keys, unknown fields, malformed identifiers/versions/colors, unsafe asset paths, invalid ranges/safe regions, contradictory scene/host branch budgets, and unconsented inputs. It returns an immutable typed `ValidatedScenePack` and can instantiate the shared core settings.
+
+The parser does not open asset paths or call operating-system APIs. Asset verification is delegated through an explicit `AssetHashProvider` so the host can enforce pack-root containment (including symlink checks) and compute SHA-256 under its own policy. This is the correct trust boundary for browser/native hosts and keeps the WASM/WASI guest capability-denied.
+
+This is implementation presence, not a qualification pass: exact-head CI is still pending, and the parser must be compared against a negative/positive corpus generated from the authoritative Draft 2020-12 schema before claiming complete schema conformance. Wiring the validated pack directly into the browser app and the production Wasmtime/WASI host, plus host-specific asset resolution and lifecycle/presentation policy, remains follow-on work.
+
 ## WASM and WASI are complementary, not interchangeable
 
 - `wasm32-unknown-unknown` is a minimal WebAssembly target typically paired with JavaScript bindings in a browser. Web APIs are supplied by the browser host, not by WASI.
