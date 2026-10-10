@@ -5,25 +5,25 @@
 
 #[cfg(feature = "web")]
 mod web {
-    use sovereign_visual_core::mycelium::MycelialNetwork;
+    use sovereign_visual_core::{
+        contract::{self, DimensionsError, StepError},
+        mycelium::MycelialNetwork,
+    };
     use wasm_bindgen::prelude::*;
 
-    const MAX_DIMENSION: u32 = 4096;
-    const MAX_PIXELS: u64 = 8_294_400; // 3840x2160 ceiling; hosts may request less.
+    fn dimension_error(error: DimensionsError) -> JsError {
+        JsError::new(match error {
+            DimensionsError::Zero => "frame dimensions must be nonzero",
+            DimensionsError::DimensionTooLarge => "frame dimensions exceed per-side limit",
+            DimensionsError::PixelBudgetExceeded => "frame dimensions exceed pixel budget",
+        })
+    }
 
-    fn validate_dimensions(width: u32, height: u32) -> Result<(), JsError> {
-        let pixels = u64::from(width) * u64::from(height);
-        if width == 0
-            || height == 0
-            || width > MAX_DIMENSION
-            || height > MAX_DIMENSION
-            || pixels > MAX_PIXELS
-        {
-            return Err(JsError::new(
-                "frame dimensions exceed Sovereign Visual Core limits",
-            ));
-        }
-        Ok(())
+    fn step_error(error: StepError) -> JsError {
+        JsError::new(match error {
+            StepError::InvalidDelta => "dt_seconds must be finite and in 0..=0.25",
+            StepError::InvalidActivity => "activity must be finite and in 0..=1",
+        })
     }
 
     /// Deterministic, host-driven scene. It never accesses DOM or display APIs.
@@ -37,24 +37,15 @@ mod web {
         /// Construct a scene from dimensions and a deterministic seed phrase.
         #[wasm_bindgen(constructor)]
         pub fn new(width: u32, height: u32, seed: &str) -> Result<VisualScene, JsError> {
-            validate_dimensions(width, height)?;
+            contract::validate_dimensions(width, height).map_err(dimension_error)?;
             Ok(Self {
                 network: MycelialNetwork::new(width, height, seed),
             })
         }
 
-        /// Advance by a bounded frame delta (0–250ms) and normalized activity.
+        /// Advance by the shared portable step contract and normalized activity.
         pub fn advance(&mut self, dt_seconds: f32, activity: f32) -> Result<(), JsError> {
-            if !dt_seconds.is_finite() || !(0.0..=0.25).contains(&dt_seconds) {
-                return Err(JsError::new(
-                    "dt_seconds must be finite and in 0..=0.25",
-                ));
-            }
-            if !activity.is_finite() || !(0.0..=1.0).contains(&activity) {
-                return Err(JsError::new(
-                    "activity must be finite and in 0..=1",
-                ));
-            }
+            contract::validate_step(dt_seconds, activity).map_err(step_error)?;
             self.network.grow(dt_seconds, activity);
             Ok(())
         }
@@ -64,9 +55,9 @@ mod web {
             self.network.pulse();
         }
 
-        /// Contract the scene to its center.
+        /// Contract the scene to its center. Finite progress is clamped by core.
         pub fn contract(&mut self, progress: f32) -> Result<(), JsError> {
-            if !progress.is_finite() {
+            if !contract::valid_progress(progress) {
                 return Err(JsError::new("contraction progress must be finite"));
             }
             self.network.contract(progress);
@@ -96,11 +87,17 @@ mod web {
         use super::*;
 
         #[test]
-        fn dimension_limits_are_explicit() {
-            assert!(validate_dimensions(0, 100).is_err());
-            assert!(validate_dimensions(1920, 1080).is_ok());
-            assert!(validate_dimensions(3840, 2160).is_ok());
-            assert!(validate_dimensions(4096, 2160).is_err());
+        fn dimension_limits_are_shared_with_the_portable_core() {
+            assert!(contract::validate_dimensions(0, 100).is_err());
+            assert!(contract::validate_dimensions(1920, 1080).is_ok());
+            assert!(contract::validate_dimensions(3840, 2160).is_ok());
+            assert!(contract::validate_dimensions(4096, 2160).is_err());
+        }
+
+        #[test]
+        fn progress_validation_matches_the_shared_contract() {
+            assert!(contract::valid_progress(2.0));
+            assert!(!contract::valid_progress(f32::NAN));
         }
     }
 }
