@@ -138,7 +138,7 @@ impl MycelialNetwork {
             return Err(SceneSettingsError::InvalidActivity);
         }
         let dt = 1.0 / self.settings.fixed_step_hz as f32;
-        self.grow(dt, activity);
+        self.grow_internal(dt, activity, false);
         self.simulation_ticks = self.simulation_ticks.saturating_add(1);
         if self.simulation_ticks % self.settings.pulse_interval_ticks() == 0 {
             self.pulse();
@@ -185,9 +185,16 @@ impl MycelialNetwork {
         &self.settings
     }
 
-    /// Advance the simulation by dt seconds.
-    /// io_rate controls growth speed (0.0 = dormant, 1.0 = maximum growth).
+    /// Advance the legacy variable-delta API.
+    ///
+    /// For backward compatibility, this path preserves its historical minimum
+    /// crawl at zero activity. New settings-driven hosts should use
+    /// advance_tick/advance_ticks, where zero activity truly pauses growth.
     pub fn grow(&mut self, dt: f32, io_rate: f32) {
+        self.grow_internal(dt, io_rate, true);
+    }
+
+    fn grow_internal(&mut self, dt: f32, io_rate: f32, minimum_crawl: bool) {
         self.elapsed += dt;
 
         // Decay global pulse
@@ -202,7 +209,12 @@ impl MycelialNetwork {
             }
         }
 
-        let growth_speed = 30.0 * io_rate.max(0.0) * self.settings.growth_rate;
+        let effective_activity = if minimum_crawl {
+            io_rate.max(0.05)
+        } else {
+            io_rate.max(0.0)
+        };
+        let growth_speed = 30.0 * effective_activity * self.settings.growth_rate;
 
         // Grow existing branches
         let mut new_branches: Vec<Branch> = Vec::new();
