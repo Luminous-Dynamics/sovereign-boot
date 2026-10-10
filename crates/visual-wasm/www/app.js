@@ -125,7 +125,7 @@ function makeScene() {
     status.textContent = "Animation paused. Restart reinitializes the same pinned Scene Pack seed.";
   } else {
     status.textContent =
-      `First Germination · Scene Pack ${scene.sceneVersion()} · ${targetFps} FPS cap · local WebAssembly rendering.`;
+      `First Germination · Scene Pack ${scene.sceneVersion()} · ${targetFps} FPS cap`;
     startLoop();
   }
   updateControls();
@@ -196,7 +196,7 @@ try {
     scene = null;
   }
   status.textContent =
-    "WebAssembly or the pinned Scene Pack could not be loaded. Rebuild the demo and serve the generated directory over HTTP.";
+    "WebAssembly or the pinned Scene Pack could not be loaded. Rebuild the demo and serve it over HTTP.";
   pauseButton.disabled = true;
   restartButton.disabled = true;
 }
