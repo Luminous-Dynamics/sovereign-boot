@@ -120,6 +120,158 @@ fn validate_options(options: &Options) -> Result<(), String> {
     Ok(())
 }
 
+fn parse_presentation(value: Option<&str>) -> Result<PresentationVariant, String> {
+    match value.unwrap_or("boot") {
+        "boot" => Ok(PresentationVariant::Boot),
+        "desktop" => Ok(PresentationVariant::Desktop),
+        "idle" => Ok(PresentationVariant::Idle),
+        "lockedBackground" => Ok(PresentationVariant::LockedBackground),
+        "staticFallback" => Ok(PresentationVariant::StaticFallback),
+        other => Err(format!(
+            "unsupported presentation {other:?}; choose boot, desktop, idle, lockedBackground, or staticFallback"
+        )),
+    }
+}
+
+/// Produce one deterministic RGBA8 image using the validated Scene Pack.
+/// This CPU WASI renderer supports centered-network and gradient-only
+/// compositions; it fails closed rather than silently ignoring metadata.
+fn render_scene_pack_rgba(
+    pack: &ValidatedScenePack,
+    variant: PresentationVariant,
+    width: u32,
+    height: u32,
+    steps: u32,
+    activity: f32,
+) -> Result<Vec<u8>, String> {
+    if !pack.assets().is_empty() {
+        return Err(
+            "this WASI renderer has no safe asset resolver/hash provider; packs with assets are unsupported"
+                .into(),
+        );
+    }
+    if !pack.capabilities().required.is_empty() {
+        return Err(
+            "this CPU WASI renderer cannot satisfy the Scene Pack's required capabilities".into(),
+        );
+    }
+    if !pack.inputs().is_empty() {
+        return Err(
+            "this WASI renderer does not implement Scene Pack inputs; refusing to ignore them".into(),
+        );
+    }
+
+    let presentation = pack.presentations().get(variant);
+    if !presentation.safe_regions.is_empty() {
+        return Err(
+            "this CPU WASI renderer does not yet apply presentation safeRegions".into(),
+        );
+    }
+
+    let mut scene = pack
+        .instantiate(width, height)
+        .map_err(|error| error.to_string())?;
+
+    if presentation.composition == Composition::GradientOnly {
+        if variant != PresentationVariant::StaticFallback || presentation.motion != Motion::None {
+            return Err(
+                "gradient-only composition is implemented only for the staticFallback presentation"
+                    .into(),
+            );
+        }
+        return scene
+            .render_static_fallback(presentation.brightness)
+            .map_err(|error| error.to_string());
+    }
+
+    if presentation.motion == Motion::None {
+        return Err(
+            "a motion=none presentation must use the supported gradient-only static fallback"
+                .into(),
+        );
+    }
+    if presentation.composition != Composition::CenteredNetwork {
+        return Err(format!(
+            "presentation composition {:?} is not implemented by this CPU WASI renderer",
+            presentation.composition
+        ));
+    }
+
+    let ticks_per_second = scene.settings().fixed_step_hz.min(120);
+    let mut remaining = steps;
+    while remaining > 0 {
+        let batch = remaining.min(ticks_per_second);
+        scene
+            .advance_ticks(batch, activity)
+            .map_err(|error| error.to_string())?;
+        remaining -= batch;
+    }
+
+    let mut rgba = scene.render_rgba();
+    apply_brightness(&mut rgba, presentation.brightness);
+    Ok(rgba)
+}
+
+/// Fixed-point brightness transfer shared by the one-frame PPM host.
+fn apply_brightness(rgba: &mut [u8], brightness: f32) {
+    const Q16_ONE: u64 = 65_535;
+    let multiplier = (f64::from(brightness) * Q16_ONE as f64).round() as u64;
+    for pixel in rgba.chunks_exact_mut(4) {
+        for channel in &mut pixel[..3] {
+            *channel = ((u64::from(*channel) * multiplier + Q16_ONE / 2) / Q16_ONE) as u8;
+        }
+    }
+}
+
+fn write_ppm_rgba(
+    width: u32,
+    height: u32,
+    rgba: &[u8],
+    stdout: &mut impl Write,
+) -> io::Result<()> {
+    let expected_bytes = (u64::from(width) * u64::from(height) * 4) as usize;
+    if rgba.len() != expected_bytes {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("invalid RGBA frame length: {} (expected {expected_bytes})", rgba.len()),
+        ));
+    }
+    write!(stdout, "P6\n{} {}\n255\n", width, height)?;
+    let mut row = Vec::with_capacity(width as usize * 3);
+    for y in 0..height as usize {
+        row.clear();
+        let start = y * width as usize * 4;
+        for pixel in rgba[start..start + width as usize * 4].chunks_exact(4) {
+            row.extend_from_slice(&pixel[..3]);
+        }
+        stdout.write_all(&row)?;
+    }
+    Ok(())
+}
+
+/// Read a bounded manifest from stdin; WASI grants access only if the host
+/// connects stdin. Asset-backed or capability-requiring packs are rejected.
+fn render_scene_pack_ppm(options: &Options, stdout: &mut impl Write) -> Result<(), String> {
+    let mut bytes = Vec::new();
+    io::stdin()
+        .lock()
+        .take((MAX_MANIFEST_BYTES as u64) + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("failed to read Scene Pack from stdin: {error}"))?;
+    let pack = parse_scene_pack_v1(&bytes).map_err(|error| error.to_string())?;
+    let variant = parse_presentation(options.presentation.as_deref())?;
+    let rgba = render_scene_pack_rgba(
+        &pack,
+        variant,
+        options.width,
+        options.height,
+        options.steps,
+        options.activity,
+    )?;
+    write_ppm_rgba(options.width, options.height, &rgba, stdout)
+        .map_err(|error| format!("PPM output failed: {error}"))
+}
+
 fn render_ppm(options: &Options, stdout: &mut impl Write) -> io::Result<()> {
     let mut network =
         MycelialNetwork::new(options.width, options.height, &options.seed);
@@ -167,9 +319,19 @@ fn main() -> ExitCode {
 
     if options.help {
         eprintln!(
-            "Usage: sovereign-visual-wasi [--width N] [--height N] [--seed TEXT] [--steps N] [--activity 0..1] [--contract-version]\nWrites a binary PPM (P6) frame to stdout."
+            "Usage: sovereign-visual-wasi [--width N] [--height N] [--seed TEXT] [--steps N] [--activity 0..1] [--contract-version] [--scene-pack-stdin [--presentation boot|desktop|idle|lockedBackground|staticFallback]]\nWrites one binary PPM (P6) frame to stdout. Scene Pack JSON is read from stdin when requested; only the centered-network boot profile and gradient-only staticFallback are currently supported."
         );
         return ExitCode::SUCCESS;
+    }
+
+    if options.scene_pack_stdin {
+        return match render_scene_pack_ppm(&options, &mut io::stdout().lock()) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("sovereign-visual-wasi: Scene Pack render failed: {error}");
+                ExitCode::from(2)
+            }
+        };
     }
 
     match render_ppm(&options, &mut io::stdout().lock()) {
