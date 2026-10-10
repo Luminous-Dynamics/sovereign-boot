@@ -143,6 +143,14 @@ mod web {
             self.network.render_rgba()
         }
 
+        /// Render the deterministic non-animated gradient fallback without
+        /// mutating scene state. Intended for reduced motion or renderer failure.
+        pub fn render_static_fallback(&self, brightness: f32) -> Result<Vec<u8>, JsError> {
+            self.network
+                .render_static_fallback(brightness)
+                .map_err(settings_error)
+        }
+
         pub fn width(&self) -> u32 {
             self.network.width
         }
@@ -172,6 +180,23 @@ mod web {
         fn progress_validation_matches_the_shared_contract() {
             assert!(contract::valid_progress(2.0));
             assert!(!contract::valid_progress(f32::NAN));
+        }
+
+        #[test]
+        fn static_fallback_returns_configured_gradient_and_rejects_bad_brightness() {
+            let palette = vec![
+                10, 16, 14, 26, 46, 34, 126, 200, 160, 232, 197, 71, 90, 107, 94, 118, 217, 193,
+            ];
+            let scene = VisualScene::create_configured(
+                2, 2, 20261010, 2048, 10, 0.28, 30, 7.5, 0.12, 128, palette,
+            )
+            .unwrap();
+            let before = scene.render_rgba();
+            let fallback = scene.render_static_fallback(1.0).unwrap();
+            assert_eq!(&fallback[0..4], &[10, 16, 14, 255]);
+            assert_eq!(&fallback[fallback.len() - 4..], &[26, 46, 34, 255]);
+            assert_eq!(scene.render_rgba(), before);
+            assert!(scene.render_static_fallback(f32::NAN).is_err());
         }
 
         #[test]
