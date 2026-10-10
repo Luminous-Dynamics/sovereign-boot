@@ -53,6 +53,58 @@ assert.deepEqual(
   "same seed and steps should yield identical RGBA output",
 );
 
+assert.equal(
+  typeof bindings.VisualScene.createConfigured,
+  "function",
+  "browser adapter exposes the configured numeric-seed constructor",
+);
+
+const scenePackPalette = Uint8Array.from([
+  10, 16, 14,       // canvas
+  26, 46, 34,       // substrate
+  126, 200, 160,    // filament
+  232, 197, 71,     // node
+  90, 107, 94,      // lichen
+  118, 217, 193,    // glow
+]);
+
+function renderConfiguredFixture() {
+  const scene = bindings.VisualScene.createConfigured(
+    32, 24, 20261010,
+    2048, 10, 0.28, 30, 7.5, 0.12, 128,
+    scenePackPalette,
+  );
+  assert.equal(scene.contract_version(), 1);
+  assert.equal(scene.width(), 32);
+  assert.equal(scene.height(), 24);
+  for (let i = 0; i < 120; i += 1) {
+    scene.advance_ticks(1, 0.7);
+  }
+  const frame = Buffer.from(scene.render_rgba());
+  assert.equal(frame.length, 32 * 24 * 4);
+  assert.ok(scene.branch_count() <= 2048);
+  scene.free();
+  return frame;
+}
+
+assert.deepEqual(
+  renderConfiguredFixture(),
+  renderConfiguredFixture(),
+  "numeric seed and typed settings must replay to identical RGBA bytes",
+);
+assert.throws(
+  () => bindings.VisualScene.createConfigured(
+    32, 24, 20261010, 0, 10, 0.28, 30, 7.5, 0.12, 128, scenePackPalette,
+  ),
+  /branch_limit/i,
+);
+assert.throws(
+  () => bindings.VisualScene.createConfigured(
+    32, 24, 20261010, 2048, 10, 0.28, 30, 7.5, 0.12, 128, new Uint8Array(17),
+  ),
+  /18 bytes/i,
+);
+
 const nativeFrame = await readFile(resolve(process.argv[3]));
 assert.equal(nativeFrame.length, 32 * 24 * 4);
 assert.deepEqual(
