@@ -245,6 +245,18 @@ mod tests {
     }
 
     #[test]
+    fn wit_resource_rejects_mixed_variable_and_fixed_step_modes() {
+        let variable = <VisualScene as GuestVisualScene>::new(16, 16, "variable".to_owned());
+        variable.advance(1.0 / 30.0, 0.7).unwrap();
+        assert!(variable.advance_ticks(1, 0.7).is_err());
+
+        let fixed = <VisualScene as GuestVisualScene>::new(16, 16, "fixed".to_owned());
+        fixed.configure(32, 24, sample_wit_settings(2048)).unwrap();
+        fixed.advance_ticks(1, 0.7).unwrap();
+        assert!(fixed.advance(1.0 / 30.0, 0.7).is_err());
+    }
+
+    #[test]
     fn failed_wit_reconfiguration_is_atomic_and_batches_are_bounded() {
         let guest = <VisualScene as GuestVisualScene>::new(32, 24, "legacy".to_owned());
         assert!(guest.configure(48, 24, sample_wit_settings(8193)).is_err());
