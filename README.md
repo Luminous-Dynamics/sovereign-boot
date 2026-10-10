@@ -26,6 +26,8 @@ The repository intentionally does not pretend that an extracted source tree is a
 
 The long-term architecture and honest per-platform boundaries are documented in [Platform Portability](docs/PLATFORM_PORTABILITY.md). This is a roadmap, not a claim that Windows, macOS, mobile, or TV adapters exist today.
 
+A first portable implementation slice is now present on the hardening branch: `crates/visual-core` contains the Rust scene simulation, `crates/visual-wasm` exposes a browser RGBA API, and `crates/visual-wasi` is a headless WASI PPM-output proof. Exact-head compile/test qualification is pending; none of these packages, by itself, is a desktop wallpaper, phone live wallpaper, TV screensaver, lock screen, or firmware integration. See [WASM/WASI Architecture](docs/WASM_WASI_ARCHITECTURE.md) for the distinction and next gates.
+
 ## Safe first test
 
 Before allowing the renderer to take display ownership, probe the DRM path without creating a framebuffer or changing CRTC state:
