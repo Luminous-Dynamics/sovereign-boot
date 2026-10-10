@@ -74,7 +74,7 @@ The browser adapter adds a configured constructor accepting a uint32 seed, bound
 
 The WIT Component Model now carries the same typed settings record (numeric seed, palette roles, growth/depth limits, tick frequency, pulse period, drift and memory budget) through an atomic resource reconfiguration method, plus bounded fixed-tick advancement. The Rust WIT fixture compares its configured RGBA output against the native core, and the Wasmtime host harness now exercises the configured record via the component ABI. These tests still need exact-head execution; they are not a claim that Wasmtime qualification has passed.
 
-This is not yet a Scene Pack JSON loader, does not interpret presentation variants/safe regions or create the gradient static fallback, and does not prove a whole-process memory limit. Do not call the overall product Scene Pack v1 compatible until those gaps are implemented and qualified.
+The core now generates Scene Pack v1's deterministic canvas-to-substrate gradient as an opaque RGBA8 frame, and both browser WASM and WIT expose it as a non-mutating static-fallback operation with brightness bounds. This is the fallback renderer primitive, not a loader or presentation-selection system. The project still does not parse Scene Pack JSON, interpret presentation variants/safe regions, enforce lifecycle across hosts, or prove a whole-process memory limit. Do not call the overall product Scene Pack v1 compatible until those gaps are implemented and qualified.
 
 ## WASM and WASI are complementary, not interchangeable
 
