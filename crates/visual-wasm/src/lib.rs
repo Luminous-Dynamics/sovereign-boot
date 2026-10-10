@@ -204,7 +204,10 @@ mod web {
 
         #[test]
         fn configured_settings_are_validated_by_the_core() {
-            let palette = vec![10, 16, 14, 26, 46, 34, 126, 200, 160, 232, 197, 71, 90, 107, 94, 118, 217, 193];
+            let palette = vec![
+                10, 16, 14, 26, 46, 34, 126, 200, 160, 232, 197, 71, 90, 107, 94, 118, 217,
+                193,
+            ];
             let scene = VisualScene::create_configured(
                 32, 24, 20261010, 2048, 2048, 10, 0.28, 30, 7.5, 0.12, 128, palette,
             );
@@ -215,7 +218,10 @@ mod web {
             ).is_err());
             assert!(VisualScene::create_configured(
                 32, 24, 20261010, 2048, 1024, 10, 0.28, 30, 7.5, 0.12, 128,
-                vec![10, 16, 14, 26, 46, 34, 126, 200, 160, 232, 197, 71, 90, 107, 94, 118, 217, 193],
+                vec![
+                     10, 16, 14, 26, 46, 34, 126, 200, 160, 232, 197, 71, 90, 107, 94, 118,
+                    217, 193,
+                ],
             ).is_err(), "scene branch request cannot exceed host resource budget");
             assert!(VisualScene::create_configured(
                 32, 24, 20261010, 2048, 2048, 10, 0.28, 30, 7.5, 0.12, 128,
