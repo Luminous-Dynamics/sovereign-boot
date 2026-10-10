@@ -40,6 +40,11 @@ grep -q 'wasm-bindgen --target web' crates/visual-wasm/build-demo.sh
 bash -n crates/visual-wasm/build-demo.sh
 grep -q 'render_rgba' tests/visual-wasm-smoke.mjs
 test -s crates/visual-wasi/src/main.rs
+grep -q 'sovereign-visual-pack = { path = "../visual-pack" }' crates/visual-wasi/Cargo.toml
+grep -q -- '--scene-pack-stdin' crates/visual-wasi/src/main.rs
+grep -q 'parse_scene_pack_v1' crates/visual-wasi/src/main.rs
+grep -q 'render_scene_pack_rgba' crates/visual-wasi/src/main.rs
+grep -q 'parse_scene_pack_v1(&fixture_bytes)' tools/component-host-smoke/src/main.rs
 grep -q 'pub use sovereign_visual_core::{color, mycelium};' crates/quicken-fb/src/lib.rs
 grep -q 'render_rgba' crates/visual-wasm/src/lib.rs
 grep -q 'binary PPM' crates/visual-wasi/src/main.rs
