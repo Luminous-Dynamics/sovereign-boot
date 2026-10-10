@@ -52,6 +52,9 @@ interface scene {
     pulse: func();
     contract: func(progress: f32) -> result<_, string>;
     render: func() -> frame;
+    /// Deterministic, non-mutating canvas-to-substrate gradient for reduced
+    /// motion or renderer fallback. Brightness must be finite and in 0..=1.
+    render-static-fallback: func(brightness: f32) -> result<frame, string>;
     width: func() -> u32;
     height: func() -> u32;
     branch-count: func() -> u32;
