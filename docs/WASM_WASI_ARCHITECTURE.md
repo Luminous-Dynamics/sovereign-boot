@@ -23,6 +23,9 @@ References:
 - Symthaea Spore crate: https://github.com/Luminous-Dynamics/symthaea/tree/main/crates/domains/symthaea-spore
 - Spore browser bindings: https://github.com/Luminous-Dynamics/symthaea/blob/main/crates/domains/symthaea-spore/src/wasm_bindings.rs
 - Spore browser build: https://github.com/Luminous-Dynamics/symthaea/blob/main/crates/domains/symthaea-spore/build-wasm.sh
+- Spore Android native-library build: https://github.com/Luminous-Dynamics/symthaea/blob/main/crates/domains/symthaea-spore/build-android.sh
+- Spore iOS native-library build: https://github.com/Luminous-Dynamics/symthaea/blob/main/crates/domains/symthaea-spore/build-ios.sh
+- Spore browser WASM regression tests: https://github.com/Luminous-Dynamics/symthaea/blob/main/crates/domains/symthaea-spore/test-wasm.sh
 
 ## New package boundary
 
@@ -41,16 +44,23 @@ It deliberately does not access `window`, the DOM, canvas, clocks, storage, devi
 Build validation command used in CI:
 `cargo +1.96.0 build -p sovereign-visual-wasm --target wasm32-unknown-unknown --features web --release --locked`
 
-### `crates/visual-wasi` — WASI execution proof
+### `crates/visual-wasi` — WASI command-line smoke target
 
-The first WASI executable takes bounded scene parameters and emits one PPM image to standard output. This proves the same Rust simulation can be compiled against a WASI target without requiring Linux DRM.
+The WASI executable accepts bounded scene parameters and emits a PPM frame to standard output. It is useful for quick headless execution checks, but it does not show an image on screen, control a desktop, or implement a boot splash.
 
-It is intentionally a headless smoke target. It does not show an image on screen, control a desktop, implement a boot splash, or expose a stable typed component interface to other programs yet.
-
-Build validation command used in CI:
+Build command:
 `cargo +1.96.0 build -p sovereign-visual-wasi --target wasm32-wasip2 --release --locked`
 
-A natural next step is to define a versioned WIT interface for a reusable Component Model guest (create scene, advance, emit frame or scene commands). That should follow API review of memory copies, resource lifetime, bounded calls, error variants, pixel format, and frame transport. The current WASI PPM executable is not to be marketed as that finished component.
+### `crates/visual-component` — versioned WIT Component Model API
+
+The WIT contract in `crates/visual-component/wit/visual.wit` exports a stateful scene resource with bounded `advance`, `pulse`, `contract`, dimensions, branch count and RGBA8 frame output. This gives compatible component hosts a typed interface and resource lifecycle instead of requiring a process/PPM convention.
+
+The resource constructor defensively normalizes dimensions to the renderer's maximum dimension and pixel budget. Hosts must query the effective width/height; all frame presentation stays on the host side. The component has no display or input imports and must not be granted device capabilities simply to render a scene.
+
+Build command:
+`cargo +1.96.0 build -p sovereign-visual-component --target wasm32-wasip2 --release --locked`
+
+The WASI CLI target remains a smoke target; the WIT component is the reusable guest interface. They are different artifacts with different intended uses. Component host execution and interface inspection should become explicit qualification gates after the compile and unit-test gates are green.
 
 ## WASM and WASI are complementary, not interchangeable
 
@@ -96,7 +106,7 @@ Do not label these targets supported until CI and test evidence establish:
 - lifecycle handling in a real browser/app host; and
 - separate target-specific evidence for each desktop, mobile, TV, boot or privileged surface.
 
-The CI workflow now compiles both browser-WASM and WASI targets. Until those exact-head workflow runs are green, target compilation must remain **pending**, not pass. Even after they pass, this demonstrates compilation—not actual browser presentation or support for desktop, phone, TV, login, lock or firmware surfaces.
+The CI workflow now compiles the browser-WASM adapter, WASI CLI smoke target and WIT component. Until exact-head workflow runs are green, those builds/tests remain **pending**, not pass. A component build still does not prove that a target runtime can load it or that any host has integrated the returned frames. Browser packaging/presentation and host execution tests are separate gates; so are desktop, phone, TV, login, lock or firmware surfaces.
 
 ## Upstream technical references
 
