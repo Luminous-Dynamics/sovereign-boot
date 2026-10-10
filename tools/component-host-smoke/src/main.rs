@@ -250,7 +250,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         .call_advance_ticks(&mut store, first_scene, 1, ACTIVITY)?
         .is_ok()
     {
-        return Err(io::Error::other("component allowed variable-delta to fixed-tick mode switching").into());
+        return Err(
+            io::Error::other("component allowed variable-delta to fixed-tick mode switching").into(),
+        );
     }
 
     // Invalid inputs must be rejected rather than silently changing semantics.
@@ -308,7 +310,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     )?;
     let replay_frame = scene_api.call_render(&mut store, replay_scene)?;
     if first_frame.rgba != replay_frame.rgba {
-        return Err(io::Error::other("identical replay inputs produced different RGBA frames").into());
+        return Err(
+            io::Error::other("identical replay inputs produced different RGBA frames").into(),
+        );
     }
 
     // Verify the WIT constructor's fail-safe dimension normalization path.
@@ -360,7 +364,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         .call_advance(&mut store, configured_a, DT_SECONDS, ACTIVITY)?
         .is_ok()
     {
-        return Err(io::Error::other("component allowed fixed-tick to variable-delta mode switching").into());
+        return Err(
+            io::Error::other("component allowed fixed-tick to variable-delta mode switching").into(),
+        );
     }
     let configured_frame = scene_api.call_render(&mut store, configured_a)?;
     let configured_replay = scene_api.call_render(&mut store, configured_b)?;
@@ -372,7 +378,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         return Err(io::Error::other("configured WIT frame dimensions/byte length invalid").into());
     }
     if configured_frame.rgba != configured_replay.rgba {
-        return Err(io::Error::other("configured WIT scenes did not replay byte-identically").into());
+        return Err(
+            io::Error::other("configured WIT scenes did not replay byte-identically").into(),
+        );
     }
 
     let static_fallback = scene_api
@@ -383,13 +391,17 @@ fn main() -> Result<(), Box<dyn Error>> {
         || &static_fallback.rgba[0..4] != &[6, 9, 8, 255]
         || &static_fallback.rgba[static_fallback.rgba.len() - 4..] != &[15, 27, 20, 255]
     {
-        return Err(io::Error::other("WIT static fallback failed its endpoint/shape contract").into());
+        return Err(
+            io::Error::other("WIT static fallback failed its endpoint/shape contract").into(),
+        );
     }
     if scene_api
         .call_render_static_fallback(&mut store, configured_a, f32::NAN)?
         .is_ok()
     {
-        return Err(io::Error::other("component accepted non-finite static fallback brightness").into());
+        return Err(
+            io::Error::other("component accepted non-finite static fallback brightness").into(),
+        );
     }
     if scene_api.call_render(&mut store, configured_a)?.rgba != configured_frame.rgba {
         return Err(io::Error::other("static fallback mutated scene state").into());
@@ -409,7 +421,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         .call_configure(&mut store, unchanged_scene, 48, 24, under_budget)?
         .is_ok()
     {
-        return Err(io::Error::other("component accepted a scene branch request above the resource ceiling").into());
+        return Err(
+            io::Error::other("component accepted a scene branch request above the resource ceiling")
+                .into(),
+        );
     }
     if (scene_api.call_width(&mut store, unchanged_scene)?,
         scene_api.call_height(&mut store, unchanged_scene)?) != (16, 16)
@@ -418,7 +433,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     if scene_api
-        .call_configure(&mut store, unchanged_scene, 48, 24, sample_settings(&manifest, Some(8193))?)?
+        .call_configure(
+            &mut store,
+            unchanged_scene,
+            48,
+            24,
+            sample_settings(&manifest, Some(8193))?,
+        )?
         .is_ok()
     {
         return Err(io::Error::other("component accepted a branch limit above the contract").into());
