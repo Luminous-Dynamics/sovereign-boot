@@ -159,7 +159,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         .is_ok()
     {
         return Err(
-            io::Error::other("component allowed variable-delta to fixed-tick mode switching").into(),
+            io::Error::other("component allowed variable-delta to fixed-tick mode switching")
+                .into(),
         );
     }
 
@@ -237,12 +238,24 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Exercise the typed settings path through the real Component Model ABI.
     let configured_a = scene_api.call_constructor(&mut store, 16, 16, "legacy-a")?;
     require_guest_ok(
-        scene_api.call_configure(&mut store, configured_a, 32, 24, configured_settings)?,
+        scene_api.call_configure(
+            &mut store,
+            configured_a,
+            32,
+            24,
+            settings_for_wit(&manifest, None),
+        )?,
         "configure numeric-seed scene A",
     )?;
     let configured_b = scene_api.call_constructor(&mut store, 16, 16, "legacy-b")?;
     require_guest_ok(
-        scene_api.call_configure(&mut store, configured_b, 32, 24, configured_settings)?,
+        scene_api.call_configure(
+            &mut store,
+            configured_b,
+            32,
+            24,
+            settings_for_wit(&manifest, None),
+        )?,
         "configure numeric-seed scene B",
     )?;
 
@@ -273,7 +286,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         .is_ok()
     {
         return Err(
-            io::Error::other("component allowed fixed-tick to variable-delta mode switching").into(),
+            io::Error::other("component allowed fixed-tick to variable-delta mode switching")
+                .into(),
         );
     }
     let configured_frame = scene_api.call_render(&mut store, configured_a)?;
