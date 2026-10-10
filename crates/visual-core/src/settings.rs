@@ -13,7 +13,8 @@ use crate::{
 
 pub const MAX_SCENE_BRANCHES: u32 = 8192;
 pub const MAX_SCENE_DEPTH: u32 = 24;
-/// Maximum simulation catch-up batch; hosts must pause instead of unbounded catch-up.
+/// Absolute maximum simulation catch-up batch. The effective per-call limit
+/// is min(fixed_step_hz, MAX_TICKS_PER_BATCH), i.e. at most one simulated second.
 pub const MAX_TICKS_PER_BATCH: u32 = 120;
 pub const MIN_MEMORY_MIB: u32 = 16;
 pub const MAX_MEMORY_MIB: u32 = 2048;
