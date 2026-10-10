@@ -73,8 +73,9 @@ pub struct MycelialNetwork {
     pub global_pulse: f32,
     /// Contraction progress (0.0 = normal, 1.0 = fully contracted to center).
     pub contraction: f32,
-    /// Effective validated settings for this scene.
-    pub settings: SceneSettings,
+    /// Effective validated settings for this scene. Kept private so callers
+    /// cannot mutate a constructed scene past its validated resource limits.
+    settings: SceneSettings,
     /// Number of canonical fixed-step ticks completed by advance_tick.
     simulation_ticks: u64,
 }
@@ -178,8 +179,13 @@ impl MycelialNetwork {
         (point.0 + dx, point.1 + dy)
     }
 
-    /// Advance the simulation by `dt` seconds.
-    /// `io_rate` controls growth speed (0.0 = dormant, 1.0 = maximum growth).
+    /// Read the effective immutable settings for this scene.
+    pub fn settings(&self) -> &SceneSettings {
+        &self.settings
+    }
+
+    /// Advance the simulation by dt seconds.
+    /// io_rate controls growth speed (0.0 = dormant, 1.0 = maximum growth).
     pub fn grow(&mut self, dt: f32, io_rate: f32) {
         self.elapsed += dt;
 
