@@ -61,8 +61,10 @@ impl Default for ScenePalette {
 /// capabilities.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SceneSettings {
-    /// Effective branch ceiling; enforce before each child is allocated.
+    /// Scene-requested branch ceiling; enforce before each child is allocated.
     pub branch_limit: u32,
+    /// Host resource-budget ceiling, independent of the scene's own request.
+    pub resource_max_branches: u32,
     /// Effective branch-depth ceiling.
     pub max_depth: u32,
     /// Multiplier applied to the legacy base growth-speed equation.
@@ -83,6 +85,7 @@ impl Default for SceneSettings {
     fn default() -> Self {
         Self {
             branch_limit: 8192,
+            resource_max_branches: 8192,
             max_depth: 12,
             growth_rate: 1.0,
             fixed_step_hz: 30,
@@ -166,6 +169,8 @@ pub fn render_static_gradient_rgba(
 pub enum SceneSettingsError {
     InvalidDimensions(DimensionsError),
     BranchLimitOutOfRange,
+    ResourceBranchLimitOutOfRange,
+    BranchLimitExceedsResourceBudget,
     MaxDepthOutOfRange,
     GrowthRateOutOfRange,
     FixedStepFrequencyOutOfRange,
@@ -187,6 +192,12 @@ impl fmt::Display for SceneSettingsError {
         match self {
             Self::InvalidDimensions(e) => write!(f, "invalid scene dimensions: {e:?}"),
             Self::BranchLimitOutOfRange => write!(f, "branch_limit must be in 1..=8192"),
+            Self::ResourceBranchLimitOutOfRange => {
+                write!(f, "resource max_branches must be in 1..=8192")
+            }
+            Self::BranchLimitExceedsResourceBudget => {
+                write!(f, "branch_limit exceeds resource_budget.max_branches")
+            }
             Self::MaxDepthOutOfRange => write!(f, "max_depth must be in 1..=24"),
             Self::GrowthRateOutOfRange => write!(f, "growth_rate must be finite and in 0..=10"),
             Self::FixedStepFrequencyOutOfRange => write!(f, "fixed_step_hz must be in 1..=120"),
@@ -243,6 +254,12 @@ impl SceneSettings {
 
         if !(1..=MAX_SCENE_BRANCHES).contains(&self.branch_limit) {
             return Err(SceneSettingsError::BranchLimitOutOfRange);
+        }
+        if !(1..=MAX_SCENE_BRANCHES).contains(&self.resource_max_branches) {
+            return Err(SceneSettingsError::ResourceBranchLimitOutOfRange);
+        }
+        if self.branch_limit > self.resource_max_branches {
+            return Err(SceneSettingsError::BranchLimitExceedsResourceBudget);
         }
         if !(1..=MAX_SCENE_DEPTH).contains(&self.max_depth) {
             return Err(SceneSettingsError::MaxDepthOutOfRange);
@@ -454,6 +471,23 @@ mod tests {
 
         let pixel = render_static_gradient_rgba(1, 1, ScenePalette::default(), 1.0).unwrap();
         assert_eq!(pixel, vec![0, 0, 0, 255]);
+    }
+
+    #[test]
+    fn scene_branch_limit_cannot_exceed_host_resource_budget() {
+        let mut settings = SceneSettings::default();
+        settings.branch_limit = 2048;
+        settings.resource_max_branches = 1024;
+        assert_eq!(
+            settings.validate_for_dimensions(32, 24),
+            Err(SceneSettingsError::BranchLimitExceedsResourceBudget)
+        );
+
+        settings.resource_max_branches = 0;
+        assert_eq!(
+            settings.validate_for_dimensions(32, 24),
+            Err(SceneSettingsError::ResourceBranchLimitOutOfRange)
+        );
     }
 
     #[test]
