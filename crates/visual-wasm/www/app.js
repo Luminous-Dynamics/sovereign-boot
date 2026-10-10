@@ -120,7 +120,8 @@ function makeScene() {
     width,
     height,
     seed,
-    2048,             // branch limit
+    2048,             // scene-requested branch limit
+    2048,             // independent aggregate resource branch ceiling
     10,               // max depth
     0.28,             // growth rate
     FIXED_STEP_HZ,
