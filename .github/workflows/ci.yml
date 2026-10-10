@@ -58,6 +58,7 @@ jobs:
           mkdir -p "$package_dir"
           wasm-bindgen --target web --out-dir "$package_dir" target/wasm32-unknown-unknown/release/sovereign_visual_wasm.wasm
           printf '{"type":"module"}\n' > "$package_dir/package.json"
+          cp tests/fixtures/first-germination.scene.json "$package_dir/first-germination.scene.json"
 
       - name: Render native RGBA reference
         run: cargo +1.96.0 run --locked -p sovereign-visual-core --example rgba-fixture > "$RUNNER_TEMP/native.rgba"
