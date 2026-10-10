@@ -137,6 +137,6 @@ The standalone `Component Model runtime qualification` workflow isolates the gue
 - the pinned Rust toolchain and Wasmtime host version;
 - runtime assertion markers for configured replay, resource bounds, rejected invalid configuration, absent imports, and explicit resource disposal.
 
-The generated `component-host-Cargo.lock` is an intermediate dependency-resolution artifact and a candidate for source pinning review. It is not considered a frozen repository dependency graph until reviewed and committed. The receipt is emitted only when the actual host process returns success and all required markers are present.
+The evidence collector has direct unit tests for required assertion markers, source hashes, missing files, and repository-root containment. The generated `component-host-Cargo.lock` is an intermediate dependency-resolution artifact and a candidate for source pinning review. It is not considered a frozen repository dependency graph until reviewed and committed. The receipt is emitted only when the actual host process returns success and all required markers are present.
 
 This evidence is narrowly scoped: it does not establish browser presentation, physical boot, OS lifecycle behavior, or whole-process memory enforcement. A successful independent runtime lane also does not replace the full Cargo/Nix exact-head qualification.

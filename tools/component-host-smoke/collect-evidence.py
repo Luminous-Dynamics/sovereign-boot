@@ -20,6 +20,11 @@ REQUIRED_MARKERS = (
     "wasi_imports=none",
     "resources=dropped",
 )
+def missing_required_markers(log_text: str) -> list[str]:
+    """Return success markers not present in the component host's receipt line."""
+    return [marker for marker in REQUIRED_MARKERS if marker not in log_text]
+
+
 SOURCE_PATHS = (
     "Cargo.toml",
     "Cargo.lock",
@@ -69,7 +74,7 @@ def main() -> int:
         # verify the host's explicit assertions are present in the log.
         log_bytes = args.runtime_log.read_bytes()
         log_text = log_bytes.decode("utf-8", errors="strict")
-        missing = [marker for marker in REQUIRED_MARKERS if marker not in log_text]
+        missing = missing_required_markers(log_text)
         if missing:
             raise ValueError("runtime receipt missing required success markers: " + ", ".join(missing))
 
