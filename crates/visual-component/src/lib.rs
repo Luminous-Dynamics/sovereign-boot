@@ -205,7 +205,9 @@ mod tests {
         guest.configure(32, 24, sample_wit_settings(2048)).unwrap();
         assert_eq!(guest.contract_version(), u32::from(contract::SCENE_CONTRACT_VERSION));
 
-        guest.advance_ticks(120, 0.7).unwrap();
+        for _ in 0..4 {
+            guest.advance_ticks(30, 0.7).unwrap();
+        }
         let guest_frame = guest.render();
         assert_eq!(guest_frame.width, 32);
         assert_eq!(guest_frame.height, 24);
@@ -215,7 +217,9 @@ mod tests {
         let native_settings = settings_from_wit(sample_wit_settings(2048)).1;
         let mut native =
             MycelialNetwork::with_settings(32, 24, 20261010, native_settings).unwrap();
-        native.advance_ticks(120, 0.7).unwrap();
+        for _ in 0..4 {
+            native.advance_ticks(30, 0.7).unwrap();
+        }
         assert_eq!(guest_frame.rgba, native.render_rgba());
     }
 
