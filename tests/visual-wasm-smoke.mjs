@@ -29,6 +29,7 @@ function renderFixture(seed) {
   const scene = new bindings.VisualScene(32, 24, seed);
   assert.equal(scene.width(), 32);
   assert.equal(scene.height(), 24);
+  assert.equal(scene.contract_version(), 1, "scene contract version is explicit");
 
   for (let i = 0; i < 20; i += 1) {
     scene.advance(1 / 30, 0.7);
