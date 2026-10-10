@@ -120,8 +120,9 @@ mod web {
         /// Advance by the shared portable step contract and normalized activity.
         pub fn advance(&mut self, dt_seconds: f32, activity: f32) -> Result<(), JsError> {
             contract::validate_step(dt_seconds, activity).map_err(step_error)?;
-            self.network.grow(dt_seconds, activity);
-            Ok(())
+            self.network
+                .advance_variable_delta(dt_seconds, activity)
+                .map_err(settings_error)
         }
 
         /// Pulse formed nodes, e.g. after a host-side progress event.
