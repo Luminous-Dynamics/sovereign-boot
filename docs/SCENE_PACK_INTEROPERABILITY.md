@@ -55,7 +55,7 @@ The adapter should produce an explicit versioned settings object with these sema
 - **Resources:** requested branch ceiling, memory ceiling, max FPS, and pixel budget.
 - **Presentation selection:** an exact named presentation variant with motion, brightness, composition, normalized safe regions, and the required static fallback.
 
-The first API extension should be additive: retain the existing phrase-based constructor for callers that depend on it, and expose a versioned settings-based construction path. Do not change the meaning of the current WIT/browser v1 constructor in place. A later settings-based API should expose the effective settings (including normalized limits) to the host and return typed errors for unsupported values.
+The first API extension is now additive: the core retains the phrase-based constructor and adds `MycelialNetwork::with_settings(width, height, seed: u32, settings)`; browser WASM exposes `VisualScene.createConfigured`; WIT accepts the same record through an atomic `configure` operation. The existing phrase constructor and dt-based method keep their historical meanings. All settings are validated before replacing/constructing a scene; unsupported/out-of-range values return errors. WIT exposes the scene-contract version and effective dimensions, but does not yet provide a full readback record for every effective setting.
 
 ### Numeric seed rules
 
