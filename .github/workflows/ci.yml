@@ -59,6 +59,9 @@ jobs:
       - name: Smoke-test browser WASM runtime
         run: node tests/visual-wasm-smoke.mjs "$RUNNER_TEMP/visual-wasm-pkg"
 
+      - name: Check browser host JavaScript syntax
+        run: node --input-type=module --check < crates/visual-wasm/www/app.js
+
       - name: Build WASI component
         run: cargo +1.96.0 build -p sovereign-visual-wasi --target wasm32-wasip2 --release --locked
 
