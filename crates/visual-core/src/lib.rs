@@ -6,3 +6,5 @@
 pub mod color;
 pub mod contract;
 pub mod mycelium;
+
+pub mod settings;
