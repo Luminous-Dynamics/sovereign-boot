@@ -104,6 +104,12 @@ fn main() -> Result<(), Box<dyn Error>> {
             "advance first scene",
         )?;
     }
+    if scene_api
+        .call_advance_ticks(&mut store, first_scene, 1, ACTIVITY)?
+        .is_ok()
+    {
+        return Err(io::Error::other("component allowed variable-delta to fixed-tick mode switching").into());
+    }
 
     // Invalid inputs must be rejected rather than silently changing semantics.
     if scene_api
@@ -195,6 +201,12 @@ fn main() -> Result<(), Box<dyn Error>> {
             scene_api.call_advance_ticks(&mut store, configured_b, 30, 0.7)?,
             "advance configured scene B",
         )?;
+    }
+    if scene_api
+        .call_advance(&mut store, configured_a, DT_SECONDS, ACTIVITY)?
+        .is_ok()
+    {
+        return Err(io::Error::other("component allowed fixed-tick to variable-delta mode switching").into());
     }
     let configured_frame = scene_api.call_render(&mut store, configured_a)?;
     let configured_replay = scene_api.call_render(&mut store, configured_b)?;
