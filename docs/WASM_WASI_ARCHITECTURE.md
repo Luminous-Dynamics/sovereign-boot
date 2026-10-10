@@ -53,9 +53,11 @@ Build command:
 
 ### `crates/visual-component` — versioned WIT Component Model API
 
-The WIT contract in `crates/visual-component/wit/visual.wit` exports a stateful scene resource with bounded `advance`, `pulse`, `contract`, dimensions, branch count and RGBA8 frame output. This gives compatible component hosts a typed interface and resource lifecycle instead of requiring a process/PPM convention.
+The WIT contract in `crates/visual-component/wit/visual.wit` exports a stateful scene resource with a `contract-version`, bounded `advance`, `pulse`, `contract`, dimensions, branch count and RGBA8 frame output. This gives compatible component hosts a typed interface and resource lifecycle instead of requiring a process/PPM convention.
 
-The resource constructor defensively normalizes dimensions to the renderer's maximum dimension and pixel budget. Hosts must query the effective width/height; all frame presentation stays on the host side. The component has no display or input imports and must not be granted device capabilities simply to render a scene.
+The semantic limits are centralized in `crates/visual-core/src/contract.rs` and are shared by the browser, Component Model and WASI adapters: nonzero dimensions; a 4096-per-side ceiling; an 8,294,400-pixel budget; finite frame deltas in 0..=0.25 seconds; normalized activity in 0..=1; and finite contraction progress. The core exposes `SCENE_CONTRACT_VERSION = 1`; the browser ABI and WIT resource expose that version to the host. Adapters translate common validation errors into their own ABI's error shape rather than redefining the limits.
+
+The WIT resource constructor defensively normalizes dimensions to the shared dimension and pixel budget because WIT constructors cannot return a `Result`. Hosts must query the effective width/height; other adapters can reject invalid sizes. All frame presentation stays on the host side. The component has no display or input imports and must not be granted device capabilities simply to render a scene.
 
 Build command:
 `cargo +1.96.0 build -p sovereign-visual-component --target wasm32-wasip2 --release --locked`
