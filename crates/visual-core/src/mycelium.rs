@@ -5,18 +5,16 @@
 ///
 /// Generates procedural mycelial network growth seeded by the genesis phrase.
 /// Renders to a raw pixel buffer using Bresenham's line algorithm — no GPU required.
-use crate::color::{LEAF_GREEN, LICHEN_GREY, MOSS_DEEP, MYCELIAL_WHITE, Rgba, SOLAR_GOLD};
+use crate::{
+    color::Rgba,
+    contract::{self, DimensionsError},
+    settings::{SceneSettings, SceneSettingsError},
+};
 use rand_chacha::ChaCha12Rng;
 use rand_core::{RngCore, SeedableRng};
 
 /// Minimum branch length in pixels before a branch can spawn children.
 const MIN_BRANCH_LEN: f32 = 4.0;
-
-/// Maximum number of branches to prevent runaway growth.
-const MAX_BRANCHES: usize = 8192;
-
-/// Maximum depth of branching recursion.
-const MAX_DEPTH: u32 = 12;
 
 /// A single branch of the mycelial network.
 #[derive(Debug, Clone)]
@@ -76,18 +74,44 @@ pub struct MycelialNetwork {
     pub global_pulse: f32,
     /// Contraction progress (0.0 = normal, 1.0 = fully contracted to center).
     pub contraction: f32,
+    /// Effective validated settings for this scene.
+    pub settings: SceneSettings,
+    /// Number of canonical fixed-step ticks completed by advance_tick.
+    simulation_ticks: u64,
 }
 
 impl MycelialNetwork {
-    /// Create a new network seeded by the genesis phrase.
+    /// Legacy phrase-based constructor retained for compatibility.
+    /// Numeric Scene Pack seeds must use with_settings; seed modes are distinct.
     pub fn new(width: u32, height: u32, genesis_phrase: &str) -> Self {
-        let hash = blake3::hash(genesis_phrase.as_bytes());
-        let seed_bytes: [u8; 32] = *hash.as_bytes();
+        let seed_bytes: [u8; 32] = *blake3::hash(genesis_phrase.as_bytes()).as_bytes();
+        Self::from_seed_material(width, height, seed_bytes, SceneSettings::default())
+    }
+
+    /// Construct from a versioned numeric seed and bounded scene settings.
+    pub fn with_settings(
+        width: u32,
+        height: u32,
+        seed: u32,
+        settings: SceneSettings,
+    ) -> Result<Self, SceneSettingsError> {
+        settings.validate_for_dimensions(width, height)?;
+        let seed_bytes = SceneSettings::numeric_seed_material(seed);
+        Ok(Self::from_seed_material(width, height, seed_bytes, settings))
+    }
+
+    fn from_seed_material(
+        width: u32,
+        height: u32,
+        seed_bytes: [u8; 32],
+        settings: SceneSettings,
+    ) -> Self {
         let rng = ChaCha12Rng::from_seed(seed_bytes);
         let center = (width as f32 / 2.0, height as f32 / 2.0);
-
+        let initial_count = (4 + (seed_bytes[0] % 5) as usize)
+            .min(settings.branch_limit as usize);
         let mut net = Self {
-            branches: Vec::with_capacity(512),
+            branches: Vec::with_capacity(initial_count),
             width,
             height,
             rng,
@@ -95,17 +119,61 @@ impl MycelialNetwork {
             elapsed: 0.0,
             global_pulse: 0.0,
             contraction: 0.0,
+            settings,
+            simulation_ticks: 0,
         };
 
-        // Seed initial branches radiating from center (4-8 based on phrase hash).
-        let initial_count = 4 + (seed_bytes[0] % 5) as usize;
+        // The seed's initial fan obeys the effective branch budget.
         let angle_step = std::f32::consts::TAU / initial_count as f32;
         for i in 0..initial_count {
             let angle = angle_step * i as f32 + (seed_bytes[1] as f32 / 255.0) * 0.5;
             net.branches.push(Branch::new(center, angle, 2.5, 0));
         }
-
         net
+    }
+
+    /// Advance one canonical tick; periodic pulses use the integer tick count.
+    pub fn advance_tick(&mut self, activity: f32) -> Result<(), SceneSettingsError> {
+        if !activity.is_finite() || !(0.0..=1.0).contains(&activity) {
+            return Err(SceneSettingsError::InvalidActivity);
+        }
+        let dt = 1.0 / self.settings.fixed_step_hz as f32;
+        self.grow(dt, activity);
+        self.simulation_ticks = self.simulation_ticks.saturating_add(1);
+        if self.simulation_ticks % self.settings.pulse_interval_ticks() == 0 {
+            self.pulse();
+        }
+        Ok(())
+    }
+
+    /// Advance a caller-bounded batch of canonical fixed ticks.
+    pub fn advance_ticks(
+        &mut self,
+        ticks: u32,
+        activity: f32,
+    ) -> Result<(), SceneSettingsError> {
+        if !activity.is_finite() || !(0.0..=1.0).contains(&activity) {
+            return Err(SceneSettingsError::InvalidActivity);
+        }
+        for _ in 0..ticks {
+            self.advance_tick(activity)?;
+        }
+        Ok(())
+    }
+
+    /// Coordinate-continuous, deterministic drift keeps connected branch
+    /// endpoints aligned because the offset is derived from position.
+    fn drifted_point(&self, point: (f32, f32)) -> (f32, f32) {
+        let amplitude = self.settings.drift_amplitude;
+        if amplitude == 0.0 {
+            return point;
+        }
+        let scale = self.width.min(self.height) as f32 * 0.01 * amplitude;
+        let phase = point.0 * 0.037 + point.1 * 0.053;
+        let time = self.elapsed;
+        let dx = scale * ((phase + time * 0.67).sin() - phase.sin());
+        let dy = scale * ((phase * 1.37 + time * 0.49).cos() - (phase * 1.37).cos());
+        (point.0 + dx, point.1 + dy)
     }
 
     /// Advance the simulation by `dt` seconds.
