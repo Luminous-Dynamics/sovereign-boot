@@ -6,8 +6,10 @@
 #[cfg(feature = "web")]
 mod web {
     use sovereign_visual_core::{
+        color::Rgba,
         contract::{self, DimensionsError, StepError},
         mycelium::MycelialNetwork,
+        settings::{ScenePalette, SceneSettings, SceneSettingsError},
     };
     use wasm_bindgen::prelude::*;
 
@@ -26,6 +28,10 @@ mod web {
         })
     }
 
+    fn settings_error(error: SceneSettingsError) -> JsError {
+        JsError::new(&error.to_string())
+    }
+
     /// Deterministic, host-driven scene. It never accesses DOM or display APIs.
     #[wasm_bindgen]
     pub struct VisualScene {
@@ -41,6 +47,69 @@ mod web {
             Ok(Self {
                 network: MycelialNetwork::new(width, height, seed),
             })
+        }
+
+        /// Create a configured scene from a numeric seed and typed settings.
+        ///
+        /// palette_rgb must contain six RGB triplets in this order:
+        /// canvas, substrate, filament, node, lichen, glow. Alpha is always
+        /// opaque in Scene Pack v1. The legacy phrase constructor is unchanged.
+        #[wasm_bindgen(js_name = createConfigured)]
+        pub fn create_configured(
+            width: u32,
+            height: u32,
+            seed: u32,
+            branch_limit: u32,
+            max_depth: u32,
+            growth_rate: f32,
+            fixed_step_hz: u32,
+            pulse_period_seconds: f32,
+            drift_amplitude: f32,
+            max_memory_mib: u32,
+            palette_rgb: Vec<u8>,
+        ) -> Result<VisualScene, JsError> {
+            if palette_rgb.len() != 18 {
+                return Err(JsError::new(
+                    "palette_rgb must contain exactly 18 bytes for six RGB colors",
+                ));
+            }
+            let color = |index: usize| {
+                let offset = index * 3;
+                Rgba(
+                    palette_rgb[offset],
+                    palette_rgb[offset + 1],
+                    palette_rgb[offset + 2],
+                    0xff,
+                )
+            };
+            let settings = SceneSettings {
+                branch_limit,
+                max_depth,
+                growth_rate,
+                fixed_step_hz,
+                pulse_period_seconds,
+                drift_amplitude,
+                max_memory_mib,
+                palette: ScenePalette {
+                    canvas: color(0),
+                    substrate: color(1),
+                    filament: color(2),
+                    node: color(3),
+                    lichen: color(4),
+                    glow: color(5),
+                },
+            };
+            let network = MycelialNetwork::with_settings(width, height, seed, settings)
+                .map_err(settings_error)?;
+            Ok(Self { network })
+        }
+
+        /// Advance canonical integer ticks. The core bounds catch-up batches;
+        /// hosts should pause on hide/suspend rather than perform unbounded catch-up.
+        pub fn advance_ticks(&mut self, ticks: u32, activity: f32) -> Result<(), JsError> {
+            self.network
+                .advance_ticks(ticks, activity)
+                .map_err(settings_error)
         }
 
         /// Host-independent scene semantics version.
@@ -103,6 +172,23 @@ mod web {
         fn progress_validation_matches_the_shared_contract() {
             assert!(contract::valid_progress(2.0));
             assert!(!contract::valid_progress(f32::NAN));
+        }
+
+        #[test]
+        fn configured_settings_are_validated_by_the_core() {
+            let palette = vec![10, 16, 14, 26, 46, 34, 126, 200, 160, 232, 197, 71, 90, 107, 94, 118, 217, 193];
+            let scene = VisualScene::create_configured(
+                32, 24, 20261010, 2048, 10, 0.28, 30, 7.5, 0.12, 128, palette,
+            );
+            assert!(scene.is_ok());
+            assert!(VisualScene::create_configured(
+                32, 24, 20261010, 8193, 10, 0.28, 30, 7.5, 0.12, 128,
+                vec![0; 18],
+            ).is_err());
+            assert!(VisualScene::create_configured(
+                32, 24, 20261010, 2048, 10, 0.28, 30, 7.5, 0.12, 128,
+                vec![0; 17],
+            ).is_err());
         }
     }
 }
