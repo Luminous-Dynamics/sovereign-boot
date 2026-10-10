@@ -40,6 +40,10 @@ impl GuestVisualScene for VisualScene {
         }
     }
 
+    fn contract_version(&self) -> u32 {
+        u32::from(contract::SCENE_CONTRACT_VERSION)
+    }
+
     fn advance(&self, dt_seconds: f32, activity: f32) -> Result<(), String> {
         contract::validate_step(dt_seconds, activity).map_err(step_error)?;
         self.network.borrow_mut().grow(dt_seconds, activity);
