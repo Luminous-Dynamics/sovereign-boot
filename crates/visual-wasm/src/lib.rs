@@ -11,6 +11,9 @@ mod web {
         mycelium::MycelialNetwork,
         settings::{ScenePalette, SceneSettings, SceneSettingsError},
     };
+    use sovereign_visual_pack::{
+        Composition, Motion, PresentationVariant, parse_scene_pack_v1,
+    };
     use wasm_bindgen::prelude::*;
 
     fn dimension_error(error: DimensionsError) -> JsError {
@@ -32,10 +35,41 @@ mod web {
         JsError::new(&error.to_string())
     }
 
+    fn pack_error(error: impl std::fmt::Display) -> JsError {
+        JsError::new(&error.to_string())
+    }
+
+    fn apply_brightness(rgba: &mut [u8], brightness: f32) {
+        const Q16_ONE: u64 = 65_535;
+        let multiplier = (f64::from(brightness) * Q16_ONE as f64).round() as u64;
+        for pixel in rgba.chunks_exact_mut(4) {
+            for channel in &mut pixel[..3] {
+                *channel = ((u64::from(*channel) * multiplier + Q16_ONE / 2) / Q16_ONE) as u8;
+            }
+        }
+    }
+
+    fn parse_presentation(value: &str) -> Result<PresentationVariant, JsError> {
+        match value {
+            "boot" => Ok(PresentationVariant::Boot),
+            "desktop" => Ok(PresentationVariant::Desktop),
+            "idle" => Ok(PresentationVariant::Idle),
+            "lockedBackground" => Ok(PresentationVariant::LockedBackground),
+            "staticFallback" => Ok(PresentationVariant::StaticFallback),
+            _ => Err(JsError::new("unknown Scene Pack presentation variant")),
+        }
+    }
+
     /// Deterministic, host-driven scene. It never accesses DOM or display APIs.
     #[wasm_bindgen]
     pub struct VisualScene {
         network: MycelialNetwork,
+        presentation: PresentationVariant,
+        presentation_brightness: f32,
+        presentation_max_fps: u32,
+        scene_id: String,
+        scene_version: String,
+        scene_title: String,
     }
 
     #[wasm_bindgen]
@@ -46,6 +80,12 @@ mod web {
             contract::validate_dimensions(width, height).map_err(dimension_error)?;
             Ok(Self {
                 network: MycelialNetwork::new(width, height, seed),
+                presentation: PresentationVariant::Boot,
+                presentation_brightness: 1.0,
+                presentation_max_fps: 30,
+                scene_id: "luminous.legacy".to_owned(),
+                scene_version: "0.0.0".to_owned(),
+                scene_title: "Legacy seed-phrase scene".to_owned(),
             })
         }
 
@@ -103,7 +143,82 @@ mod web {
             };
             let network = MycelialNetwork::with_settings(width, height, seed, settings)
                 .map_err(settings_error)?;
-            Ok(Self { network })
+            Ok(Self {
+                network,
+                presentation: PresentationVariant::Boot,
+                presentation_brightness: 1.0,
+                presentation_max_fps: 30,
+                scene_id: "luminous.configured".to_owned(),
+                scene_version: "0.0.0".to_owned(),
+                scene_title: "Configured scene".to_owned(),
+            })
+        }
+
+        /// Load the pinned Scene Pack through a host-supplied byte buffer. This
+        /// guest parser never fetches files or exercises filesystem privileges.
+        /// Only centered-network motion and the gradient-only static fallback
+        /// are currently supported by this adapter; unsupported metadata fails closed.
+        #[wasm_bindgen(js_name = createFromScenePack)]
+        pub fn create_from_scene_pack(
+            width: u32,
+            height: u32,
+            manifest_json: &[u8],
+            presentation_name: &str,
+        ) -> Result<VisualScene, JsError> {
+            let pack = parse_scene_pack_v1(manifest_json).map_err(pack_error)?;
+            if !pack.assets().is_empty() {
+                return Err(JsError::new(
+                    "browser adapter has no verified asset resolver; asset-bearing packs are unsupported",
+                ));
+            }
+            if !pack.capabilities().required.is_empty() {
+                return Err(JsError::new(
+                    "browser adapter cannot satisfy required Scene Pack capabilities",
+                ));
+            }
+            if !pack.inputs().is_empty() {
+                return Err(JsError::new(
+                    "browser adapter does not implement Scene Pack inputs",
+                ));
+            }
+
+            let variant = parse_presentation(presentation_name)?;
+            let selected = pack.presentations().get(variant);
+            if !selected.safe_regions.is_empty() {
+                return Err(JsError::new(
+                    "browser adapter does not yet implement presentation safeRegions",
+                ));
+            }
+            if selected.composition == Composition::GradientOnly {
+                if variant != PresentationVariant::StaticFallback || selected.motion != Motion::None {
+                    return Err(JsError::new(
+                        "gradient-only is supported only for motion=none staticFallback",
+                    ));
+                }
+            } else if selected.composition != Composition::CenteredNetwork
+                || selected.motion == Motion::None
+            {
+                return Err(JsError::new(
+                    "browser adapter currently supports centered-network motion or staticFallback only",
+                ));
+            }
+
+            let scene_id = pack.scene_id().to_owned();
+            let scene_version = pack.scene_version().to_owned();
+            let scene_title = pack.title().to_owned();
+            let presentation_brightness = selected.brightness;
+            let presentation_max_fps = selected.max_fps;
+            let network = pack.instantiate(width, height).map_err(pack_error)?;
+
+            Ok(Self {
+                network,
+                presentation: variant,
+                presentation_brightness,
+                presentation_max_fps,
+                scene_id,
+                scene_version,
+                scene_title,
+            })
         }
 
         /// Advance canonical integer ticks. The core bounds catch-up batches;
@@ -144,6 +259,52 @@ mod web {
         /// Render one tightly packed RGBA8 frame. The host owns presentation.
         pub fn render_rgba(&self) -> Vec<u8> {
             self.network.render_rgba()
+        }
+
+        /// Render the selected, validated presentation to opaque RGBA8 pixels.
+        /// StaticFallback uses the no-motion gradient; centered-network variants
+        /// use the reference core with fixed-point brightness scaling.
+        #[wasm_bindgen(js_name = renderPresentedRgba)]
+        pub fn render_presented_rgba(&self) -> Result<Vec<u8>, JsError> {
+            if self.presentation == PresentationVariant::StaticFallback {
+                return self
+                    .network
+                    .render_static_fallback(self.presentation_brightness)
+                    .map_err(settings_error);
+            }
+            let mut rgba = self.network.render_rgba();
+            apply_brightness(&mut rgba, self.presentation_brightness);
+            Ok(rgba)
+        }
+
+        #[wasm_bindgen(js_name = fixedStepHz)]
+        pub fn fixed_step_hz(&self) -> u32 {
+            self.network.settings().fixed_step_hz
+        }
+
+        #[wasm_bindgen(js_name = presentationMaxFps)]
+        pub fn presentation_max_fps(&self) -> u32 {
+            self.presentation_max_fps
+        }
+
+        #[wasm_bindgen(js_name = isStaticFallback)]
+        pub fn is_static_fallback(&self) -> bool {
+            self.presentation == PresentationVariant::StaticFallback
+        }
+
+        #[wasm_bindgen(js_name = sceneId)]
+        pub fn scene_id(&self) -> String {
+            self.scene_id.clone()
+        }
+
+        #[wasm_bindgen(js_name = sceneVersion)]
+        pub fn scene_version(&self) -> String {
+            self.scene_version.clone()
+        }
+
+        #[wasm_bindgen(js_name = sceneTitle)]
+        pub fn scene_title(&self) -> String {
+            self.scene_title.clone()
         }
 
         /// Render the deterministic non-animated gradient fallback without
