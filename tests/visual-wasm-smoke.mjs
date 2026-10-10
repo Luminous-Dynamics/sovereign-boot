@@ -194,6 +194,15 @@ assert.throws(
 );
 assert.throws(
   () => bindings.VisualScene.createConfigured(
+    32, 24, simulation.seed, parameters.branchLimit, resourceBudget.maxBranches - 1,
+    parameters.maxDepth, parameters.growthRate, simulation.fixedStepHz, parameters.pulsePeriodSeconds,
+    parameters.driftAmplitude, resourceBudget.maxMemoryMiB, scenePackPalette,
+  ),
+  /branch_limit exceeds resource_budget\.max_branches/i,
+  "scene-specific request must fit the independent host branch budget",
+);
+assert.throws(
+  () => bindings.VisualScene.createConfigured(
     32, 24, simulation.seed, parameters.branchLimit, resourceBudget.maxBranches, parameters.maxDepth,
     parameters.growthRate, simulation.fixedStepHz, parameters.pulsePeriodSeconds,
     parameters.driftAmplitude, resourceBudget.maxMemoryMiB, new Uint8Array(17),
