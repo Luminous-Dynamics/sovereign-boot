@@ -6,7 +6,10 @@
 
 use std::cell::RefCell;
 
-use sovereign_visual_core::mycelium::MycelialNetwork;
+use sovereign_visual_core::{
+    contract::{self, StepError},
+    mycelium::MycelialNetwork,
+};
 
 wit_bindgen::generate!({
     world: "visual-component",
@@ -14,28 +17,11 @@ wit_bindgen::generate!({
 
 use exports::luminous::sovereign_visual::scene::{Frame, Guest, GuestVisualScene};
 
-const MAX_DIMENSION: u32 = 4096;
-const MAX_PIXELS: u64 = 8_294_400;
-
-fn normalize_dimensions(width: u32, height: u32) -> (u32, u32) {
-    if width == 0 || height == 0 {
-        return (1, 1);
+fn step_error(error: StepError) -> String {
+    match error {
+        StepError::InvalidDelta => "dt-seconds must be finite and within 0..=0.25".to_owned(),
+        StepError::InvalidActivity => "activity must be finite and within 0..=1".to_owned(),
     }
-
-    let mut width = width.min(MAX_DIMENSION);
-    let mut height = height.min(MAX_DIMENSION);
-    let pixels = u64::from(width) * u64::from(height);
-
-    if pixels > MAX_PIXELS {
-        // WIT constructors cannot return a Result. Normalize defensively to a
-        // bounded size while preserving aspect ratio; hosts can query width
-        // and height to learn the actual effective dimensions.
-        let scale = (MAX_PIXELS as f64 / pixels as f64).sqrt();
-        width = ((width as f64 * scale).floor() as u32).max(1);
-        height = ((height as f64 * scale).floor() as u32).max(1);
-    }
-
-    (width, height)
 }
 
 struct Component;
@@ -46,19 +32,16 @@ struct VisualScene {
 
 impl GuestVisualScene for VisualScene {
     fn new(width: u32, height: u32, seed: String) -> Self {
-        let (width, height) = normalize_dimensions(width, height);
+        // WIT constructors cannot return Result, so use the shared normalizer.
+        // The host must query width/height to learn the effective size.
+        let (width, height) = contract::normalize_dimensions(width, height);
         Self {
             network: RefCell::new(MycelialNetwork::new(width, height, &seed)),
         }
     }
 
     fn advance(&self, dt_seconds: f32, activity: f32) -> Result<(), String> {
-        if !dt_seconds.is_finite() || !(0.0..=0.25).contains(&dt_seconds) {
-            return Err("dt-seconds must be finite and within 0..=0.25".to_owned());
-        }
-        if !activity.is_finite() || !(0.0..=1.0).contains(&activity) {
-            return Err("activity must be finite and within 0..=1".to_owned());
-        }
+        contract::validate_step(dt_seconds, activity).map_err(step_error)?;
         self.network.borrow_mut().grow(dt_seconds, activity);
         Ok(())
     }
@@ -68,7 +51,7 @@ impl GuestVisualScene for VisualScene {
     }
 
     fn contract(&self, progress: f32) -> Result<(), String> {
-        if !progress.is_finite() {
+        if !contract::valid_progress(progress) {
             return Err("contraction progress must be finite".to_owned());
         }
         self.network.borrow_mut().contract(progress);
@@ -113,13 +96,11 @@ mod tests {
 
     #[test]
     fn normalizes_zero_and_over_limit_dimensions() {
-        assert_eq!(normalize_dimensions(0, 1080), (1, 1));
-        assert_eq!(normalize_dimensions(1920, 1080), (1920, 1080));
+        assert_eq!(contract::normalize_dimensions(0, 1080), (1, 1));
+        assert_eq!(contract::normalize_dimensions(1920, 1080), (1920, 1080));
 
-        let (width, height) = normalize_dimensions(4096, 4096);
-        assert!(width > 0 && height > 0);
-        assert!(width <= MAX_DIMENSION && height <= MAX_DIMENSION);
-        assert!(u64::from(width) * u64::from(height) <= MAX_PIXELS);
+        let (width, height) = contract::normalize_dimensions(4096, 4096);
+        assert!(contract::validate_dimensions(width, height).is_ok());
     }
 
     #[test]
@@ -134,5 +115,13 @@ mod tests {
         }
 
         assert_eq!(guest.render().rgba, native.render_rgba());
+    }
+
+    #[test]
+    fn guest_rejects_invalid_step_inputs_and_non_finite_progress() {
+        let guest = <VisualScene as GuestVisualScene>::new(16, 16, "bounds".to_owned());
+        assert!(guest.advance(1.0, 0.5).is_err());
+        assert!(guest.advance(0.1, 1.5).is_err());
+        assert!(guest.contract(f32::NAN).is_err());
     }
 }
