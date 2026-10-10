@@ -60,11 +60,14 @@ jobs:
           printf '{"type":"module"}\n' > "$package_dir/package.json"
           cp tests/fixtures/first-germination.scene.json "$package_dir/first-germination.scene.json"
 
-      - name: Render native RGBA reference
+      - name: Render native legacy RGBA reference
         run: cargo +1.96.0 run --locked -p sovereign-visual-core --example rgba-fixture > "$RUNNER_TEMP/native.rgba"
 
+      - name: Render native configured Scene Pack RGBA reference
+        run: cargo +1.96.0 run --locked -p sovereign-visual-pack --example configured-rgba-fixture > "$RUNNER_TEMP/native-configured.rgba"
+
       - name: Smoke-test browser WASM runtime and native parity
-        run: node tests/visual-wasm-smoke.mjs "$RUNNER_TEMP/visual-wasm-pkg" "$RUNNER_TEMP/native.rgba"
+        run: node tests/visual-wasm-smoke.mjs "$RUNNER_TEMP/visual-wasm-pkg" "$RUNNER_TEMP/native.rgba" "$RUNNER_TEMP/native-configured.rgba"
 
       - name: Check browser host JavaScript syntax
         run: node --input-type=module --check < crates/visual-wasm/www/app.js

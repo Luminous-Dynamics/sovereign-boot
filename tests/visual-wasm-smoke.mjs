@@ -9,9 +9,9 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const packageDir = resolve(process.argv[2] ?? "");
-if (!process.argv[2] || !process.argv[3]) {
+if (!process.argv[2] || !process.argv[3] || !process.argv[4]) {
   throw new Error(
-    "Usage: node tests/visual-wasm-smoke.mjs <generated-package-dir> <native-rgba-reference>",
+    "Usage: node tests/visual-wasm-smoke.mjs <generated-package-dir> <native-legacy-rgba-reference> <native-configured-rgba-reference>",
   );
 }
 
@@ -280,7 +280,20 @@ assert.equal(nativeFrame.length, 32 * 24 * 4);
 assert.deepEqual(
   wasmFrame,
   nativeFrame,
-  "native Rust and browser WASM must render identical RGBA bytes for the same fixture",
+  "native Rust and browser WASM must render identical RGBA bytes for the legacy phrase-seed fixture",
+);
+
+const nativeConfiguredFrame = await readFile(resolve(process.argv[4]));
+assert.equal(nativeConfiguredFrame.length, 32 * 24 * 4);
+assert.deepEqual(
+  renderConfiguredFixture(),
+  nativeConfiguredFrame,
+  "native Rust and browser WASM must render identical RGBA bytes for the configured numeric-seed Scene Pack settings",
+);
+assert.deepEqual(
+  renderPackBootFixture(),
+  nativeConfiguredFrame,
+  "the browser's production Scene Pack parser path must match the native configured reference frame",
 );
 
 assert.throws(() => new bindings.VisualScene(0, 24, "invalid"), /dimensions/i);
@@ -289,4 +302,4 @@ assert.throws(() => scene.advance(1, 0.5), /dt_seconds/i);
 assert.throws(() => scene.advance(0.1, 1.5), /activity/i);
 scene.free();
 
-console.log("native/browser WASM RGBA parity: PASS");
+console.log("native/browser WASM RGBA parity (legacy + configured Scene Pack): PASS");
