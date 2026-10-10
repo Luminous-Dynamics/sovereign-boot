@@ -8,6 +8,11 @@ at immutable upstream commit
 
 The schema and negative-fixture corpus are kept as source snapshots so this
 repository's CI does not silently validate against a moving `main` branch.
+`contracts/UPSTREAM_SNAPSHOT.json` records the upstream commit and original Git
+blob IDs. `tools/ambient_validation/verify_vendor_snapshot.py` recomputes each
+Git blob ID from the local bytes and fails on drift. This is an identity/drift
+check tied to the pinned Git commit, not a claim that Git SHA-1 provides
+collision-resistant cryptographic authentication.
 The positive manifest is the existing byte-pinned
 `tests/fixtures/first-germination.scene.json`.
 

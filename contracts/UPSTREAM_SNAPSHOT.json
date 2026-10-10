@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "upstream": {
+    "repository": "Luminous-Dynamics/luminous-platform",
+    "commit": "f54ecf4b3ced00ca6c8964e83f63e6d285f49e75",
+    "commitUrl": "https://github.com/Luminous-Dynamics/luminous-platform/commit/f54ecf4b3ced00ca6c8964e83f63e6d285f49e75"
+  },
+  "identityAlgorithm": "git-blob-sha1",
+  "files": [
+    {
+      "localPath": "contracts/ambient-scene-pack-v1.schema.json",
+      "upstreamPath": "contracts/ambient-scene-pack-v1.schema.json",
+      "gitBlobSha1": "3982ce01a3f4a2d54f722d1daf327cbe43072ae1"
+    },
+    {
+      "localPath": "contracts/tests/scene-pack-v1-negative-fixtures.json",
+      "upstreamPath": "contracts/tests/scene-pack-v1-negative-fixtures.json",
+      "gitBlobSha1": "8c80242bc17020821e94712584f0eb3503ac26da"
+    },
+    {
+      "localPath": "tools/ambient_validation/validate_scene_pack.py",
+      "upstreamPath": "tools/ambient_validation/validate_scene_pack.py",
+      "gitBlobSha1": "4d206d666c5d2ed097d40c49dcd2ba876d91734a"
+    },
+    {
+      "localPath": "tools/ambient_validation/requirements.txt",
+      "upstreamPath": "tools/ambient_validation/requirements.txt",
+      "gitBlobSha1": "75da0887f251a1f166e204a00449c16880cf5081"
+    },
+    {
+      "localPath": "tests/fixtures/first-germination.scene.json",
+      "upstreamPath": "contracts/examples/first-germination.scene.json",
+      "gitBlobSha1": "98165b8958f0121825fa28e373521bb61ce9078c"
+    }
+  ]
+}

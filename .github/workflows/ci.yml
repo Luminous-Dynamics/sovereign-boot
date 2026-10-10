@@ -74,6 +74,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Verify vendored Scene Pack source identities
+        run: python tools/ambient_validation/verify_vendor_snapshot.py
+
       - name: Install pinned Scene Pack validator dependencies
         run: python -m pip install --disable-pip-version-check -r tools/ambient_validation/requirements.txt
 
