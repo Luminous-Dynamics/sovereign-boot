@@ -4,4 +4,5 @@
 //! It deliberately does not open display devices or depend on a window system.
 
 pub mod color;
+pub mod contract;
 pub mod mycelium;
