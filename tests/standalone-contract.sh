@@ -8,6 +8,14 @@ grep -q '"crates/quicken-fb"' Cargo.toml
 grep -q '"crates/visual-core"' Cargo.toml
 grep -q '"crates/visual-wasm"' Cargo.toml
 grep -q '"crates/visual-wasi"' Cargo.toml
+grep -q '"crates/visual-component"' Cargo.toml
+test -s crates/visual-component/Cargo.toml
+test -s crates/visual-component/src/lib.rs
+test -s crates/visual-component/wit/visual.wit
+grep -q 'wit-bindgen = "=0.57.1"' crates/visual-component/Cargo.toml
+grep -q 'world visual-component' crates/visual-component/wit/visual.wit
+grep -q 'export scene' crates/visual-component/wit/visual.wit
+grep -q 'GuestVisualScene' crates/visual-component/src/lib.rs
 test -s crates/visual-core/src/lib.rs
 test -s crates/visual-core/src/mycelium.rs
 test -s crates/visual-wasm/src/lib.rs
@@ -41,6 +49,7 @@ grep -q 'cargoLock.lockFile = ./Cargo.lock;' flake.nix
 grep -q 'Install WebAssembly targets' .github/workflows/ci.yml
 grep -q 'wasm32-unknown-unknown --features web --release --locked' .github/workflows/ci.yml
 grep -q 'wasm32-wasip2 --release --locked' .github/workflows/ci.yml
+grep -q 'cargo +1.96.0 build -p sovereign-visual-component --target wasm32-wasip2 --release --locked' .github/workflows/ci.yml
 
 # Probe must expose selected connector identity and CRTC in its receipt.
 grep -q 'connector_interface' crates/quicken-fb/src/framebuffer.rs
