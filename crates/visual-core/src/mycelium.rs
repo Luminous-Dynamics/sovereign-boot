@@ -7,6 +7,7 @@
 /// Renders to a raw pixel buffer using Bresenham's line algorithm — no GPU required.
 use crate::{
     color::Rgba,
+    contract::{self, StepError},
     settings::{
         MAX_TICKS_PER_BATCH, SceneSettings, SceneSettingsError, render_static_gradient_rgba,
     },
@@ -62,6 +63,13 @@ impl Branch {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StepMode {
+    Undecided,
+    VariableDelta,
+    FixedTicks,
+}
+
 /// The full mycelial network state.
 pub struct MycelialNetwork {
     pub branches: Vec<Branch>,
@@ -80,6 +88,8 @@ pub struct MycelialNetwork {
     settings: SceneSettings,
     /// Number of canonical fixed-step ticks completed by advance_tick.
     simulation_ticks: u64,
+    /// Supported host APIs lock this to one stepping model after first use.
+    step_mode: StepMode,
 }
 
 impl MycelialNetwork {
@@ -123,6 +133,7 @@ impl MycelialNetwork {
             contraction: 0.0,
             settings,
             simulation_ticks: 0,
+            step_mode: StepMode::Undecided,
         };
 
         // The seed's initial fan obeys the effective branch budget.
@@ -139,12 +150,37 @@ impl MycelialNetwork {
         if !activity.is_finite() || !(0.0..=1.0).contains(&activity) {
             return Err(SceneSettingsError::InvalidActivity);
         }
+        if self.step_mode == StepMode::VariableDelta {
+            return Err(SceneSettingsError::MixedStepModes);
+        }
+        self.step_mode = StepMode::FixedTicks;
         let dt = 1.0 / self.settings.fixed_step_hz as f32;
         self.grow_internal(dt, activity, false);
         self.simulation_ticks = self.simulation_ticks.saturating_add(1);
         if self.simulation_ticks % self.settings.pulse_interval_ticks() == 0 {
             self.pulse();
         }
+        Ok(())
+    }
+
+    /// Advance a variable-delta frame through the portable host API.
+    ///
+    /// Unlike the low-level legacy grow primitive, this method guards the
+    /// scene's stepping mode so periodic pulse timing remains unambiguous.
+    pub fn advance_variable_delta(
+        &mut self,
+        dt_seconds: f32,
+        activity: f32,
+    ) -> Result<(), SceneSettingsError> {
+        contract::validate_step(dt_seconds, activity).map_err(|error| match error {
+            StepError::InvalidDelta => SceneSettingsError::InvalidFrameDelta,
+            StepError::InvalidActivity => SceneSettingsError::InvalidActivity,
+        })?;
+        if self.step_mode == StepMode::FixedTicks {
+            return Err(SceneSettingsError::MixedStepModes);
+        }
+        self.step_mode = StepMode::VariableDelta;
+        self.grow_internal(dt_seconds, activity, true);
         Ok(())
     }
 
@@ -196,11 +232,13 @@ impl MycelialNetwork {
         render_static_gradient_rgba(self.width, self.height, self.settings.palette, brightness)
     }
 
-    /// Advance the legacy variable-delta API.
+    /// Legacy low-level variable-delta primitive, retained for existing native
+    /// callers. The supported browser/WIT host APIs use advance_variable_delta
+    /// to enforce one stepping model per scene.
     ///
     /// For backward compatibility, this path preserves its historical minimum
-    /// crawl at zero activity. New settings-driven hosts should use
-    /// advance_tick/advance_ticks, where zero activity truly pauses growth.
+    /// crawl at zero activity. Settings-driven fixed-tick hosts treat zero
+    /// activity as no growth.
     pub fn grow(&mut self, dt: f32, io_rate: f32) {
         self.grow_internal(dt, io_rate, true);
     }
