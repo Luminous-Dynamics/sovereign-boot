@@ -321,22 +321,34 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Exercise the typed settings path through the real Component Model ABI.
     let configured_a = scene_api.call_constructor(&mut store, 16, 16, "legacy-a")?;
     require_guest_ok(
-        scene_api.call_configure(&mut store, configured_a, 32, 24, sample_settings(&manifest, None)?)?,
+        scene_api.call_configure(&mut store, configured_a, 32, 24, configured_settings)?,
         "configure numeric-seed scene A",
     )?;
     let configured_b = scene_api.call_constructor(&mut store, 16, 16, "legacy-b")?;
     require_guest_ok(
-        scene_api.call_configure(&mut store, configured_b, 32, 24, sample_settings(&manifest, None)?)?,
+        scene_api.call_configure(&mut store, configured_b, 32, 24, configured_settings)?,
         "configure numeric-seed scene B",
     )?;
 
+    // Advance four reproducible seconds in one-second batches derived from
+    // the fixture's declared frequency and the API's enforced batch ceiling.
     for _ in 0..4 {
         require_guest_ok(
-            scene_api.call_advance_ticks(&mut store, configured_a, 30, 0.7)?,
+            scene_api.call_advance_ticks(
+                &mut store,
+                configured_a,
+                configured_settings.fixed_step_hz,
+                0.7,
+            )?,
             "advance configured scene A",
         )?;
         require_guest_ok(
-            scene_api.call_advance_ticks(&mut store, configured_b, 30, 0.7)?,
+            scene_api.call_advance_ticks(
+                &mut store,
+                configured_b,
+                configured_settings.fixed_step_hz,
+                0.7,
+            )?,
             "advance configured scene B",
         )?;
     }
@@ -380,8 +392,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     let configured_branches = scene_api.call_branch_count(&mut store, configured_a)?;
-    if configured_branches > 2048 {
-        return Err(io::Error::other("configured WIT scene exceeded branch limit").into());
+    if configured_branches > aggregate_branch_limit {
+        return Err(io::Error::other("configured WIT scene exceeded aggregate branch limit").into());
     }
 
     // Invalid settings must not mutate the existing scene, and catch-up
