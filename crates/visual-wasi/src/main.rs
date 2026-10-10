@@ -129,11 +129,7 @@ fn parse_presentation(value: Option<&str>) -> Result<PresentationVariant, String
         "idle" => Ok(PresentationVariant::Idle),
         "lockedBackground" => Ok(PresentationVariant::LockedBackground),
         "staticFallback" => Ok(PresentationVariant::StaticFallback),
-        other => Err(format!(
-            "unsupported presentation {other:?}; choose boot, desktop, idle, lockedBackground, "
-                .to_owned()
-                + "or staticFallback"
-        )),
+        other => Err(format!("unsupported presentation {other:?}")),
     }
 }
 
@@ -150,9 +146,8 @@ fn render_scene_pack_rgba(
 ) -> Result<Vec<u8>, String> {
     if !pack.assets().is_empty() {
         return Err(
-            "this WASI renderer has no safe asset resolver/hash provider; packs with assets are "
-                .to_owned()
-                + "unsupported",
+            "this WASI renderer has no safe asset resolver/hash provider; asset-bearing packs are unsupported"
+                .into(),
         );
     }
     if !pack.capabilities().required.is_empty() {
@@ -324,11 +319,15 @@ fn main() -> ExitCode {
     }
 
     if options.help {
-        eprintln!(
-            "Usage: sovereign-visual-wasi [--width N] [--height N] [--seed TEXT] [--steps N] \
-             [--activity 0..1] [--contract-version] [--scene-pack-stdin] \
-             [--presentation boot|desktop|idle|lockedBackground|staticFallback]\nWrites one binary PPM (P6) frame to stdout. Scene Pack JSON is read from stdin when requested; only the centered-network boot profile and gradient-only staticFallback are currently supported."
-        );
+        eprintln!(concat!(
+            "Usage: sovereign-visual-wasi [--width N] [--height N] [--seed TEXT] ",
+            "[--steps N] [--activity 0..1] [--contract-version] ",
+            "[--scene-pack-stdin] ",
+            "[--presentation boot|desktop|idle|lockedBackground|staticFallback]\n",
+            "Writes one binary PPM (P6) frame to stdout. Scene Pack JSON is read from stdin when ",
+            "requested; this CPU renderer supports centered-network boot and gradient-only ",
+            "staticFallback compositions only."
+        ));
         return ExitCode::SUCCESS;
     }
 
@@ -388,15 +387,17 @@ mod tests {
 
         let mut ppm = Vec::new();
         write_ppm_rgba(16, 16, &rgba, &mut ppm).unwrap();
-        assert!(ppm.starts_with(b"P6\\n16 16\\n255\\n"));
-        assert_eq!(ppm.len(), b"P6\\n16 16\\n255\\n".len() + 16 * 16 * 3);
+        assert!(ppm.starts_with(b"P6\n16 16\n255\n"));
+        assert_eq!(ppm.len(), b"P6\n16 16\n255\n".len() + 16 * 16 * 3);
     }
 
     #[test]
     fn pinned_scene_pack_boot_profile_replays_through_fixed_ticks() {
         let pack = parse_scene_pack_v1(PACK_FIXTURE.as_bytes()).unwrap();
-        let a = render_scene_pack_rgba(&pack, PresentationVariant::Boot, 32, 24, 30, 0.7).unwrap();
-        let b = render_scene_pack_rgba(&pack, PresentationVariant::Boot, 32, 24, 30, 0.7).unwrap();
+        let a =
+            render_scene_pack_rgba(&pack, PresentationVariant::Boot, 32, 24, 30, 0.7).unwrap();
+        let b =
+            render_scene_pack_rgba(&pack, PresentationVariant::Boot, 32, 24, 30, 0.7).unwrap();
         assert_eq!(a, b);
         assert_eq!(a.len(), 32 * 24 * 4);
     }
