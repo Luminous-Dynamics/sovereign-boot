@@ -41,6 +41,9 @@ jobs:
       - name: Build WASI component
         run: cargo +1.96.0 build -p sovereign-visual-wasi --target wasm32-wasip2 --release --locked
 
+      - name: Build WIT Component Model adapter
+        run: cargo +1.96.0 build -p sovereign-visual-component --target wasm32-wasip2 --release --locked
+
       - name: Clippy
         run: cargo +1.96.0 clippy --workspace --all-targets --locked -- -D warnings
 
@@ -128,6 +131,7 @@ jobs:
               "cargo_test": "pass",
               "cargo_clippy": "pass",
               "browser_wasm_build": "pass",
+              "wasi_cli_build": "pass",
               "wasi_component_build": "pass",
               "nix_flake_check": "pass",
               "nix_format": "pass",
