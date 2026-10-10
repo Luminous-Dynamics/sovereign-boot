@@ -65,6 +65,10 @@ Negotiation is deterministic: choose the highest mutually supported contract ver
 
 This capability document is a design sketch, not yet a published WIT interface. It should be implemented only after the existing WIT and browser APIs are reviewed together to avoid two competing sources of truth.
 
+## Scene Pack interoperability
+
+The current engine is not yet a Scene Pack v1 consumer. See [`SCENE_PACK_INTEROPERABILITY.md`](SCENE_PACK_INTEROPERABILITY.md) for the exact field mapping, numeric-seed contract proposal, fixed-step semantics, resource-budget rules, additive API strategy, and fail-closed acceptance gates. This integration takes precedence over adding another renderer backend.
+
 ## Graphics backend decision
 
 The architecture decision record is in [`GRAPHICS_BACKEND_DECISION.md`](GRAPHICS_BACKEND_DECISION.md). It keeps CPU RGBA as the reference, treats wgpu/native and browser-WebGPU as optional future renderers, and leaves wasi:webgpu and wasi-gfx behind a future adapter boundary while their surface/runtime contracts continue to evolve.
