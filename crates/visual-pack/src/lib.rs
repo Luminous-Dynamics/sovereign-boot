@@ -1149,7 +1149,8 @@ mod tests {
         let duplicate = format!(r#"{{"schemaVersion":1,{}"#, &FIXTURE[1..]);
         assert!(matches!(
             parse_scene_pack_v1(duplicate.as_bytes()),
-            Err(ScenePackError::InvalidJson(message)) if message.contains("duplicate JSON object key")
+            Err(ScenePackError::InvalidJson(message))
+                if message.contains("duplicate JSON object key")
         ));
 
         let unknown = FIXTURE.replace(
@@ -1178,10 +1179,11 @@ mod tests {
                 if field == "simulation.parameters.branchLimit"
         ));
 
-        let null_description = FIXTURE.replace(
-            r#""description": "A procedural mycelial world that grows during boot, settles into quiet desktop motion, and has reduced-motion and static variants.""#,
-            r#""description": null"#,
+        let original_description = concat!(
+            r#""description": "A procedural mycelial world that grows during boot, "#,
+            r#"settles into quiet desktop motion, and has reduced-motion and static variants.""#,
         );
+        let null_description = FIXTURE.replace(original_description, r#""description": null"#);
         assert!(matches!(
             parse_scene_pack_v1(null_description.as_bytes()),
             Err(ScenePackError::SchemaViolation(_))
