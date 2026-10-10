@@ -16,6 +16,3 @@ web = ["dep:wasm-bindgen"]
 sovereign-visual-core = { path = "../visual-core" }
 wasm-bindgen = { version = "=0.2.108", optional = true }
 
-[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
-# rand 0.8/getrandom 0.2 needs its JavaScript host backend for browser WASM.
-getrandom = { version = "0.2", features = ["js"] }
