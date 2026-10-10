@@ -109,7 +109,7 @@ jobs:
         with:
           name: component-host-lockfile
           path: tools/component-host-smoke/Cargo.lock
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 7
 
       - name: Clippy

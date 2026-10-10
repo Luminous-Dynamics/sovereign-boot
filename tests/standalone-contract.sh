@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
+
+# Keep static boundary checks fail-closed but emit the exact assertion that fails.
+trap 'status=$?; printf "FAIL standalone contract at line %s: %s (exit %s)\n" "$LINENO" "$BASH_COMMAND" "$status" >&2' ERR
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
@@ -178,7 +181,7 @@ grep -q 'sovereign-boot-boot-scoped-canary' flake.nix
 grep -q 'runNixOSTest' flake.nix
 grep -q 'nix flake check --no-update-lock-file --no-write-lock-file' .github/workflows/ci.yml
 grep -q 'nix build .#quicken-fb --no-update-lock-file --no-write-lock-file' .github/workflows/ci.yml
-grep -q 'nix build .#arm-physical-canary --no-update-lock-file --no-write-lock-file' .github/workflows/ci.yml
+grep -q 'nix build .#arm-physical-canary --no-link --no-update-lock-file --no-write-lock-file' .github/workflows/ci.yml
 
 # The boot-scoped canary must order before the desktop without adding a
 # destructive Conflicts= stop relationship.

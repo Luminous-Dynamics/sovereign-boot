@@ -6,12 +6,16 @@ Draft 2020-12 validation harness from
 at immutable upstream commit
 [`f54ecf4b3ced00ca6c8964e83f63e6d285f49e75`](https://github.com/Luminous-Dynamics/luminous-platform/commit/f54ecf4b3ced00ca6c8964e83f63e6d285f49e75).
 
-The schema and negative-fixture corpus are kept as source snapshots so this
-repository's CI does not silently validate against a moving `main` branch.
-`contracts/UPSTREAM_SNAPSHOT.json` records the upstream commit and original Git
-blob IDs. `tools/ambient_validation/verify_vendor_snapshot.py` recomputes each
-Git blob ID from the local bytes and fails on drift. This is an identity/drift
-check tied to the pinned Git commit, not a claim that Git SHA-1 provides
+The schema, negative-fixture corpus, and untouched upstream validator are kept as
+source snapshots so CI does not silently validate against a moving `main` branch.
+The upstream validator snapshot lives at `contracts/vendor/validate_scene_pack.py`.
+The runnable `tools/ambient_validation/validate_scene_pack.py` is a separately
+pinned downstream integration overlay: it supplies safe package-relative asset
+resolution, deterministic absolute-URI checking when optional format extras are
+absent, and specific diagnostics for legacy reference keywords. The manifest
+records both upstream Git blob IDs and the overlay's Git blob ID; the verifier
+checks both, so local fixes cannot silently rewrite upstream provenance.
+This is an identity/drift check, not a claim that Git SHA-1 provides
 collision-resistant cryptographic authentication.
 The positive manifest is the existing byte-pinned
 `tests/fixtures/first-germination.scene.json`.

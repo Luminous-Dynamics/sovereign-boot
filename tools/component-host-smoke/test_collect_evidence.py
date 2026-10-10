@@ -49,14 +49,14 @@ class EvidenceCollectorTests(unittest.TestCase):
         second = " ".join(collector.REQUIRED_MARKERS[midpoint:])
         self.assertIn(
             "exactly one component_runtime receipt line",
-            collector.missing_required_markers(first + "\\n" + second),
+            collector.missing_required_markers(first + "\n" + second),
         )
 
     def test_duplicate_receipt_lines_are_rejected(self) -> None:
         line = " ".join(collector.REQUIRED_MARKERS)
         self.assertIn(
             "exactly one component_runtime receipt line",
-            collector.missing_required_markers(line + "\\n" + line),
+            collector.missing_required_markers(line + "\n" + line),
         )
 
     def test_generated_host_lock_is_artifact_not_committed_source(self) -> None:

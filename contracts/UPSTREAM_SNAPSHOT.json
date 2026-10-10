@@ -18,7 +18,7 @@
       "gitBlobSha1": "8c80242bc17020821e94712584f0eb3503ac26da"
     },
     {
-      "localPath": "tools/ambient_validation/validate_scene_pack.py",
+      "localPath": "contracts/vendor/validate_scene_pack.py",
       "upstreamPath": "tools/ambient_validation/validate_scene_pack.py",
       "gitBlobSha1": "4d206d666c5d2ed097d40c49dcd2ba876d91734a"
     },
@@ -31,6 +31,13 @@
       "localPath": "tests/fixtures/first-germination.scene.json",
       "upstreamPath": "contracts/examples/first-germination.scene.json",
       "gitBlobSha1": "98165b8958f0121825fa28e373521bb61ce9078c"
+    }
+  ],
+  "derivedFiles": [
+    {
+      "path": "tools/ambient_validation/validate_scene_pack.py",
+      "gitBlobSha1": "47980faf6429e998a1f39cd42041c9a778f87218",
+      "purpose": "pinned local integration overlay for safe asset resolution and deterministic Draft 2020-12 URI/legacy-keyword diagnostics"
     }
   ]
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Validate Scene Pack v1 schema, cross-field invariants, and packaged assets."""
 from __future__ import annotations
-import argparse, hashlib, json, re, sys
+import argparse, hashlib, json, sys
 from dataclasses import dataclass
 from hmac import compare_digest
 from pathlib import Path, PurePosixPath
@@ -13,25 +13,6 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_SCHEMA = ROOT / "contracts/ambient-scene-pack-v1.schema.json"
 DRAFT = "https://json-schema.org/draft/2020-12/schema"
 CAPABILITIES = {"gpu", "dmabuf", "vulkan", "egl", "wayland-layer-shell"}
-
-# jsonschema's optional URI backend varies by installation. Keep the Scene Pack
-# v1 URI-format gate deterministic even when optional extras are absent.
-STRICT_FORMAT_CHECKER = FormatChecker()
-
-
-@STRICT_FORMAT_CHECKER.checks("uri")
-def _strict_absolute_uri(value: Any) -> bool:
-    if not isinstance(value, str):
-        return True
-    if not value or re.search(r"[\x00-\x20\x7f<>\"{}|\\^]", value) or chr(96) in value:
-        return False
-    from urllib.parse import urlsplit
-
-    try:
-        parsed = urlsplit(value)
-    except ValueError:
-        return False
-    return bool(re.fullmatch(r"[A-Za-z][A-Za-z0-9+.-]*", parsed.scheme))
 
 
 class DuplicateKeyError(ValueError):
@@ -136,9 +117,14 @@ def check_schema(schema: Any) -> list[Issue]:
         return [Issue("schema.invalid_document", "schema root must be an object")]
     if schema.get("$schema") != DRAFT:
         return [Issue("schema.wrong_dialect", f"$schema must be {DRAFT}")]
+    try:
+        Draft202012Validator.check_schema(schema)
+    except SchemaError as exc:
+        return [Issue("schema.meta_schema", f"invalid Draft 2020-12 schema: {exc.message}")]
 
-    # Diagnose unsupported legacy syntax before Draft 2020-12's meta-schema
-    # rejects it, so the error identifies the actual compatibility boundary.
+    # Draft 2020-12 uses $dynamicRef/$dynamicAnchor. The older
+    # $recursiveRef/$recursiveAnchor keywords are not supported by this tool's
+    # 2020-12 profile; fail closed rather than pretending to validate them.
     for node in _walk(schema):
         if not isinstance(node, dict):
             continue
@@ -148,16 +134,6 @@ def check_schema(schema: Any) -> list[Issue]:
                     "schema.unsupported_ref_keyword",
                     f"{legacy_keyword} is a legacy reference keyword unsupported by the Draft 2020-12 profile",
                 )]
-
-    try:
-        Draft202012Validator.check_schema(schema)
-    except SchemaError as exc:
-        return [Issue("schema.meta_schema", f"invalid Draft 2020-12 schema: {exc.message}")]
-
-    # References are document-local only; never fetch remote schema resources.
-    for node in _walk(schema):
-        if not isinstance(node, dict):
-            continue
         for keyword in ("$ref", "$dynamicRef"):
             if keyword not in node:
                 continue
@@ -172,36 +148,6 @@ def check_schema(schema: Any) -> list[Issue]:
                 code = "schema.unresolved_ref" if local_only else "schema.external_ref"
                 return [Issue(code, f"{keyword} {ref!r}: {detail}")]
     return []
-
-def _resolve_asset(package_root: Path, asset_path: str) -> tuple[Path | None, Issue | None]:
-    """Resolve a package-relative asset without traversal or symlink escape."""
-    if not asset_path or "\\" in asset_path or "\x00" in asset_path:
-        return None, Issue("asset.path_escape", f"invalid relative asset path {asset_path!r}")
-    raw_parts = asset_path.split("/")
-    if asset_path.startswith("/") or any(part in ("", ".", "..") for part in raw_parts):
-        return None, Issue("asset.path_escape", f"unsafe relative asset path {asset_path!r}")
-
-    root = package_root.resolve()
-    relative = PurePosixPath(asset_path)
-    candidate = root.joinpath(*relative.parts)
-    traversed_symlink = False
-    current = root
-    for part in relative.parts:
-        current = current / part
-        try:
-            traversed_symlink = traversed_symlink or current.is_symlink()
-        except OSError:
-            pass
-
-    try:
-        resolved = candidate.resolve(strict=False)
-    except (OSError, RuntimeError) as exc:
-        return None, Issue("asset.resolve_error", f"cannot resolve asset {asset_path!r}: {exc}")
-    if not resolved.is_relative_to(root):
-        code = "asset.symlink_escape" if traversed_symlink else "asset.path_escape"
-        return None, Issue(code, f"asset path {asset_path!r} resolves outside the package root")
-    return resolved, None
-
 
 def validate_semantics(manifest: Any, *, package_root: Path | None = None,
                        supported_capabilities: set[str] | None = None) -> list[Issue]:
@@ -279,7 +225,7 @@ def validate_manifest(schema: Any, manifest: Any, *, package_root: Path | None =
     schema_issues = check_schema(schema)
     if schema_issues:
         return schema_issues
-    validator = Draft202012Validator(schema, format_checker=STRICT_FORMAT_CHECKER)
+    validator = Draft202012Validator(schema, format_checker=FormatChecker())
     errors = sorted(validator.iter_errors(manifest),
                     key=lambda e: (tuple(map(str, e.absolute_path)), e.message))
     if errors:
