@@ -6,6 +6,7 @@ members = [
     "crates/visual-wasm",
     "crates/visual-wasi",
     "crates/visual-component",
+    "crates/visual-pack",
 ]
 
 [workspace.package]
