@@ -20,6 +20,13 @@ test -s crates/visual-core/src/lib.rs
 test -s crates/visual-core/src/mycelium.rs
 test -s crates/visual-wasm/src/lib.rs
 test -s tests/visual-wasm-smoke.mjs
+test -s crates/visual-wasm/www/index.html
+test -s crates/visual-wasm/www/app.js
+test -s crates/visual-wasm/build-demo.sh
+grep -q 'prefers-reduced-motion' crates/visual-wasm/www/app.js
+grep -q 'visibilitychange' crates/visual-wasm/www/app.js
+grep -q 'wasm-bindgen --target web' crates/visual-wasm/build-demo.sh
+bash -n crates/visual-wasm/build-demo.sh
 grep -q 'render_rgba' tests/visual-wasm-smoke.mjs
 test -s crates/visual-wasi/src/main.rs
 grep -q 'pub use sovereign_visual_core::{color, mycelium};' crates/quicken-fb/src/lib.rs
