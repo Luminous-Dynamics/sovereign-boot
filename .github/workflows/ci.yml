@@ -4,6 +4,12 @@ on:
   push:
   pull_request:
 
+# Keep the exact current branch/PR head at the front of the queue; older
+# queued runs cannot qualify a newer source revision.
+concurrency:
+  group: sovereign-boot-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
