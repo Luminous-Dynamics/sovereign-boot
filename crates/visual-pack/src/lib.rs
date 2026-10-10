@@ -714,6 +714,40 @@ fn is_lower_hex_digest(value: &str) -> bool {
 }
 
 fn validate_uri(field: &str, uri: &str) -> Result<(), ScenePackError> {
+    let bytes = uri.as_bytes();
+    if bytes.is_empty()
+        || bytes.len() > 2048
+        || bytes.iter().any(|byte| byte.is_ascii_whitespace() || !byte.is_ascii())
+    {
+        return Err(invalid_value(field, "must be an ASCII URI no longer than 2048 bytes"));
+    }
+    let Some((scheme, remainder)) = uri.split_once(':') else {
+        return Err(invalid_value(field, "must include a URI scheme"));
+    };
+    let valid_scheme = !scheme.is_empty()
+        && scheme.as_bytes()[0].is_ascii_alphabetic()
+        && scheme
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"+.-".contains(&byte));
+    if !valid_scheme || remainder.is_empty() {
+        return Err(invalid_value(field, "has an invalid URI scheme or empty address"));
+    }
+
+    let mut index = 0;
+    while index < bytes.len() {
+        let byte = bytes[index];
+        if byte == b'%' {
+            if index + 2 >= bytes.len()
+                || !bytes[index + 1].is_ascii_hexdigit()
+                || !bytes[index + 2].is_ascii_hexdigit()
+            {
+                return Err(invalid_value(field, "contains an invalid percent escape"));
+            }
+            index += 3;
+            continue;
+        }
+        if !(byte.is_ascii_alphanumeric()
+            || b"-._~:/?#[]@!fn validate_uri(field: &str, uri: &str) -> Result<(), ScenePackError> {
     if uri.len() > 2048 || uri.chars().any(char::is_whitespace) {
         return Err(invalid_value(field, "must be a URI no longer than 2048 characters"));
     }
@@ -729,10 +763,22 @@ fn validate_uri(field: &str, uri: &str) -> Result<(), ScenePackError> {
         return Err(invalid_value(field, "has an invalid URI scheme or empty address"));
     }
     Ok(())
+}'()*+,;=".contains(&byte))
+        {
+            return Err(invalid_value(field, "contains a character forbidden in a URI"));
+        }
+        index += 1;
+    }
+    Ok(())
 }
 
 fn parse_color(field: &str, value: &str) -> Result<Rgba, ScenePackError> {
-    if value.len() != 7 || !value.starts_with('#') {
+    if value.len() != 7
+        || !value.starts_with('#')
+        || !value.as_bytes()[1..]
+            .iter()
+            .all(u8::is_ascii_hexdigit)
+    {
         return Err(invalid_value(field, "must be a #RRGGBB color"));
     }
     let channel = |start: usize| {
@@ -1136,7 +1182,7 @@ mod tests {
         let bad_region = FIXTURE.replace(
             r#""width": 0.2,
           "height": 1""#,
-            r#""width": 0.9,
+            r#""width": 1.2,
           "height": 1"#,
         );
         assert!(matches!(
@@ -1173,5 +1219,16 @@ mod tests {
             pack.verify_asset_hashes(&mut WrongHash),
             Err(ScenePackError::AssetDigestMismatch { .. })
         ));
+
+        struct CorrectHash;
+        impl AssetHashProvider for CorrectHash {
+            fn sha256_hex_for_safe_relative_path(
+                &mut self,
+                _path: &str,
+            ) -> Result<String, String> {
+                Ok("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned())
+            }
+        }
+        assert!(pack.verify_asset_hashes(&mut CorrectHash).is_ok());
     }
 }
