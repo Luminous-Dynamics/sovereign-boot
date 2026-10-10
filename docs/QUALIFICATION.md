@@ -126,3 +126,17 @@ fallback when the required controlling VT is unavailable.
 
 This preserves a non-interference invariant: an accidental canary invocation
 must fail closed without intentionally tearing down the active desktop.
+
+
+## Independently collected Component Model runtime evidence
+
+The standalone `Component Model runtime qualification` workflow isolates the guest build and Wasmtime execution from the full Cargo/Nix workflow. It checks out the PR's exact head, instantiates the production WIT component with a linker that has no host imports registered, and writes a short-lived evidence artifact containing:
+
+- exact source commit and Git tree;
+- SHA-256 identities for the guest component, manifest fixture, host lockfile, and source files that define the execution contract;
+- the pinned Rust toolchain and Wasmtime host version;
+- runtime assertion markers for configured replay, resource bounds, rejected invalid configuration, absent imports, and explicit resource disposal.
+
+The generated `component-host-Cargo.lock` is an intermediate dependency-resolution artifact and a candidate for source pinning review. It is not considered a frozen repository dependency graph until reviewed and committed. The receipt is emitted only when the actual host process returns success and all required markers are present.
+
+This evidence is narrowly scoped: it does not establish browser presentation, physical boot, OS lifecycle behavior, or whole-process memory enforcement. A successful independent runtime lane also does not replace the full Cargo/Nix exact-head qualification.
