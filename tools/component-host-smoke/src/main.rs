@@ -186,14 +186,16 @@ fn main() -> Result<(), Box<dyn Error>> {
         "configure numeric-seed scene B",
     )?;
 
-    require_guest_ok(
-        scene_api.call_advance_ticks(&mut store, configured_a, 120, 0.7)?,
-        "advance configured scene A",
-    )?;
-    require_guest_ok(
-        scene_api.call_advance_ticks(&mut store, configured_b, 120, 0.7)?,
-        "advance configured scene B",
-    )?;
+    for _ in 0..4 {
+        require_guest_ok(
+            scene_api.call_advance_ticks(&mut store, configured_a, 30, 0.7)?,
+            "advance configured scene A",
+        )?;
+        require_guest_ok(
+            scene_api.call_advance_ticks(&mut store, configured_b, 30, 0.7)?,
+            "advance configured scene B",
+        )?;
+    }
     let configured_frame = scene_api.call_render(&mut store, configured_a)?;
     let configured_replay = scene_api.call_render(&mut store, configured_b)?;
     let configured_expected_len =
