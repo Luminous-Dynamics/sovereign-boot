@@ -141,7 +141,7 @@ fn main() -> ExitCode {
 
     if options.help {
         eprintln!(
-            "Usage: sovereign-visual-wasi [--width N] [--height N] [--seed TEXT] [--steps N] [--activity 0..1]\nWrites a binary PPM (P6) frame to stdout."
+            "Usage: sovereign-visual-wasi [--width N] [--height N] [--seed TEXT] [--steps N] [--activity 0..1] [--contract-version]\nWrites a binary PPM (P6) frame to stdout."
         );
         return ExitCode::SUCCESS;
     }
