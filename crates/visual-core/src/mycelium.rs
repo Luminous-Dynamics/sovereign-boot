@@ -567,4 +567,19 @@ mod tests {
         // Center pixel should be set
         assert_ne!(buf[10 * 20 + 10], 0);
     }
+
+    #[test]
+    fn same_seed_produces_identical_frame_across_runs() {
+        let mut a = MycelialNetwork::new(80, 60, "portable visual fixture");
+        let mut b = MycelialNetwork::new(80, 60, "portable visual fixture");
+        for _ in 0..60 {
+            a.grow(1.0 / 30.0, 0.7);
+            b.grow(1.0 / 30.0, 0.7);
+        }
+        let mut frame_a = vec![0_u32; 80 * 60];
+        let mut frame_b = vec![0_u32; 80 * 60];
+        a.render(&mut frame_a);
+        b.render(&mut frame_b);
+        assert_eq!(frame_a, frame_b);
+    }
 }
