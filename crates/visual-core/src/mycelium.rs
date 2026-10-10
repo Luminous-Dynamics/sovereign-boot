@@ -72,17 +72,19 @@ enum StepMode {
 
 /// The full mycelial network state.
 pub struct MycelialNetwork {
-    pub branches: Vec<Branch>,
-    pub width: u32,
-    pub height: u32,
+    // Keep state that affects allocation and simulation invariants private.
+    // Hosts use read-only accessors and cannot bypass validated resource limits.
+    branches: Vec<Branch>,
+    width: u32,
+    height: u32,
     rng: ChaCha12Rng,
     center: (f32, f32),
     /// Elapsed time in seconds (fractional).
-    pub elapsed: f32,
+    elapsed: f32,
     /// All nodes pulsing simultaneously (completion events).
-    pub global_pulse: f32,
+    global_pulse: f32,
     /// Contraction progress (0.0 = normal, 1.0 = fully contracted to center).
-    pub contraction: f32,
+    contraction: f32,
     /// Effective validated settings for this scene. Kept private so callers
     /// cannot mutate a constructed scene past its validated resource limits.
     settings: SceneSettings,
@@ -219,6 +221,25 @@ impl MycelialNetwork {
         let dx = scale * ((phase + time * 0.67).sin() - phase.sin());
         let dy = scale * ((phase * 1.37 + time * 0.49).cos() - (phase * 1.37).cos());
         (point.0 + dx, point.1 + dy)
+    }
+
+    /// Effective validated dimensions.
+    pub fn width(&self) -> u32 {
+        self.width
+    }
+
+    pub fn height(&self) -> u32 {
+        self.height
+    }
+
+    /// Current branch count without exposing mutable simulation storage.
+    pub fn branch_count(&self) -> u32 {
+        self.branches.len().min(u32::MAX as usize) as u32
+    }
+
+    /// Elapsed simulation time in seconds.
+    pub fn elapsed_seconds(&self) -> f32 {
+        self.elapsed
     }
 
     /// Read the effective immutable settings for this scene.
