@@ -58,11 +58,11 @@ function updateControls() {
   regenerateButton.disabled = !scene;
 }
 
-function advanceStaticFrame() {
-  // One bounded canonical batch: no animation loop is scheduled in reduced
-  // motion mode. The host still presents a frame through the normal canvas.
-  scene.advance_ticks(40, 0.55);
-  renderFrame();
+function showStaticFallback() {
+  // A real no-animation fallback: no ticking, GPU dependency or scene mutation.
+  const rgba = scene.render_static_fallback(0.58);
+  imageData.data.set(rgba);
+  context.putImageData(imageData, 0, 0);
 }
 
 function animate(now) {
@@ -131,8 +131,8 @@ function makeScene() {
   );
 
   if (reducedMotion.matches) {
-    advanceStaticFrame();
-    status.textContent = "Reduced motion is enabled; showing one configured static frame.";
+    showStaticFallback();
+    status.textContent = "Reduced motion is enabled; showing the deterministic gradient fallback.";
   } else if (paused) {
     renderFrame();
     status.textContent = "Animation paused.";
