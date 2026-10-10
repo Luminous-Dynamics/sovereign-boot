@@ -27,4 +27,9 @@ wasm-bindgen --target web --out-dir "$output_dir" \
   "$repo_root/target/wasm32-unknown-unknown/release/sovereign_visual_wasm.wasm"
 printf '{"type":"module"}\n' > "$output_dir/package.json"
 
+# Host-served manifest fixture. The guest receives bytes from the browser and
+# has no fetch/filesystem authority; this same pinned file also drives CI tests.
+cp "$repo_root/tests/fixtures/first-germination.scene.json" \
+  "$output_dir/first-germination.scene.json"
+
 echo "Browser demo package built at $output_dir"
