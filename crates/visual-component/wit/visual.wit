@@ -1,6 +1,35 @@
 package luminous:sovereign-visual@0.1.0;
 
 interface scene {
+  record rgb {
+    r: u8,
+    g: u8,
+    b: u8,
+  }
+
+  record scene-palette {
+    canvas: rgb,
+    substrate: rgb,
+    filament: rgb,
+    node: rgb,
+    lichen: rgb,
+    glow: rgb,
+  }
+
+  /// Settings accepted by the portable renderer after a manifest has been
+  /// validated by the host. Presentation/lifecycle policy remains host-owned.
+  record scene-settings {
+    seed: u32,
+    branch-limit: u32,
+    max-depth: u32,
+    growth-rate: f32,
+    fixed-step-hz: u32,
+    pulse-period-seconds: f32,
+    drift-amplitude: f32,
+    max-memory-mib: u32,
+    palette: scene-palette,
+  }
+
   record frame {
     width: u32,
     height: u32,
@@ -11,9 +40,15 @@ interface scene {
   /// Host-owned presentation; the component provides scene state and frames only.
   resource visual-scene {
     constructor(width: u32, height: u32, seed: string);
+    /// Replace initial state with a validated numeric-seed settings profile.
+    /// Invalid settings leave the current scene unchanged and return an error.
+    configure: func(width: u32, height: u32, settings: scene-settings) -> result<_, string>;
     /// Host-independent scene semantics version. Increment on breaking changes.
     contract-version: func() -> u32;
+    /// Legacy variable-delta operation; delta and activity are strictly bounded.
     advance: func(dt-seconds: f32, activity: f32) -> result<_, string>;
+    /// Advance canonical fixed ticks; a call may advance at most one simulated second.
+    advance-ticks: func(ticks: u32, activity: f32) -> result<_, string>;
     pulse: func();
     contract: func(progress: f32) -> result<_, string>;
     render: func() -> frame;
