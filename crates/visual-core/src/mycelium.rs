@@ -353,7 +353,9 @@ impl MycelialNetwork {
                 if total_branches + new_branches.len() >= self.settings.branch_limit as usize {
                     break;
                 }
-                let fork_angle = (15.0_f32 + (self.rng.next_u32() as f32 / u32::MAX as f32) * 30.0).to_radians();
+                let fork_angle =
+                    (15.0_f32 + (self.rng.next_u32() as f32 / u32::MAX as f32) * 30.0)
+                        .to_radians();
                 let sign = if self.rng.next_u32() & 1 == 1 { 1.0 } else { -1.0 };
                 let child_angle = angle + fork_angle * sign;
                 let child_thickness = (thickness * 0.75).max(0.5);
