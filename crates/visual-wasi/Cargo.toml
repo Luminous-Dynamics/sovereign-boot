@@ -11,3 +11,4 @@ path = "src/main.rs"
 
 [dependencies]
 sovereign-visual-core = { path = "../visual-core" }
+sovereign-visual-pack = { path = "../visual-pack" }
