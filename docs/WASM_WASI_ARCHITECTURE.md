@@ -66,6 +66,14 @@ Build command:
 
 The WASI CLI target remains a smoke target; the WIT component is the reusable guest interface. They are different artifacts with different intended uses. Component host execution and interface inspection should become explicit qualification gates after the compile and unit-test gates are green.
 
+## Typed settings and fixed-step browser API
+
+The core now exposes a typed `SceneSettings` / `ScenePalette` path for numeric Scene Pack seeds, with validation before construction. The reference renderer applies the configured palette, growth rate, branch/depth ceilings, pulse period, drift amplitude, fixed-step frequency, and conservative renderer-owned memory estimate. Configured tick batches are bounded to 120 ticks per call; hosts must pause/reset on suspend rather than perform unbounded catch-up.
+
+The browser adapter adds a configured constructor accepting a uint32 seed, bounded settings, and six RGB palette triplets, plus `advance_ticks`. The existing phrase-based constructor and dt-based method remain for compatibility. The committed browser smoke script now contains a settings-based deterministic replay fixture and negative checks.
+
+This is a core + browser slice only. It is not yet a Scene Pack JSON loader, does not interpret presentation variants/safe regions or create the gradient static fallback, and does not prove a whole-process memory limit. The WIT Component Model interface still uses the legacy seed-phrase constructor; configured settings have not yet been exposed there. Do not call the overall product Scene Pack v1 compatible until those gaps are implemented and qualified.
+
 ## WASM and WASI are complementary, not interchangeable
 
 - `wasm32-unknown-unknown` is a minimal WebAssembly target typically paired with JavaScript bindings in a browser. Web APIs are supplied by the browser host, not by WASI.
