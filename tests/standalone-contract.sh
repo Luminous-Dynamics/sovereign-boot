@@ -18,6 +18,8 @@ grep -q 'export scene' crates/visual-component/wit/visual.wit
 grep -q 'GuestVisualScene' crates/visual-component/src/lib.rs
 test -s crates/visual-core/src/lib.rs
 test -s crates/visual-core/src/mycelium.rs
+test -s crates/visual-core/examples/rgba-fixture.rs
+grep -q 'portable-smoke-fixture' crates/visual-core/examples/rgba-fixture.rs
 test -s crates/visual-wasm/src/lib.rs
 test -s tests/visual-wasm-smoke.mjs
 test -s crates/visual-wasm/www/index.html
@@ -60,6 +62,9 @@ grep -q 'wasm32-unknown-unknown --features web --release --locked' .github/workf
 grep -q 'cargo +1.96.0 install wasm-bindgen-cli --version 0.2.108 --locked' .github/workflows/ci.yml
 grep -q 'wasm-bindgen --target web' .github/workflows/ci.yml
 grep -q 'node tests/visual-wasm-smoke.mjs' .github/workflows/ci.yml
+grep -q 'cargo +1.96.0 run --locked -p sovereign-visual-core --example rgba-fixture' .github/workflows/ci.yml
+grep -q 'native.rgba' .github/workflows/ci.yml
+grep -q 'native Rust and browser WASM must render identical RGBA bytes' tests/visual-wasm-smoke.mjs
 grep -q 'wasm32-wasip2 --release --locked' .github/workflows/ci.yml
 grep -q 'cargo +1.96.0 build -p sovereign-visual-component --target wasm32-wasip2 --release --locked' .github/workflows/ci.yml
 
