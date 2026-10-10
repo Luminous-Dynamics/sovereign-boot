@@ -38,6 +38,12 @@ Both the browser ABI and WIT Component Model now accept typed settings; the WIT 
 
 The deterministic canvas-to-substrate static gradient renderer is implemented in core and exposed through browser WASM and WIT with brightness validation and non-mutating behavior. The remaining interoperability boundary is explicit: there is no Scene Pack JSON loader here yet; presentation-variant selection, safe regions, visibility/suspend policy, fallback activation, and whole-process memory accounting remain adapter/loader work. See `SCENE_PACK_INTEROPERABILITY.md` for the field-by-field mapping and acceptance gates.
 
+## Scene Pack v1 loading
+
+The separate `sovereign-visual-pack` crate is now the strict manifest boundary: bounded JSON input, duplicate-key rejection, unknown-field rejection, typed version/range checks, safe-relative-path validation, presentation/safe-region checks, consent invariants and dual branch-budget validation. `ValidatedScenePack` preserves host-facing metadata, exposes immutable typed renderer settings, and can instantiate the same core scene used by the other adapters.
+
+The parser intentionally has no filesystem authority. The host must explicitly supply an `AssetHashProvider` whose implementation safely resolves an asset under the pack root and computes SHA-256; the parser fails closed on resolver errors or digest mismatch. This does not yet constitute a fully wired production host loader or a complete schema-conformance claim. Exact-head CI and a schema-generated conformance corpus remain prerequisites.
+
 ## Determinism and reproducibility
 
 The seed alone is not a complete reproducibility contract. The full replay input is:
