@@ -77,6 +77,16 @@ function renderConfiguredFixture() {
   assert.equal(scene.contract_version(), 1);
   assert.equal(scene.width(), 32);
   assert.equal(scene.height(), 24);
+  assert.deepEqual(
+    Buffer.from(scene.render_rgba().slice(0, 4)),
+    Buffer.from([10, 16, 14, 255]),
+    "configured canvas color is applied before stepping",
+  );
+  assert.throws(
+    () => scene.advance_ticks(121, 0.7),
+    /tick batch must/i,
+    "simulation catch-up cannot exceed the core batch ceiling",
+  );
   for (let i = 0; i < 120; i += 1) {
     scene.advance_ticks(1, 0.7);
   }
