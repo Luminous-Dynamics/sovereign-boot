@@ -1,0 +1,26 @@
+package luminous:sovereign-visual@0.1.0;
+
+interface scene {
+  record frame {
+    width: u32,
+    height: u32,
+    /// Top-to-bottom row-major RGBA8 pixels, four bytes per pixel.
+    rgba: list<u8>,
+  }
+
+  /// Host-owned presentation; the component provides scene state and frames only.
+  resource visual-scene {
+    constructor(width: u32, height: u32, seed: string);
+    advance: func(dt-seconds: f32, activity: f32) -> result<_, string>;
+    pulse: func();
+    contract: func(progress: f32) -> result<_, string>;
+    render: func() -> frame;
+    width: func() -> u32;
+    height: func() -> u32;
+    branch-count: func() -> u32;
+  }
+}
+
+world visual-component {
+  export scene;
+}
