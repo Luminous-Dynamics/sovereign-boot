@@ -124,6 +124,26 @@ assert.deepEqual(
   renderConfiguredFixture(),
   "numeric seed and typed settings must replay to identical RGBA bytes",
 );
+
+const variableModeScene = new bindings.VisualScene(16, 16, "variable-mode");
+variableModeScene.advance(1 / 30, 0.7);
+assert.throws(
+  () => variableModeScene.advance_ticks(1, 0.7),
+  /cannot mix/i,
+  "variable-delta stepping must not switch to fixed ticks",
+);
+variableModeScene.free();
+
+const fixedModeScene = bindings.VisualScene.createConfigured(
+  16, 16, 20261010, 2048, 10, 0.28, 30, 7.5, 0.12, 128, scenePackPalette,
+);
+fixedModeScene.advance_ticks(1, 0.7);
+assert.throws(
+  () => fixedModeScene.advance(1 / 30, 0.7),
+  /cannot mix/i,
+  "fixed-tick stepping must not switch to variable deltas",
+);
+fixedModeScene.free();
 assert.throws(
   () => bindings.VisualScene.createConfigured(
     32, 24, 20261010, 0, 10, 0.28, 30, 7.5, 0.12, 128, scenePackPalette,
