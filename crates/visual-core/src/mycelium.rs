@@ -714,8 +714,12 @@ mod tests {
         assert_eq!(a.branches.len(), 1);
         assert_eq!(b.branches.len(), 1);
 
-        a.advance_ticks(300, 0.7).unwrap();
-        b.advance_ticks(300, 0.7).unwrap();
+        for _ in 0..2 {
+            a.advance_ticks(120, 0.7).unwrap();
+            b.advance_ticks(120, 0.7).unwrap();
+        }
+        a.advance_ticks(60, 0.7).unwrap();
+        b.advance_ticks(60, 0.7).unwrap();
         assert_eq!(a.render_rgba(), b.render_rgba());
         assert!(a.branches.len() <= 1);
         assert!(a.branches.iter().all(|branch| branch.depth <= 1));
@@ -755,8 +759,10 @@ mod tests {
 
         let mut still = MycelialNetwork::with_settings(80, 60, 99, still_settings).unwrap();
         let mut drift = MycelialNetwork::with_settings(80, 60, 99, drift_settings).unwrap();
-        still.advance_ticks(150, 0.7).unwrap();
-        drift.advance_ticks(150, 0.7).unwrap();
+        still.advance_ticks(120, 0.7).unwrap();
+        still.advance_ticks(30, 0.7).unwrap();
+        drift.advance_ticks(120, 0.7).unwrap();
+        drift.advance_ticks(30, 0.7).unwrap();
 
         assert_ne!(still.render_rgba(), drift.render_rgba());
     }
