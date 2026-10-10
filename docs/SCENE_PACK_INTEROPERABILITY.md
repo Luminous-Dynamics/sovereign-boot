@@ -20,7 +20,7 @@ The canonical upstream First Germination JSON is pinned byte-for-byte at `tests/
 
 The renderer’s branch storage, dimensions and simulation timing state are now private to `visual-core`; adapters receive read-only accessors. Hosts cannot mutate a validated scene object to bypass dimension and branch settings after construction.
 
-**Still not implemented or qualified:** execution of the new parser's unit tests on the exact PR head; integration of `sovereign-visual-pack` into the production browser and Wasmtime host entry points; host-side safe asset resolution plus actual file SHA-256 verification; signed-pack/attribution policy; general composition mapping for all presentation variants and normalized safe regions; complete OS lock/suspend/wake lifecycle policy; and whole-process/runtime/compositor memory accounting. The parser validates the pinned conformance profile and provides a safe typed boundary, but the overall product must not yet be called fully Scene Pack v1 compatible. Exact-head CI and real runtime qualification remain pending.
+**Still not implemented or qualified:** execution of the parser/core/WASI/Wasmtime tests on the exact PR head; production browser demo integration with `ValidatedScenePack`; host-side safe asset resolution plus actual file SHA-256 verification; signed-pack/attribution policy; general composition mapping for all presentation variants and normalized safe regions; complete OS lock/suspend/wake lifecycle policy; and whole-process/runtime/compositor memory accounting. The WASI CLI and capability-denied Wasmtime qualification harness now use the parser; the WASI CLI supports centered-network `boot` and gradient-only `staticFallback` only, and rejects packs requiring asset access, external capabilities, inputs or safe-region composition it cannot implement. The overall product must not yet be called fully Scene Pack v1 compatible. Exact-head CI and real runtime qualification remain pending.
 
 ## Current gaps to resolve
 
@@ -91,6 +91,18 @@ Before claiming Scene Pack v1 support:
 The capability-denied Wasmtime host is the qualification path for the actual resource-based WIT API. The expanded harness now creates a configured scene, advances bounded fixed ticks, compares two independent WIT replays byte-for-byte, checks branch/memory limits, verifies failed reconfiguration is atomic, and explicitly disposes every resource. This test implementation is not evidence of a passing run until CI executes it against the exact head.
 
 Presentation and host lifecycle policy stay outside the guest. In particular, this component never authenticates users, changes the lock state, controls the boot transaction, or obtains direct display access.
+
+## WASI smoke invocation
+
+The WASI CLI can consume the pinned example through bounded stdin without granting filesystem access:
+
+```sh
+cat tests/fixtures/first-germination.scene.json | \
+  cargo run -p sovereign-visual-wasi -- --scene-pack-stdin \
+    --presentation staticFallback --width 640 --height 360 > fallback.ppm
+```
+
+The centered-network boot presentation is also supported. Other current compositions are rejected rather than silently ignored. Asset-bearing packs are rejected until a safe host resolver/digest provider is wired; the fixture has no assets.
 
 ## Production parser API
 
