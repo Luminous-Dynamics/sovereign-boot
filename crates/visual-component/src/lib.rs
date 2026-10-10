@@ -112,6 +112,7 @@ mod tests {
         let seed = "component-parity-fixture";
         let mut native = MycelialNetwork::new(32, 24, seed);
         let guest = <VisualScene as GuestVisualScene>::new(32, 24, seed.to_owned());
+        assert_eq!(guest.contract_version(), u32::from(contract::SCENE_CONTRACT_VERSION));
 
         for _ in 0..20 {
             native.grow(1.0 / 30.0, 0.7);
