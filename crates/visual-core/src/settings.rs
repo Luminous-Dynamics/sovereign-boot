@@ -108,6 +108,7 @@ pub enum SceneSettingsError {
     MemoryBudgetOutOfRange,
     MemoryEstimateOverflow,
     ResourceBudgetExceeded,
+    PaletteMustBeOpaque,
     InvalidActivity,
     TickBatchOutOfRange,
 }
@@ -131,6 +132,10 @@ impl fmt::Display for SceneSettingsError {
             Self::ResourceBudgetExceeded => {
                 write!(f, "scene exceeds its conservative renderer memory budget")
             }
+            Self::PaletteMustBeOpaque => write!(
+                f,
+                "scene palette colors must be opaque RGB values with alpha 255"
+            ),
             Self::InvalidActivity => write!(f, "activity must be finite and in 0..=1"),
             Self::TickBatchOutOfRange => write!(
                 f,
@@ -182,6 +187,18 @@ impl SceneSettings {
         }
         if !(MIN_MEMORY_MIB..=MAX_MEMORY_MIB).contains(&self.max_memory_mib) {
             return Err(SceneSettingsError::MemoryBudgetOutOfRange);
+        }
+
+        let palette_colors = [
+            self.palette.canvas,
+            self.palette.substrate,
+            self.palette.filament,
+            self.palette.node,
+            self.palette.lichen,
+            self.palette.glow,
+        ];
+        if palette_colors.iter().any(|color| color.3 != 0xff) {
+            return Err(SceneSettingsError::PaletteMustBeOpaque);
         }
 
         let pixels = u64::from(width)
@@ -318,6 +335,16 @@ mod tests {
         assert_eq!(
             settings.validate_for_dimensions(3840, 2160),
             Err(SceneSettingsError::ResourceBudgetExceeded)
+        );
+    }
+
+    #[test]
+    fn translucent_palette_colors_are_rejected() {
+        let mut settings = SceneSettings::default();
+        settings.palette.node = Rgba(232, 197, 71, 128);
+        assert_eq!(
+            settings.validate_for_dimensions(32, 24),
+            Err(SceneSettingsError::PaletteMustBeOpaque)
         );
     }
 
