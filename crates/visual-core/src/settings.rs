@@ -104,6 +104,7 @@ pub enum SceneSettingsError {
     MemoryBudgetOutOfRange,
     MemoryEstimateOverflow,
     ResourceBudgetExceeded,
+    InvalidActivity,
 }
 
 impl fmt::Display for SceneSettingsError {
@@ -125,6 +126,7 @@ impl fmt::Display for SceneSettingsError {
             Self::ResourceBudgetExceeded => {
                 write!(f, "scene exceeds its conservative renderer memory budget")
             }
+            Self::InvalidActivity => write!(f, "activity must be finite and in 0..=1"),
         }
     }
 }
