@@ -62,24 +62,14 @@ mod web {
 
         /// Render one tightly packed RGBA8 frame. The host owns presentation.
         pub fn render_rgba(&self) -> Vec<u8> {
-            let width = self.network.width as usize;
-            let height = self.network.height as usize;
-            let mut packed = vec![0_u32; width * height];
-            self.network.render(&mut packed);
-
-            let mut rgba = Vec::with_capacity(packed.len() * 4);
-            for pixel in packed {
-                rgba.push(((pixel >> 16) & 0xff) as u8);
-                rgba.push(((pixel >> 8) & 0xff) as u8);
-                rgba.push((pixel & 0xff) as u8);
-                rgba.push(0xff);
-            }
-            rgba
+            self.network.render_rgba()
         }
 
         pub fn width(&self) -> u32 { self.network.width }
         pub fn height(&self) -> u32 { self.network.height }
-        pub fn branch_count(&self) -> usize { self.network.branches.len() }
+        pub fn branch_count(&self) -> u32 {
+            self.network.branches.len().min(u32::MAX as usize) as u32
+        }
     }
 
     #[cfg(test)]
