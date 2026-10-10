@@ -60,6 +60,7 @@ mod web {
             height: u32,
             seed: u32,
             branch_limit: u32,
+            resource_max_branches: u32,
             max_depth: u32,
             growth_rate: f32,
             fixed_step_hz: u32,
@@ -84,6 +85,7 @@ mod web {
             };
             let settings = SceneSettings {
                 branch_limit,
+                resource_max_branches,
                 max_depth,
                 growth_rate,
                 fixed_step_hz,
