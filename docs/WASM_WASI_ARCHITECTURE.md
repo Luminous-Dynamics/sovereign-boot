@@ -68,7 +68,7 @@ The WASI CLI target remains a smoke target; the WIT component is the reusable gu
 
 ## Typed settings and fixed-step browser API
 
-The core now exposes a typed `SceneSettings` / `ScenePalette` path for numeric Scene Pack seeds, with validation before construction. The reference renderer applies the configured palette, growth rate, branch/depth ceilings, pulse period, drift amplitude, fixed-step frequency, and conservative renderer-owned memory estimate. Configured tick batches are bounded to 120 ticks per call; hosts must pause/reset on suspend rather than perform unbounded catch-up.
+The core now exposes typed `SceneSettings` / `ScenePalette` for numeric Scene Pack seeds, with validation before construction. The profile carries both `branch_limit` (scene request) and `resource_max_branches` (independent host ceiling); construction rejects invalid/inconsistent values and the renderer enforces the scene cap before child allocation. It also applies palette roles, growth rate, depth limits, tick-scheduled pulses, deterministic drift and a modeled renderer-allocation estimate. Fixed-tick batches are bounded to `min(fixed_step_hz, 120)`; hosts must pause/reset on suspend rather than catch up without a bound.
 
 The browser adapter adds a configured constructor accepting a uint32 seed, bounded settings, and six RGB palette triplets, plus `advance_ticks`. The existing phrase-based constructor and dt-based method remain for compatibility. The committed browser smoke script now contains a settings-based deterministic replay fixture and negative checks.
 
