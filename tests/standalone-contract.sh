@@ -18,6 +18,15 @@ grep -q 'export scene' crates/visual-component/wit/visual.wit
 grep -q 'GuestVisualScene' crates/visual-component/src/lib.rs
 test -s crates/visual-core/src/lib.rs
 test -s crates/visual-core/src/mycelium.rs
+test -s crates/visual-pack/Cargo.toml
+test -s crates/visual-pack/src/lib.rs
+test -s tests/fixtures/first-germination.scene.json
+grep -q 'parse_scene_pack_v1' crates/visual-pack/src/lib.rs
+grep -q 'duplicate JSON object key' crates/visual-pack/src/lib.rs
+grep -q 'resource_max_branches' crates/visual-pack/src/lib.rs
+grep -q 'AssetHashProvider' crates/visual-pack/src/lib.rs
+grep -q 'crates/visual-pack' Cargo.toml
+grep -q 'name = "sovereign-visual-pack"' Cargo.lock
 test -s crates/visual-core/examples/rgba-fixture.rs
 grep -q 'portable-smoke-fixture' crates/visual-core/examples/rgba-fixture.rs
 test -s crates/visual-wasm/src/lib.rs
