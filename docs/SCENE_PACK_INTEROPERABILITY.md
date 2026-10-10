@@ -12,7 +12,7 @@ The Scene Pack remains data, not executable code. JSON Schema validation, duplic
 
 ## Implemented core/API slice on the hardening branch
 
-The reusable core now includes `SceneSettings` and `ScenePalette` plus the additive `MycelialNetwork::with_settings(width, height, seed, settings)` constructor. The browser adapter also exposes a numeric-seed `VisualScene.createConfigured(...)` entry point and `advance_ticks`. The implementation enforces branch/depth limits during growth, growth-rate scaling, tick-based pulse scheduling, deterministic positional drift, six renderer palette roles, and a conservative renderer-owned memory estimate. Catch-up batches are capped at 120 ticks.
+The reusable core exposes `SceneSettings` and `ScenePalette` through the additive `MycelialNetwork::with_settings(width, height, seed, settings)` constructor. Browser WASM exposes the numeric-seed `VisualScene.createConfigured(...)` API; WIT accepts the same settings record through atomic `configure`. The typed profile carries two distinct branch ceilings: the scene request (`simulation.parameters.branchLimit`) and the independent host/resource ceiling (`resourceBudget.maxBranches`). Construction fails closed if either is outside the hard contract or if the requested branch count exceeds the host ceiling; the growth loop enforces the scene limit before appending children. Configured settings also control depth, growth rate, fixed-step frequency, tick-based pulse timing, deterministic drift, and all six palette roles. A call advances at most `min(fixed_step_hz, 120)` ticks (one simulated second). The renderer enforces a modeled allocation estimate; this is not a whole-process memory limit.
 
 The browser runtime smoke fixture exercises the configured API with the First Germination numeric seed, settings and palette, checks replay identity and invalid configuration rejection, and retains the original phrase-based fixture for backward compatibility. The WIT Component Model now accepts the same typed settings record through an atomic `configure` operation and exposes the bounded `advance-ticks` method. Its Rust unit fixtures compare WIT-configured output against the same native core settings; the Wasmtime host harness exercises that path through the actual component ABI.
 
@@ -26,28 +26,28 @@ The renderer’s branch storage, dimensions and simulation timing state are now 
 
 The current core is a deterministic CPU reference, but the exposed APIs do not implement every Scene Pack v1 semantic.
 
-| Scene Pack field | Meaning | Required implementation rule |
-|---|---|---|
-| simulation.seed (uint32) | Stable scene identity input | Define a versioned numeric-seed encoding; do not stringify the integer as a seed phrase |
-| palette.canvas | Initial canvas color | Parse #RRGGBB once and apply through the configured palette |
-| palette.substrate | Settled background color | Use as the steady background color |
-| palette.filament | Growing thread color | Use for primary branches |
-| palette.node | Node/pulse color | Use for formed nodes and node-state effects |
-| palette.lichen | Secondary/deeper branches | Use for depth-based branch shading |
-| palette.glow | Glow/highlight | Map to a documented pulse/highlight role; never ignore it silently |
-| simulation.parameters.branchLimit | Per-scene branch ceiling | Enforce before allocating/appending new branches |
-| simulation.parameters.maxDepth | Branch-depth ceiling | Enforce at every child-spawn check |
-| simulation.parameters.growthRate | Growth speed multiplier | Apply to the growth equation with finite bounds |
-| simulation.fixedStepHz | Simulation clock | Use a defined fixed-step tick model for replayable state evolution |
-| simulation.parameters.pulsePeriodSeconds | Periodic pulse period | Schedule pulses deterministically from fixed simulation ticks, not wall-clock time |
-| simulation.parameters.driftAmplitude | Normalized drift amount | Implement deterministic drift or reject the setting until the engine version supports it |
-| resourceBudget.maxBranches | Host-level aggregate branch ceiling | Require branchLimit to fit this ceiling; enforce both in the renderer |
-| resourceBudget.maxMemoryMiB | Total resource ceiling | Estimate/enforce framebuffer plus renderer-state allocations; dimensions alone are not enough |
-| presentations.* | Motion/FPS/brightness/composition/safe regions | Resolve through the selected presentation adapter and record the effective variant |
-| presentations.staticFallback | Safe no-motion fallback | Produce a host-visible static fallback even when animation/GPU support is unavailable |
-| lifecycle.* | Visibility/suspend/wake policy | Enforce in each host adapter; do not assume the guest can observe the OS lifecycle itself |
+| Scene Pack field | Meaning | Required implementation rule | Current implementation status |
+|---|---|---|---|
+| `simulation.seed` (uint32) | Stable scene identity input | Use a versioned numeric-seed encoding; never stringify the integer as a phrase | **Core implemented.** Domain-separated BLAKE3 seed material; production manifest loader still missing |
+| `palette.canvas` | Initial canvas color | Parse `#RRGGBB` once and apply through the configured palette | **Typed renderer implemented.** Test adapters parse the pinned fixture |
+| `palette.substrate` | Settled background color | Use as steady background color | **Implemented** |
+| `palette.filament` | Growing thread color | Use for primary branches | **Implemented** |
+| `palette.node` | Node/pulse color | Use for formed nodes and node-state effects | **Implemented** |
+| `palette.lichen` | Secondary/deeper branches | Use for depth-based branch shading | **Implemented** |
+| `palette.glow` | Glow/highlight | Map to a documented pulse/highlight role; never ignore it silently | **Implemented** for convergence glow |
+| `simulation.parameters.branchLimit` | Scene-requested branch ceiling | Enforce before allocating/appending children | **Implemented** with a hard ceiling and growth-loop enforcement |
+| `simulation.parameters.maxDepth` | Branch-depth ceiling | Enforce at every child-spawn check | **Implemented** |
+| `simulation.parameters.growthRate` | Growth-speed multiplier | Apply with finite bounds | **Implemented** |
+| `simulation.fixedStepHz` | Simulation clock | Use defined fixed-step ticks for replayable state evolution | **Core/API implemented.** Cross-target exact output still requires CI/runtime evidence |
+| `simulation.parameters.pulsePeriodSeconds` | Periodic pulse period | Schedule deterministically from integer simulation ticks, not wall-clock time | **Implemented** in fixed-tick mode |
+| `simulation.parameters.driftAmplitude` | Normalized drift amount | Implement deterministic drift or reject unsupported settings | **Implemented.** Exact cross-target pixel identity with drift enabled is not yet qualified |
+| `resourceBudget.maxBranches` | Independent host/resource branch ceiling | Require `branchLimit` to fit this ceiling; enforce both | **Implemented** in core validation and carried by browser/WIT settings |
+| `resourceBudget.maxMemoryMiB` | Resource ceiling | Bound modeled framebuffer and renderer-state allocations | **Partial.** Estimate enforced before configured construction; process/runtime memory is not capped |
+| `presentations.*` | Motion/FPS/brightness/composition/safe regions | Resolve the selected named variant in the presentation adapter | **Partial.** Browser reduced-motion and visibility behavior exist; general variant/safe-region mapping is not implemented |
+| `presentations.staticFallback` | Safe no-motion fallback | Produce a visible static fallback when animation/GPU is unavailable | **Primitive implemented.** Fixed-point gradient in core, browser WASM and WIT; selection/activation remains host policy |
+| `lifecycle.*` | Visibility/suspend/wake policy | Enforce in each host adapter | **Partial.** Browser pauses when hidden; lock/suspend/wake semantics for each OS are not qualified |
 
-The current core has hard ceilings of 8,192 branches and depth 12. Those are implementation defaults, not evidence that all schema values are applied. A declared value must either affect runtime behavior or cause a typed unsupported-setting error.
+The current core has hard ceilings of 8,192 branches and depth 24; default depth is 12. The scene-requested branch limit and `resourceBudget.maxBranches` are separate fields, each constrained by the hard ceiling, with the request required to fit the host ceiling. The configured memory estimate covers only the modeled renderer allocations described in `SceneSettings`; it does not cap the process, WASM runtime, compositor or browser allocations. A declared value must affect runtime behavior or fail closed.
 
 ## Proposed typed settings boundary
 
