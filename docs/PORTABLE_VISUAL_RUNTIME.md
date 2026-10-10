@@ -110,7 +110,7 @@ Each evidence record should include source commit, artifact digest, toolchain/ru
 ## Implementation sequence
 
 1. **Freeze and review the existing v1 scene contract.** Ensure the Rust limits, WIT API, browser ABI, CLI, and docs agree. Add boundary fixtures for dimensions, non-finite values, seed handling, and RGBA layout.
-2. **Run the actual component in a named runtime.** Compile to a component artifact, validate its component metadata, instantiate it in a minimal host, create a scene, advance bounded steps, render a frame, verify dimensions and byte length, then dispose the resource. Record exact runtime and artifact digest.
+2. **Run the actual component in a named runtime.** The branch now includes `tools/component-host-smoke`, an isolated Wasmtime 49.0.2 host that binds to the production WIT world and exercises construction, bounded stepping, invalid-input rejection, rendering, seeded replay, dimension normalization, and resource disposal. Its linker intentionally provides no imports, so unexpected host/WASI requirements fail instantiation. CI execution is pending until the exact branch-head run finishes successfully; the generated host lockfile is temporarily uploaded as an artifact for review and pinning.
 3. **Create a machine-readable conformance fixture format.** Store replay inputs and expected reference outputs with schema version and hashes; keep golden fixtures small and deterministic.
 4. **Measure before optimizing.** Capture CPU time, peak memory, bytes copied, and frame latency at 720p, 1080p, and 4K-ish workloads under the declared pixel budget.
 5. **Add a render-plan prototype only if measurements justify it.** Preserve RGBA reference output and compare the new backend against it.
@@ -125,4 +125,4 @@ Each evidence record should include source commit, artifact digest, toolchain/ru
 
 ## Current evidence boundary
 
-This is a design/qualification plan. It does not assert that the WIT component has been executed in Wasmtime, that a GPU render plan exists, that native/mobile/TV adapters exist, or that any privileged surface is qualified. Those claims require exact-head artifacts and recorded test evidence.
+A real Wasmtime host harness and CI invocation now exist on the hardening branch, but implementation presence is not a passing result. Until an exact-head CI run succeeds, do not claim that the component has instantiated or completed the fixture. The harness does not establish browser lifecycle, GPU performance, native/mobile/TV integration, or qualification of any privileged surface. Those claims require separate exact-head artifacts and recorded evidence.
