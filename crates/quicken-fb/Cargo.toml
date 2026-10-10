@@ -14,9 +14,8 @@ path = "src/main.rs"
 drm = "0.12"
 drm-ffi = "0.8"
 bytemuck = "1.25"
+sovereign-visual-core = { path = "../visual-core" }
 nix = { version = "0.29", features = ["mman", "fs", "ioctl"] }
-blake3 = "1.5"
-rand = "0.8"
 
 [dev-dependencies]
 proptest = "1"
