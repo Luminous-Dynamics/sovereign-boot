@@ -2,6 +2,9 @@
 resolver = "2"
 members = [
     "crates/quicken-fb",
+    "crates/visual-core",
+    "crates/visual-wasm",
+    "crates/visual-wasi",
 ]
 
 [workspace.package]
