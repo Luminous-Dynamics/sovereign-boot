@@ -7,7 +7,9 @@
 /// Renders to a raw pixel buffer using Bresenham's line algorithm — no GPU required.
 use crate::{
     color::Rgba,
-    settings::{MAX_TICKS_PER_BATCH, SceneSettings, SceneSettingsError},
+    settings::{
+        MAX_TICKS_PER_BATCH, SceneSettings, SceneSettingsError, render_static_gradient_rgba,
+    },
 };
 use rand_chacha::ChaCha12Rng;
 use rand_core::{RngCore, SeedableRng};
@@ -183,6 +185,15 @@ impl MycelialNetwork {
     /// Read the effective immutable settings for this scene.
     pub fn settings(&self) -> &SceneSettings {
         &self.settings
+    }
+
+    /// Render the non-animated static-gradient fallback at the host-selected
+    /// bounded brightness. This does not mutate scene state.
+    pub fn render_static_fallback(
+        &self,
+        brightness: f32,
+    ) -> Result<Vec<u8>, SceneSettingsError> {
+        render_static_gradient_rgba(self.width, self.height, self.settings.palette, brightness)
     }
 
     /// Advance the legacy variable-delta API.
