@@ -20,15 +20,15 @@ The canonical upstream First Germination JSON is pinned byte-for-byte at `tests/
 
 The renderer’s branch storage, dimensions and simulation timing state are now private to `visual-core`; adapters receive read-only accessors. Hosts cannot mutate a validated scene object to bypass dimension and branch settings after construction.
 
-**Still not implemented or qualified:** execution of the parser/core/WASI/Wasmtime tests on the exact PR head; production browser demo integration with `ValidatedScenePack`; host-side safe asset resolution plus actual file SHA-256 verification; signed-pack/attribution policy; general composition mapping for all presentation variants and normalized safe regions; complete OS lock/suspend/wake lifecycle policy; and whole-process/runtime/compositor memory accounting. The WASI CLI and capability-denied Wasmtime qualification harness now use the parser; the WASI CLI supports centered-network `boot` and gradient-only `staticFallback` only, and rejects packs requiring asset access, external capabilities, inputs or safe-region composition it cannot implement. The overall product must not yet be called fully Scene Pack v1 compatible. Exact-head CI and real runtime qualification remain pending.
+**Still not implemented or qualified:** execution of the parser/core/WASI/browser/Wasmtime tests on the exact PR head; host-side safe asset resolution plus actual file SHA-256 verification; signed-pack/attribution policy; general composition mapping for all presentation variants and normalized safe regions; complete OS lock/suspend/wake lifecycle policy; and whole-process/runtime/compositor memory accounting. The browser host now fetches the pinned same-origin manifest, supplies its bytes to WASM, and uses the strict parser for centered-network `boot` or gradient-only `staticFallback`; the WASI CLI and capability-denied Wasmtime harness also use the parser. All current adapters reject packs requiring assets, external capabilities, inputs or safe-region composition they cannot implement. The overall product must not yet be called fully Scene Pack v1 compatible. Exact-head CI and real runtime qualification remain pending.
 
 ## Current gaps to resolve
 
-The core is a deterministic CPU reference and the parser validates the Scene Pack v1 manifest contract, but validated metadata is not yet consumed by every browser/WASI/native production host.
+The core is a deterministic CPU reference and the parser validates the pinned Scene Pack v1 profile. The browser demo, WASI CLI, and Wasmtime conformance host now consume the parser; native boot still uses its legacy phrase-based path and should not be described as a production Scene Pack host.
 
 | Scene Pack field | Meaning | Required implementation rule | Current implementation status |
 |---|---|---|---|
-| `simulation.seed` (uint32) | Stable scene identity input | Use a versioned numeric-seed encoding; never stringify the integer as a phrase | **Core implemented.** Domain-separated BLAKE3 seed material; production manifest loader still missing |
+| `simulation.seed` (uint32) | Stable scene identity input | Use a versioned numeric-seed encoding; never stringify the integer as a phrase | **Parser/core/browser/WASI/Wasmtime paths implemented.** Domain-separated BLAKE3 seed material; native boot host remains legacy phrase-based |
 | `palette.canvas` | Initial canvas color | Parse `#RRGGBB` once and apply through the configured palette | **Typed renderer implemented.** Test adapters parse the pinned fixture |
 | `palette.substrate` | Settled background color | Use as steady background color | **Implemented** |
 | `palette.filament` | Growing thread color | Use for primary branches | **Implemented** |
