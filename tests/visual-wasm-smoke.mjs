@@ -90,6 +90,7 @@ function renderConfiguredFixture() {
   const scene = bindings.VisualScene.createConfigured(
     32, 24, simulation.seed,
     parameters.branchLimit,
+    resourceBudget.maxBranches,
     parameters.maxDepth,
     parameters.growthRate,
     simulation.fixedStepHz,
@@ -172,7 +173,7 @@ assert.throws(
 variableModeScene.free();
 
 const fixedModeScene = bindings.VisualScene.createConfigured(
-  16, 16, simulation.seed, parameters.branchLimit, parameters.maxDepth,
+  16, 16, simulation.seed, parameters.branchLimit, resourceBudget.maxBranches, parameters.maxDepth,
   parameters.growthRate, simulation.fixedStepHz, parameters.pulsePeriodSeconds,
   parameters.driftAmplitude, resourceBudget.maxMemoryMiB, scenePackPalette,
 );
@@ -185,7 +186,7 @@ assert.throws(
 fixedModeScene.free();
 assert.throws(
   () => bindings.VisualScene.createConfigured(
-    32, 24, simulation.seed, 0, parameters.maxDepth, parameters.growthRate,
+    32, 24, simulation.seed, 0, resourceBudget.maxBranches, parameters.maxDepth, parameters.growthRate,
     simulation.fixedStepHz, parameters.pulsePeriodSeconds, parameters.driftAmplitude,
     resourceBudget.maxMemoryMiB, scenePackPalette,
   ),
@@ -193,7 +194,7 @@ assert.throws(
 );
 assert.throws(
   () => bindings.VisualScene.createConfigured(
-    32, 24, simulation.seed, parameters.branchLimit, parameters.maxDepth,
+    32, 24, simulation.seed, parameters.branchLimit, resourceBudget.maxBranches, parameters.maxDepth,
     parameters.growthRate, simulation.fixedStepHz, parameters.pulsePeriodSeconds,
     parameters.driftAmplitude, resourceBudget.maxMemoryMiB, new Uint8Array(17),
   ),
