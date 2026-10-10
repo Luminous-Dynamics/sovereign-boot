@@ -103,6 +103,10 @@ fn sample_settings(
     Ok(SceneSettings {
         seed: as_u32(field(simulation, "seed", "simulation.seed")?, "simulation.seed")?,
         branch_limit,
+        resource_max_branches: as_u32(
+            field(resources, "maxBranches", "resourceBudget.maxBranches")?,
+            "resourceBudget.maxBranches",
+        )?,
         max_depth: as_u32(
             field(parameters, "maxDepth", "simulation.parameters.maxDepth")?,
             "simulation.parameters.maxDepth",
