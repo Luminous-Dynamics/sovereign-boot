@@ -150,6 +150,19 @@ assert.throws(
   "the browser adapter must reject presentation fields it has not implemented",
 );
 
+const unsupportedCapabilityPack = structuredClone(scenePack);
+unsupportedCapabilityPack.capabilities.required = ["gpu"];
+assert.throws(
+  () => bindings.VisualScene.createFromScenePack(
+    32,
+    24,
+    new TextEncoder().encode(JSON.stringify(unsupportedCapabilityPack)),
+    "boot",
+  ),
+  /cannot satisfy required Scene Pack capabilities/i,
+  "the browser adapter must fail closed when a valid pack requires unsupported host capability",
+);
+
 
 function renderConfiguredFixture() {
   const scene = bindings.VisualScene.createConfigured(

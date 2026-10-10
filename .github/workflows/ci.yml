@@ -69,6 +69,19 @@ jobs:
       - name: Smoke-test browser WASM runtime and native parity
         run: node tests/visual-wasm-smoke.mjs "$RUNNER_TEMP/visual-wasm-pkg" "$RUNNER_TEMP/native.rgba" "$RUNNER_TEMP/native-configured.rgba"
 
+      - name: Set up Python for independent Scene Pack validation
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install pinned Scene Pack validator dependencies
+        run: python -m pip install --disable-pip-version-check -r tools/ambient_validation/requirements.txt
+
+      - name: Validate Scene Pack v1 against Draft 2020-12
+        run: |
+          python tools/ambient_validation/validate_scene_pack.py tests/fixtures/first-germination.scene.json
+          python -m unittest discover -s tools/ambient_validation -p 'test_*.py' -v
+
       - name: Check browser host JavaScript syntax
         run: node --input-type=module --check < crates/visual-wasm/www/app.js
 

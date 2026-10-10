@@ -1291,4 +1291,73 @@ mod tests {
         }
         assert!(pack.verify_asset_hashes(&mut CorrectHash).is_ok());
     }
+
+    #[test]
+    fn rejects_shared_scene_pack_v1_negative_fixtures() {
+        // This immutable corpus is also evaluated by the independent
+        // Draft 2020-12 validator in tools/ambient_validation. The required
+        // GPU capability case is schema-valid and belongs at adapter
+        // qualification, not generic manifest parsing.
+        let base: serde_json::Value = serde_json::from_str(FIXTURE).unwrap();
+        let corpus: Vec<serde_json::Value> = serde_json::from_str(include_str!(
+            "../../../contracts/tests/scene-pack-v1-negative-fixtures.json"
+        ))
+        .unwrap();
+
+        fn set_pointer(
+            document: &mut serde_json::Value,
+            pointer: &str,
+            replacement: serde_json::Value,
+        ) {
+            let tokens: Vec<String> = pointer
+                .trim_start_matches('/')
+                .split('/')
+                .map(|token| token.replace("~1", "/").replace("~0", "~"))
+                .collect();
+            assert!(!tokens.is_empty(), "fixture JSON Pointer must not be empty");
+            let mut target = document;
+            for token in &tokens[..tokens.len() - 1] {
+                target = match target {
+                    serde_json::Value::Object(object) => object
+                        .get_mut(token)
+                        .unwrap_or_else(|| panic!("fixture parent path missing: {pointer}")),
+                    serde_json::Value::Array(array) => array
+                        .get_mut(token.parse::<usize>().expect("array index"))
+                        .unwrap_or_else(|| panic!("fixture array index missing: {pointer}")),
+                    _ => panic!("fixture parent is not an object or array: {pointer}"),
+                };
+            }
+            let last = tokens.last().unwrap();
+            match target {
+                serde_json::Value::Object(object) => {
+                    object.insert(last.clone(), replacement);
+                }
+                serde_json::Value::Array(array) => {
+                    let index = last.parse::<usize>().expect("array index");
+                    *array.get_mut(index).expect("fixture array index") = replacement;
+                }
+                _ => panic!("fixture target is not an object or array: {pointer}"),
+            }
+        }
+
+        let mut exercised = 0usize;
+        for case in corpus {
+            let id = case["id"].as_str().expect("fixture ID");
+            if id == "unsupported-renderer-capability" {
+                continue;
+            }
+            let path = case["set"]["path"].as_str().expect("fixture JSON Pointer");
+            let replacement = case["set"]["value"].clone();
+            let mut candidate = base.clone();
+            set_pointer(&mut candidate, path, replacement);
+            let bytes = serde_json::to_vec(&candidate).expect("serialize mutated manifest");
+            assert!(
+                parse_scene_pack_v1(&bytes).is_err(),
+                "Rust parser unexpectedly accepted shared negative fixture: {id}"
+            );
+            exercised += 1;
+        }
+        assert_eq!(exercised, 8, "the complete shared parser-invalid corpus must run");
+    }
+
 }
