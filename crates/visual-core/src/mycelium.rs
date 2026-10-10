@@ -6,8 +6,8 @@
 /// Generates procedural mycelial network growth seeded by the genesis phrase.
 /// Renders to a raw pixel buffer using Bresenham's line algorithm — no GPU required.
 use crate::color::{LEAF_GREEN, LICHEN_GREY, MOSS_DEEP, MYCELIAL_WHITE, Rgba, SOLAR_GOLD};
-use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+use rand_chacha::ChaCha12Rng;
+use rand_core::{RngCore, SeedableRng};
 
 /// Minimum branch length in pixels before a branch can spawn children.
 const MIN_BRANCH_LEN: f32 = 4.0;
@@ -68,7 +68,7 @@ pub struct MycelialNetwork {
     pub branches: Vec<Branch>,
     pub width: u32,
     pub height: u32,
-    rng: StdRng,
+    rng: ChaCha12Rng,
     center: (f32, f32),
     /// Elapsed time in seconds (fractional).
     pub elapsed: f32,
@@ -83,7 +83,7 @@ impl MycelialNetwork {
     pub fn new(width: u32, height: u32, genesis_phrase: &str) -> Self {
         let hash = blake3::hash(genesis_phrase.as_bytes());
         let seed_bytes: [u8; 32] = *hash.as_bytes();
-        let rng = StdRng::from_seed(seed_bytes);
+        let rng = ChaCha12Rng::from_seed(seed_bytes);
         let center = (width as f32 / 2.0, height as f32 / 2.0);
 
         let mut net = Self {
@@ -186,13 +186,13 @@ impl MycelialNetwork {
             let thickness = self.branches[i].thickness;
 
             // 1-3 children per node
-            let n_children = 1 + self.rng.gen_range(0u32..3);
+            let n_children = 1 + (self.rng.next_u32() % 3);
             for _ in 0..n_children {
                 if total_branches + new_branches.len() >= MAX_BRANCHES {
                     break;
                 }
-                let fork_angle = self.rng.gen_range(15.0f32..45.0).to_radians();
-                let sign = if self.rng.gen_bool(0.5) { 1.0 } else { -1.0 };
+                let fork_angle = (15.0_f32 + (self.rng.next_u32() as f32 / u32::MAX as f32) * 30.0).to_radians();
+                let sign = if self.rng.next_u32() & 1 == 1 { 1.0 } else { -1.0 };
                 let child_angle = angle + fork_angle * sign;
                 let child_thickness = (thickness * 0.75).max(0.5);
                 new_branches.push(Branch::new(end, child_angle, child_thickness, depth + 1));
