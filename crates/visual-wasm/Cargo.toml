@@ -14,5 +14,6 @@ web = ["dep:wasm-bindgen"]
 
 [dependencies]
 sovereign-visual-core = { path = "../visual-core" }
+sovereign-visual-pack = { path = "../visual-pack" }
 wasm-bindgen = { version = "=0.2.108", optional = true }
 
