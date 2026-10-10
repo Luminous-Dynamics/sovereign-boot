@@ -828,6 +828,24 @@ mod tests {
     }
 
     #[test]
+    fn portable_host_api_rejects_mixed_step_modes() {
+        let mut variable = MycelialNetwork::new(32, 24, "variable-mode");
+        variable.advance_variable_delta(1.0 / 30.0, 0.7).unwrap();
+        assert_eq!(
+            variable.advance_tick(0.7),
+            Err(SceneSettingsError::MixedStepModes)
+        );
+
+        let mut fixed =
+            MycelialNetwork::with_settings(32, 24, 7, SceneSettings::default()).unwrap();
+        fixed.advance_tick(0.7).unwrap();
+        assert_eq!(
+            fixed.advance_variable_delta(1.0 / 30.0, 0.7),
+            Err(SceneSettingsError::MixedStepModes)
+        );
+    }
+
+    #[test]
     fn legacy_variable_delta_api_preserves_minimum_crawl() {
         let mut net = MycelialNetwork::new(32, 24, "legacy-minimum-crawl");
         let initial = net.branches[0].growth_progress;
