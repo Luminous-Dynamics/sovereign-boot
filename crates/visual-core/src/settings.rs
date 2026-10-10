@@ -14,6 +14,8 @@ use crate::{
 
 pub const MAX_SCENE_BRANCHES: u32 = 8192;
 pub const MAX_SCENE_DEPTH: u32 = 24;
+/// Maximum simulation catch-up batch; hosts must pause instead of unbounded catch-up.
+pub const MAX_TICKS_PER_BATCH: u32 = 120;
 pub const MIN_MEMORY_MIB: u32 = 16;
 pub const MAX_MEMORY_MIB: u32 = 2048;
 const BYTES_PER_MIB: u64 = 1024 * 1024;
@@ -105,6 +107,7 @@ pub enum SceneSettingsError {
     MemoryEstimateOverflow,
     ResourceBudgetExceeded,
     InvalidActivity,
+    TickBatchOutOfRange,
 }
 
 impl fmt::Display for SceneSettingsError {
@@ -127,6 +130,7 @@ impl fmt::Display for SceneSettingsError {
                 write!(f, "scene exceeds its conservative renderer memory budget")
             }
             Self::InvalidActivity => write!(f, "activity must be finite and in 0..=1"),
+            Self::TickBatchOutOfRange => write!(f, "tick batch must be in 0..=120"),
         }
     }
 }
