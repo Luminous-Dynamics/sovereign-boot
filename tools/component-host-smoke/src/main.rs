@@ -17,6 +17,29 @@ bindgen!({
     world: "visual-component",
 });
 
+use exports::luminous::sovereign_visual::scene::{Rgb, ScenePalette, SceneSettings};
+
+fn sample_settings(branch_limit: u32) -> SceneSettings {
+    SceneSettings {
+        seed: 20261010,
+        branch_limit,
+        max_depth: 10,
+        growth_rate: 0.28,
+        fixed_step_hz: 30,
+        pulse_period_seconds: 7.5,
+        drift_amplitude: 0.12,
+        max_memory_mib: 128,
+        palette: ScenePalette {
+            canvas: Rgb { r: 10, g: 16, b: 14 },
+            substrate: Rgb { r: 26, g: 46, b: 34 },
+            filament: Rgb { r: 126, g: 200, b: 160 },
+            node: Rgb { r: 232, g: 197, b: 71 },
+            lichen: Rgb { r: 90, g: 107, b: 94 },
+            glow: Rgb { r: 118, g: 217, b: 193 },
+        },
+    }
+}
+
 fn fnv1a64(bytes: &[u8]) -> u64 {
     let mut hash = 0xcbf2_9ce4_8422_2325_u64;
     for byte in bytes {
@@ -151,20 +174,86 @@ fn main() -> Result<(), Box<dyn Error>> {
         .into());
     }
 
+    // Exercise the typed settings path through the real Component Model ABI.
+    let configured_a = scene_api.call_constructor(&mut store, 16, 16, "legacy-a")?;
+    require_guest_ok(
+        scene_api.call_configure(&mut store, configured_a, 32, 24, sample_settings(2048))?,
+        "configure numeric-seed scene A",
+    )?;
+    let configured_b = scene_api.call_constructor(&mut store, 16, 16, "legacy-b")?;
+    require_guest_ok(
+        scene_api.call_configure(&mut store, configured_b, 32, 24, sample_settings(2048))?,
+        "configure numeric-seed scene B",
+    )?;
+
+    require_guest_ok(
+        scene_api.call_advance_ticks(&mut store, configured_a, 120, 0.7)?,
+        "advance configured scene A",
+    )?;
+    require_guest_ok(
+        scene_api.call_advance_ticks(&mut store, configured_b, 120, 0.7)?,
+        "advance configured scene B",
+    )?;
+    let configured_frame = scene_api.call_render(&mut store, configured_a)?;
+    let configured_replay = scene_api.call_render(&mut store, configured_b)?;
+    let configured_expected_len =
+        (configured_frame.width as usize) * (configured_frame.height as usize) * 4;
+    if (configured_frame.width, configured_frame.height) != (32, 24)
+        || configured_frame.rgba.len() != configured_expected_len
+    {
+        return Err(io::Error::other("configured WIT frame dimensions/byte length invalid").into());
+    }
+    if configured_frame.rgba != configured_replay.rgba {
+        return Err(io::Error::other("configured WIT scenes did not replay byte-identically").into());
+    }
+    let configured_branches = scene_api.call_branch_count(&mut store, configured_a)?;
+    if configured_branches > 2048 {
+        return Err(io::Error::other("configured WIT scene exceeded branch limit").into());
+    }
+
+    // Invalid settings must not mutate the existing scene, and catch-up
+    // requests must remain bounded even through a Component Model caller.
+    let unchanged_scene = scene_api.call_constructor(&mut store, 16, 16, "unchanged")?;
+    if scene_api
+        .call_configure(&mut store, unchanged_scene, 48, 24, sample_settings(8193))?
+        .is_ok()
+    {
+        return Err(io::Error::other("component accepted a branch limit above the contract").into());
+    }
+    if (scene_api.call_width(&mut store, unchanged_scene)?,
+        scene_api.call_height(&mut store, unchanged_scene)?) != (16, 16)
+    {
+        return Err(io::Error::other("failed configure partially mutated the scene").into());
+    }
+    if scene_api
+        .call_advance_ticks(&mut store, unchanged_scene, 121, 0.7)?
+        .is_ok()
+    {
+        return Err(io::Error::other("component accepted an unbounded tick batch").into());
+    }
+
     // Explicitly release every guest-owned resource retained by this host.
     first_scene.resource_drop(&mut store)?;
     replay_scene.resource_drop(&mut store)?;
     normalized_scene.resource_drop(&mut store)?;
+    configured_a.resource_drop(&mut store)?;
+    configured_b.resource_drop(&mut store)?;
+    unchanged_scene.resource_drop(&mut store)?;
 
     println!(
         "component_runtime=wasmtime-49.0.2 scene_contract_version={contract_version} \
-         dimensions={}x{} rgba_bytes={} frame_fnv1a64={:016x} replay=byte-identical \
-         bounds=pass normalization=pass branches={} wasi_imports=none resources=dropped",
+         legacy_dimensions={}x{} legacy_rgba_bytes={} legacy_frame_fnv1a64={:016x} \
+         configured_dimensions={}x{} configured_rgba_bytes={} configured_fnv1a64={:016x} \
+         configured_replay=byte-identical branch_budget=pass invalid_config_atomic=pass \
+         tick_batch_bound=pass wasi_imports=none resources=dropped",
         first_frame.width,
         first_frame.height,
         first_frame.rgba.len(),
         fnv1a64(&first_frame.rgba),
-        first_branch_count,
+        configured_frame.width,
+        configured_frame.height,
+        configured_frame.rgba.len(),
+        fnv1a64(&configured_frame.rgba),
     );
 
     Ok(())
