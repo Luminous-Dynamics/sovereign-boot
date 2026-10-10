@@ -39,7 +39,7 @@ The first extraction preserves the existing algorithm to reduce migration risk. 
 
 Feature `web` exports a `VisualScene` through `wasm-bindgen`. Host code can create a seeded scene, advance it with bounded frame deltas, pulse or contract the scene, and request tightly packed RGBA8 bytes. Dimensions and per-frame timing/activity are bounded.
 
-It deliberately does not access `window`, the DOM, canvas, clocks, storage, device APIs or display state from Rust. A browser host owns `requestAnimationFrame`, visibility changes, canvas upload, reduced-motion preferences, and suspend/resume behavior. A generated wasm-bindgen JS package and user-facing page/wallpaper integration are still required before calling this a browser product.
+It deliberately does not access `window`, the DOM, canvas, clocks, storage, device APIs or display state from Rust. A starter host page and lifecycle adapter now live in `crates/visual-wasm/www`; the browser owns `requestAnimationFrame`, visibility changes, canvas upload, reduced-motion preferences, and suspend/resume behavior. `build-demo.sh` generates the JavaScript package into an ignored `www/pkg` directory. This is a runnable demo path, not yet a qualified wallpaper product or an assertion of compatibility across all browsers.
 
 Build validation command used in CI:
 `cargo +1.96.0 build -p sovereign-visual-wasm --target wasm32-unknown-unknown --features web --release --locked`
@@ -106,7 +106,7 @@ Do not label these targets supported until CI and test evidence establish:
 - lifecycle handling in a real browser/app host; and
 - separate target-specific evidence for each desktop, mobile, TV, boot or privileged surface.
 
-The CI workflow now compiles the browser-WASM adapter, WASI CLI smoke target and WIT component. Until exact-head workflow runs are green, those builds/tests remain **pending**, not pass. A component build still does not prove that a target runtime can load it or that any host has integrated the returned frames. Browser packaging/presentation and host execution tests are separate gates; so are desktop, phone, TV, login, lock or firmware surfaces.
+The CI workflow now compiles the browser-WASM adapter, generates pinned wasm-bindgen bindings, runs a Node WebAssembly runtime smoke test over seeded RGBA output, syntax-checks the committed browser host, and compiles the WASI CLI and WIT component. Until exact-head workflow runs are green, those builds/tests remain **pending**, not pass. A Node smoke test is not a real-browser test, and a component build does not prove that every runtime can load it or that a host has integrated its frames. Browser presentation and host execution tests are separate gates; so are desktop, phone, TV, login, lock or firmware surfaces.
 
 ## Upstream technical references
 
