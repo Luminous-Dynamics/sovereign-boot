@@ -96,6 +96,10 @@ The existing animation algorithm uses a pixel buffer, so frame transfer can be a
 - **TV OSes:** app-level visualization may be feasible. Whether a WASM runtime can be shipped and whether a screensaver can be installed are separate questions for each TV OS, model, launcher and store policy.
 - **Firmware and pre-OS:** ordinary WASI is not a replacement for a bootloader/UEFI framebuffer API. This requires a different trusted boot integration and vendor/firmware permissions.
 
+## Next contract layer
+
+The next-stage design for deterministic replay, explicit capability negotiation, a future backend-neutral render plan, lifecycle rules, and target-specific conformance evidence is documented in [`PORTABLE_VISUAL_RUNTIME.md`](PORTABLE_VISUAL_RUNTIME.md). It is a proposal and qualification plan, not a claim that all of those layers have shipped. Keep the existing RGBA renderer as the reference oracle; do not introduce a second public contract until the WIT and browser interfaces have been reviewed together.
+
 ## Qualification requirements
 
 Do not label these targets supported until CI and test evidence establish:
