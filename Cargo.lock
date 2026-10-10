@@ -1340,6 +1340,7 @@ name = "sovereign-visual-wasm"
 version = "0.1.0"
 dependencies = [
  "sovereign-visual-core",
+ "sovereign-visual-pack",
  "wasm-bindgen",
 ]
 
