@@ -11,6 +11,8 @@ interface scene {
   /// Host-owned presentation; the component provides scene state and frames only.
   resource visual-scene {
     constructor(width: u32, height: u32, seed: string);
+    /// Host-independent scene semantics version. Increment on breaking changes.
+    contract-version: func() -> u32;
     advance: func(dt-seconds: f32, activity: f32) -> result<_, string>;
     pulse: func();
     contract: func(progress: f32) -> result<_, string>;
