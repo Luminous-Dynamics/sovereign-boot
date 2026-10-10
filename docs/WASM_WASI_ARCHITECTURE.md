@@ -72,7 +72,9 @@ The core now exposes a typed `SceneSettings` / `ScenePalette` path for numeric S
 
 The browser adapter adds a configured constructor accepting a uint32 seed, bounded settings, and six RGB palette triplets, plus `advance_ticks`. The existing phrase-based constructor and dt-based method remain for compatibility. The committed browser smoke script now contains a settings-based deterministic replay fixture and negative checks.
 
-This is a core + browser slice only. It is not yet a Scene Pack JSON loader, does not interpret presentation variants/safe regions or create the gradient static fallback, and does not prove a whole-process memory limit. The WIT Component Model interface still uses the legacy seed-phrase constructor; configured settings have not yet been exposed there. Do not call the overall product Scene Pack v1 compatible until those gaps are implemented and qualified.
+The WIT Component Model now carries the same typed settings record (numeric seed, palette roles, growth/depth limits, tick frequency, pulse period, drift and memory budget) through an atomic resource reconfiguration method, plus bounded fixed-tick advancement. The Rust WIT fixture compares its configured RGBA output against the native core, and the Wasmtime host harness now exercises the configured record via the component ABI. These tests still need exact-head execution; they are not a claim that Wasmtime qualification has passed.
+
+This is not yet a Scene Pack JSON loader, does not interpret presentation variants/safe regions or create the gradient static fallback, and does not prove a whole-process memory limit. Do not call the overall product Scene Pack v1 compatible until those gaps are implemented and qualified.
 
 ## WASM and WASI are complementary, not interchangeable
 
