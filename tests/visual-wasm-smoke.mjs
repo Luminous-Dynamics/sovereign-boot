@@ -99,12 +99,12 @@ function renderPackBootFixture() {
     scenePackBytes,
     "boot",
   );
-  assert.equal(scene.scene_id(), "luminous.first-germination");
-  assert.equal(scene.scene_version(), "0.1.0");
-  assert.equal(scene.scene_title(), "First Germination");
-  assert.equal(scene.fixed_step_hz(), simulation.fixedStepHz);
-  assert.equal(scene.presentation_max_fps(), scenePack.presentations.boot.maxFps);
-  assert.equal(scene.is_static_fallback(), false);
+  assert.equal(scene.sceneId(), "luminous.first-germination");
+  assert.equal(scene.sceneVersion(), "0.1.0");
+  assert.equal(scene.sceneTitle(), "First Germination");
+  assert.equal(scene.fixedStepHz(), simulation.fixedStepHz);
+  assert.equal(scene.presentationMaxFps(), scenePack.presentations.boot.maxFps);
+  assert.equal(scene.isStaticFallback(), false);
 
   for (let batch = 0; batch < 4; batch += 1) {
     scene.advance_ticks(simulation.fixedStepHz, 0.7);
@@ -127,8 +127,8 @@ const packStaticScene = bindings.VisualScene.createFromScenePack(
   scenePackBytes,
   "staticFallback",
 );
-assert.equal(packStaticScene.is_static_fallback(), true);
-assert.equal(packStaticScene.presentation_max_fps(), 0);
+assert.equal(packStaticScene.isStaticFallback(), true);
+assert.equal(packStaticScene.presentationMaxFps(), 0);
 const packStaticFrame = Buffer.from(packStaticScene.render_presented_rgba());
 assert.deepEqual(packStaticFrame.subarray(0, 4), Buffer.from([6, 9, 8, 255]));
 assert.deepEqual(
