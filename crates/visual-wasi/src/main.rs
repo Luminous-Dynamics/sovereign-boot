@@ -98,7 +98,9 @@ fn parse_options() -> Result<Options, String> {
             return Err("--seed cannot override the numeric seed in a Scene Pack".into());
         }
         if out.contract_version && (out.scene_pack_stdin || out.presentation.is_some()) {
-            return Err("--contract-version cannot be combined with Scene Pack rendering options".into());
+            return Err(
+                "--contract-version cannot be combined with Scene Pack rendering options".into(),
+            );
         }
     }
     if !out.help && !out.contract_version {
@@ -128,7 +130,9 @@ fn parse_presentation(value: Option<&str>) -> Result<PresentationVariant, String
         "lockedBackground" => Ok(PresentationVariant::LockedBackground),
         "staticFallback" => Ok(PresentationVariant::StaticFallback),
         other => Err(format!(
-            "unsupported presentation {other:?}; choose boot, desktop, idle, lockedBackground, or staticFallback"
+            "unsupported presentation {other:?}; choose boot, desktop, idle, lockedBackground, "
+                .to_owned()
+                + "or staticFallback"
         )),
     }
 }
@@ -146,8 +150,9 @@ fn render_scene_pack_rgba(
 ) -> Result<Vec<u8>, String> {
     if !pack.assets().is_empty() {
         return Err(
-            "this WASI renderer has no safe asset resolver/hash provider; packs with assets are unsupported"
-                .into(),
+            "this WASI renderer has no safe asset resolver/hash provider; packs with assets are "
+                .to_owned()
+                + "unsupported",
         );
     }
     if !pack.capabilities().required.is_empty() {
@@ -157,7 +162,8 @@ fn render_scene_pack_rgba(
     }
     if !pack.inputs().is_empty() {
         return Err(
-            "this WASI renderer does not implement Scene Pack inputs; refusing to ignore them".into(),
+            "this WASI renderer does not implement Scene Pack inputs; refusing to ignore them"
+                .into(),
         );
     }
 
@@ -319,7 +325,9 @@ fn main() -> ExitCode {
 
     if options.help {
         eprintln!(
-            "Usage: sovereign-visual-wasi [--width N] [--height N] [--seed TEXT] [--steps N] [--activity 0..1] [--contract-version] [--scene-pack-stdin [--presentation boot|desktop|idle|lockedBackground|staticFallback]]\nWrites one binary PPM (P6) frame to stdout. Scene Pack JSON is read from stdin when requested; only the centered-network boot profile and gradient-only staticFallback are currently supported."
+            "Usage: sovereign-visual-wasi [--width N] [--height N] [--seed TEXT] [--steps N] \
+             [--activity 0..1] [--contract-version] [--scene-pack-stdin] \
+             [--presentation boot|desktop|idle|lockedBackground|staticFallback]\nWrites one binary PPM (P6) frame to stdout. Scene Pack JSON is read from stdin when requested; only the centered-network boot profile and gradient-only staticFallback are currently supported."
         );
         return ExitCode::SUCCESS;
     }
@@ -356,6 +364,72 @@ mod tests {
         options = Options::default();
         options.steps = 10_001;
         assert!(validate_options(&options).is_err());
+    }
+
+    const PACK_FIXTURE: &str =
+        include_str!("../../../tests/fixtures/first-germination.scene.json");
+
+    #[test]
+    fn pinned_scene_pack_static_fallback_renders_deterministic_ppm_bytes() {
+        let pack = parse_scene_pack_v1(PACK_FIXTURE.as_bytes()).unwrap();
+        let rgba = render_scene_pack_rgba(
+            &pack,
+            PresentationVariant::StaticFallback,
+            16,
+            16,
+            90,
+            1.0,
+        )
+        .unwrap();
+
+        assert_eq!(rgba.len(), 16 * 16 * 4);
+        assert_eq!(&rgba[0..4], &[6, 9, 8, 255]);
+        assert_eq!(&rgba[rgba.len() - 4..], &[15, 27, 20, 255]);
+
+        let mut ppm = Vec::new();
+        write_ppm_rgba(16, 16, &rgba, &mut ppm).unwrap();
+        assert!(ppm.starts_with(b"P6\\n16 16\\n255\\n"));
+        assert_eq!(ppm.len(), b"P6\\n16 16\\n255\\n".len() + 16 * 16 * 3);
+    }
+
+    #[test]
+    fn pinned_scene_pack_boot_profile_replays_through_fixed_ticks() {
+        let pack = parse_scene_pack_v1(PACK_FIXTURE.as_bytes()).unwrap();
+        let a = render_scene_pack_rgba(&pack, PresentationVariant::Boot, 32, 24, 30, 0.7).unwrap();
+        let b = render_scene_pack_rgba(&pack, PresentationVariant::Boot, 32, 24, 30, 0.7).unwrap();
+        assert_eq!(a, b);
+        assert_eq!(a.len(), 32 * 24 * 4);
+    }
+
+    #[test]
+    fn pack_renderer_fails_closed_on_unsupported_composition_and_assets() {
+        let invalid_composition = PACK_FIXTURE.replace(
+            r#""composition": "centered-network""#,
+            r#""composition": "wide-network""#,
+        );
+        let pack = parse_scene_pack_v1(invalid_composition.as_bytes()).unwrap();
+        assert!(
+            render_scene_pack_rgba(&pack, PresentationVariant::Boot, 16, 16, 1, 1.0)
+                .unwrap_err()
+                .contains("composition")
+        );
+
+        let with_asset = PACK_FIXTURE.replace(
+            r#""assets": []"#,
+            r#""assets": [{
+                "assetId": "preview-image",
+                "path": "assets/preview.svg",
+                "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "mediaType": "image/svg+xml",
+                "license": { "spdxId": "CC0-1.0" }
+            }]"#,
+        );
+        let pack = parse_scene_pack_v1(with_asset.as_bytes()).unwrap();
+        assert!(
+            render_scene_pack_rgba(&pack, PresentationVariant::StaticFallback, 16, 16, 0, 1.0)
+                .unwrap_err()
+                .contains("asset resolver")
+        );
     }
 
     #[test]
