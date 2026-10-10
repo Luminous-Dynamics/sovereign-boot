@@ -736,10 +736,16 @@ fn validate_uri(field: &str, uri: &str) -> Result<(), ScenePackError> {
     let bytes = uri.as_bytes();
     if bytes.is_empty()
         || bytes.len() > 2048
-        || bytes.iter().any(|byte| byte.is_ascii_whitespace() || !byte.is_ascii())
+        || bytes
+            .iter()
+            .any(|byte| byte.is_ascii_whitespace() || !byte.is_ascii())
     {
-        return Err(invalid_value(field, "must be an ASCII URI no longer than 2048 bytes"));
+        return Err(invalid_value(
+            field,
+            "must be an ASCII URI no longer than 2048 bytes",
+        ));
     }
+
     let Some((scheme, remainder)) = uri.split_once(':') else {
         return Err(invalid_value(field, "must include a URI scheme"));
     };
@@ -766,31 +772,17 @@ fn validate_uri(field: &str, uri: &str) -> Result<(), ScenePackError> {
             continue;
         }
         if !(byte.is_ascii_alphanumeric()
-            || b"-._~:/?#[]@!fn validate_uri(field: &str, uri: &str) -> Result<(), ScenePackError> {
-    if uri.len() > 2048 || uri.chars().any(char::is_whitespace) {
-        return Err(invalid_value(field, "must be a URI no longer than 2048 characters"));
-    }
-    let Some((scheme, remainder)) = uri.split_once(':') else {
-        return Err(invalid_value(field, "must include a URI scheme"));
-    };
-    let valid_scheme = !scheme.is_empty()
-        && scheme.as_bytes()[0].is_ascii_alphabetic()
-        && scheme
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || b"+.-".contains(&byte));
-    if !valid_scheme || remainder.is_empty() {
-        return Err(invalid_value(field, "has an invalid URI scheme or empty address"));
-    }
-    Ok(())
-}'()*+,;=".contains(&byte))
+            || b"-._~:/?#[]@!$&'()*+,;=".contains(&byte))
         {
-            return Err(invalid_value(field, "contains a character forbidden in a URI"));
+            return Err(invalid_value(
+                field,
+                "contains a character forbidden in a URI",
+            ));
         }
         index += 1;
     }
     Ok(())
 }
-
 fn parse_color(field: &str, value: &str) -> Result<Rgba, ScenePackError> {
     if value.len() != 7
         || !value.starts_with('#')
