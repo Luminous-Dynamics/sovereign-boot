@@ -74,6 +74,9 @@ jobs:
       - name: Build WIT Component Model adapter
         run: cargo +1.96.0 build -p sovereign-visual-component --target wasm32-wasip2 --release --locked
 
+      - name: Check component host formatting
+        run: cargo +1.96.0 fmt --manifest-path tools/component-host-smoke/Cargo.toml -- --check
+
       - name: Resolve isolated Wasmtime host lockfile
         run: cargo +1.96.0 generate-lockfile --manifest-path tools/component-host-smoke/Cargo.toml
 
