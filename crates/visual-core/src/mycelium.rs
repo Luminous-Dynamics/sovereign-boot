@@ -193,6 +193,9 @@ impl MycelialNetwork {
         if !activity.is_finite() || !(0.0..=1.0).contains(&activity) {
             return Err(SceneSettingsError::InvalidActivity);
         }
+        if self.step_mode == StepMode::VariableDelta {
+            return Err(SceneSettingsError::MixedStepModes);
+        }
         let max_batch = self.settings.fixed_step_hz.min(MAX_TICKS_PER_BATCH);
         if ticks > max_batch {
             return Err(SceneSettingsError::TickBatchOutOfRange);
@@ -833,6 +836,10 @@ mod tests {
         variable.advance_variable_delta(1.0 / 30.0, 0.7).unwrap();
         assert_eq!(
             variable.advance_tick(0.7),
+            Err(SceneSettingsError::MixedStepModes)
+        );
+        assert_eq!(
+            variable.advance_ticks(0, 0.7),
             Err(SceneSettingsError::MixedStepModes)
         );
 
