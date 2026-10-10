@@ -48,7 +48,7 @@ jobs:
           package_dir="$RUNNER_TEMP/visual-wasm-pkg"
           mkdir -p "$package_dir"
           wasm-bindgen --target web --out-dir "$package_dir" target/wasm32-unknown-unknown/release/sovereign_visual_wasm.wasm
-          printf '{"type":"module"}\\n' > "$package_dir/package.json"
+          printf '{"type":"module"}\n' > "$package_dir/package.json"
 
       - name: Smoke-test browser WASM runtime
         run: node tests/visual-wasm-smoke.mjs "$RUNNER_TEMP/visual-wasm-pkg"
