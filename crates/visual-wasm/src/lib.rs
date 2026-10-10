@@ -13,8 +13,15 @@ mod web {
 
     fn validate_dimensions(width: u32, height: u32) -> Result<(), JsError> {
         let pixels = u64::from(width) * u64::from(height);
-        if width == 0 || height == 0 || width > MAX_DIMENSION || height > MAX_DIMENSION || pixels > MAX_PIXELS {
-            return Err(JsError::new("frame dimensions exceed Sovereign Visual Core limits"));
+        if width == 0
+            || height == 0
+            || width > MAX_DIMENSION
+            || height > MAX_DIMENSION
+            || pixels > MAX_PIXELS
+        {
+            return Err(JsError::new(
+                "frame dimensions exceed Sovereign Visual Core limits",
+            ));
         }
         Ok(())
     }
@@ -31,16 +38,22 @@ mod web {
         #[wasm_bindgen(constructor)]
         pub fn new(width: u32, height: u32, seed: &str) -> Result<VisualScene, JsError> {
             validate_dimensions(width, height)?;
-            Ok(Self { network: MycelialNetwork::new(width, height, seed) })
+            Ok(Self {
+                network: MycelialNetwork::new(width, height, seed),
+            })
         }
 
         /// Advance by a bounded frame delta (0–250ms) and normalized activity.
         pub fn advance(&mut self, dt_seconds: f32, activity: f32) -> Result<(), JsError> {
             if !dt_seconds.is_finite() || !(0.0..=0.25).contains(&dt_seconds) {
-                return Err(JsError::new("dt_seconds must be finite and in 0..=0.25"));
+                return Err(JsError::new(
+                    "dt_seconds must be finite and in 0..=0.25",
+                ));
             }
             if !activity.is_finite() || !(0.0..=1.0).contains(&activity) {
-                return Err(JsError::new("activity must be finite and in 0..=1"));
+                return Err(JsError::new(
+                    "activity must be finite and in 0..=1",
+                ));
             }
             self.network.grow(dt_seconds, activity);
             Ok(())
@@ -65,8 +78,14 @@ mod web {
             self.network.render_rgba()
         }
 
-        pub fn width(&self) -> u32 { self.network.width }
-        pub fn height(&self) -> u32 { self.network.height }
+        pub fn width(&self) -> u32 {
+            self.network.width
+        }
+
+        pub fn height(&self) -> u32 {
+            self.network.height
+        }
+
         pub fn branch_count(&self) -> u32 {
             self.network.branches.len().min(u32::MAX as usize) as u32
         }
