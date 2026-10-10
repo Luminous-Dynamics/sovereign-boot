@@ -74,6 +74,21 @@ jobs:
       - name: Build WIT Component Model adapter
         run: cargo +1.96.0 build -p sovereign-visual-component --target wasm32-wasip2 --release --locked
 
+      - name: Resolve isolated Wasmtime host lockfile
+        run: cargo +1.96.0 generate-lockfile --manifest-path tools/component-host-smoke/Cargo.toml
+
+      - name: Execute component through capability-denied Wasmtime host
+        run: cargo +1.96.0 run --release --locked --manifest-path tools/component-host-smoke/Cargo.toml -- target/wasm32-wasip2/release/sovereign_visual_component.wasm
+
+      - name: Upload generated host lockfile for source pinning
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: component-host-lockfile
+          path: tools/component-host-smoke/Cargo.lock
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Clippy
         run: cargo +1.96.0 clippy --workspace --all-targets --locked -- -D warnings
 
