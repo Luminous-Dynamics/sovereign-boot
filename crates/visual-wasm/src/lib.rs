@@ -191,7 +191,7 @@ mod web {
                 10, 16, 14, 26, 46, 34, 126, 200, 160, 232, 197, 71, 90, 107, 94, 118, 217, 193,
             ];
             let scene = VisualScene::create_configured(
-                2, 2, 20261010, 2048, 10, 0.28, 30, 7.5, 0.12, 128, palette,
+                2, 2, 20261010, 2048, 2048, 10, 0.28, 30, 7.5, 0.12, 128, palette,
             )
             .unwrap();
             let before = scene.render_rgba();
@@ -206,15 +206,15 @@ mod web {
         fn configured_settings_are_validated_by_the_core() {
             let palette = vec![10, 16, 14, 26, 46, 34, 126, 200, 160, 232, 197, 71, 90, 107, 94, 118, 217, 193];
             let scene = VisualScene::create_configured(
-                32, 24, 20261010, 2048, 10, 0.28, 30, 7.5, 0.12, 128, palette,
+                32, 24, 20261010, 2048, 2048, 10, 0.28, 30, 7.5, 0.12, 128, palette,
             );
             assert!(scene.is_ok());
             assert!(VisualScene::create_configured(
-                32, 24, 20261010, 8193, 10, 0.28, 30, 7.5, 0.12, 128,
+                32, 24, 20261010, 8193, 8192, 10, 0.28, 30, 7.5, 0.12, 128,
                 vec![0; 18],
             ).is_err());
             assert!(VisualScene::create_configured(
-                32, 24, 20261010, 2048, 10, 0.28, 30, 7.5, 0.12, 128,
+                32, 24, 20261010, 2048, 2048, 10, 0.28, 30, 7.5, 0.12, 128,
                 vec![0; 17],
             ).is_err());
         }
