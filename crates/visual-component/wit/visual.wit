@@ -46,8 +46,10 @@ interface scene {
     /// Host-independent scene semantics version. Increment on breaking changes.
     contract-version: func() -> u32;
     /// Legacy variable-delta operation; delta and activity are strictly bounded.
+    /// Cannot be mixed with advance-ticks on the same scene resource.
     advance: func(dt-seconds: f32, activity: f32) -> result<_, string>;
     /// Advance canonical fixed ticks; a call may advance at most one simulated second.
+    /// Cannot be mixed with advance on the same scene resource.
     advance-ticks: func(ticks: u32, activity: f32) -> result<_, string>;
     pulse: func();
     contract: func(progress: f32) -> result<_, string>;
