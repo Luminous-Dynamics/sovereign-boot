@@ -257,6 +257,12 @@ mod tests {
     #[test]
     fn failed_wit_reconfiguration_is_atomic_and_batches_are_bounded() {
         let guest = <VisualScene as GuestVisualScene>::new(32, 24, "legacy".to_owned());
+
+        let mut under_budget = sample_wit_settings(2048);
+        under_budget.resource_max_branches = 1024;
+        assert!(guest.configure(48, 24, under_budget).is_err());
+        assert_eq!((guest.width(), guest.height()), (32, 24));
+
         assert!(guest.configure(48, 24, sample_wit_settings(8193)).is_err());
         assert_eq!((guest.width(), guest.height()), (32, 24));
         assert!(guest.advance_ticks(121, 0.7).is_err());
