@@ -28,8 +28,14 @@ bindings.initSync({ module: wasmModule });
 // Use the byte-pinned upstream Scene Pack as the shared cross-target input.
 // The test covers both direct typed-API compatibility and the production strict
 // parser path; it runs under Node and does not claim real-browser presentation.
-const scenePackBytes = await readFile(
+const sourceScenePackBytes = await readFile(
   resolve("tests/fixtures/first-germination.scene.json"),
+);
+const scenePackBytes = await readFile(join(packageDir, "first-germination.scene.json"));
+assert.deepEqual(
+  scenePackBytes,
+  sourceScenePackBytes,
+  "browser package must contain the byte-pinned source manifest",
 );
 const scenePack = JSON.parse(scenePackBytes.toString("utf8"));
 assert.equal(scenePack.schemaVersion, 1);
@@ -110,7 +116,7 @@ function renderPackBootFixture() {
   for (let batch = 0; batch < 4; batch += 1) {
     scene.advance_ticks(simulation.fixedStepHz, 0.7);
   }
-  const rgba = Buffer.from(scene.render_presented_rgba());
+  const rgba = Buffer.from(scene.renderPresentedRgba());
   assert.equal(rgba.length, 32 * 24 * 4);
   scene.free();
   return rgba;
@@ -130,7 +136,7 @@ const packStaticScene = bindings.VisualScene.createFromScenePack(
 );
 assert.equal(packStaticScene.isStaticFallback(), true);
 assert.equal(packStaticScene.presentationMaxFps(), 0);
-const packStaticFrame = Buffer.from(packStaticScene.render_presented_rgba());
+const packStaticFrame = Buffer.from(packStaticScene.renderPresentedRgba());
 assert.deepEqual(packStaticFrame.subarray(0, 4), Buffer.from([6, 9, 8, 255]));
 assert.deepEqual(
   packStaticFrame.subarray(packStaticFrame.length - 4),
