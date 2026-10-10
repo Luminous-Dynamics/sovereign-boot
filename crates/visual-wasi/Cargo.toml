@@ -1,0 +1,13 @@
+[package]
+name = "sovereign-visual-wasi"
+version = "0.1.0"
+edition = "2024"
+description = "WASI command-line renderer for Sovereign Visual Core (PPM output)"
+license = "AGPL-3.0-or-later"
+
+[[bin]]
+name = "sovereign-visual-wasi"
+path = "src/main.rs"
+
+[dependencies]
+sovereign-visual-core = { path = "../visual-core" }
