@@ -36,7 +36,7 @@ The configured renderer enforces its branch/depth limits during growth, maps all
 
 Both the browser ABI and WIT Component Model now accept typed settings; the WIT resource reconfiguration is atomic on validation failure. Browser smoke fixtures, Rust unit fixtures, and the Wasmtime host harness cover replay, bounds, branch budget, settings rejection and resource cleanup. These are implemented test definitions, not pass claims: exact-head execution remains required.
 
-The remaining interoperability boundary is explicit: there is no Scene Pack JSON loader here yet; presentation variants, safe regions, static gradient fallback generation, host visibility/suspend behavior, and whole-process memory accounting remain adapter/loader work. See `SCENE_PACK_INTEROPERABILITY.md` for the field-by-field mapping and acceptance gates.
+The deterministic canvas-to-substrate static gradient renderer is implemented in core and exposed through browser WASM and WIT with brightness validation and non-mutating behavior. The remaining interoperability boundary is explicit: there is no Scene Pack JSON loader here yet; presentation-variant selection, safe regions, visibility/suspend policy, fallback activation, and whole-process memory accounting remain adapter/loader work. See `SCENE_PACK_INTEROPERABILITY.md` for the field-by-field mapping and acceptance gates.
 
 ## Determinism and reproducibility
 
