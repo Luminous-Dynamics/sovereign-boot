@@ -127,6 +127,18 @@ impl GuestVisualScene for VisualScene {
         }
     }
 
+    fn render_static_fallback(&self, brightness: f32) -> Result<Frame, String> {
+        let network = self.network.borrow();
+        let rgba = network
+            .render_static_fallback(brightness)
+            .map_err(|error| error.to_string())?;
+        Ok(Frame {
+            width: network.width,
+            height: network.height,
+            rgba,
+        })
+    }
+
     fn width(&self) -> u32 {
         self.network.borrow().width
     }
@@ -213,6 +225,13 @@ mod tests {
         assert_eq!(guest_frame.height, 24);
         assert_eq!(guest_frame.rgba.len(), 32 * 24 * 4);
         assert!(guest.branch_count() <= 2048);
+
+        let fallback = guest.render_static_fallback(1.0).unwrap();
+        assert_eq!((fallback.width, fallback.height), (32, 24));
+        assert_eq!(&fallback.rgba[0..4], &[10, 16, 14, 255]);
+        assert_eq!(&fallback.rgba[fallback.rgba.len() - 4..], &[26, 46, 34, 255]);
+        assert!(guest.render_static_fallback(f32::NAN).is_err());
+        assert_eq!(guest.render().rgba, guest_frame.rgba);
 
         let native_settings = settings_from_wit(sample_wit_settings(2048)).1;
         let mut native =
