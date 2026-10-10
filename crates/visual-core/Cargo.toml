@@ -1,0 +1,10 @@
+[package]
+name = "sovereign-visual-core"
+version = "0.1.0"
+edition = "2024"
+description = "Platform-neutral deterministic mycelial scene simulation and CPU renderer"
+license = "AGPL-3.0-or-later"
+
+[dependencies]
+blake3 = "1.5"
+rand = "0.8"
