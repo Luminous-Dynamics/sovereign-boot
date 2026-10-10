@@ -40,6 +40,7 @@ fn settings_from_wit(settings: WitSceneSettings) -> (u32, SceneSettings) {
         seed,
         SceneSettings {
             branch_limit: settings.branch_limit,
+            resource_max_branches: settings.resource_max_branches,
             max_depth: settings.max_depth,
             growth_rate: settings.growth_rate,
             fixed_step_hz: settings.fixed_step_hz,
@@ -192,6 +193,7 @@ mod tests {
         WitSceneSettings {
             seed: 20261010,
             branch_limit,
+            resource_max_branches: 2048,
             max_depth: 10,
             growth_rate: 0.28,
             fixed_step_hz: 30,
