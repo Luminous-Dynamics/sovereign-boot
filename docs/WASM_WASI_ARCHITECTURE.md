@@ -59,6 +59,8 @@ The semantic limits are centralized in `crates/visual-core/src/contract.rs` and 
 
 The WIT resource constructor defensively normalizes dimensions to the shared dimension and pixel budget because WIT constructors cannot return a `Result`. Hosts must query the effective width/height; other adapters can reject invalid sizes. All frame presentation stays on the host side. The component has no display or input imports and must not be granted device capabilities simply to render a scene.
 
+The branch also includes `tools/component-host-smoke`, a Wasmtime 49.0.2 host that attempts actual instantiation and exercises the exported resource methods while registering no host imports. CI runs this after the component build. Until an exact-head run passes, this is a test implementation—not runtime qualification evidence. The helper's generated lockfile is currently surfaced as a short-retention CI artifact so its resolved dependency graph can be pinned before calling the host test reproducible.
+
 Build command:
 `cargo +1.96.0 build -p sovereign-visual-component --target wasm32-wasip2 --release --locked`
 
