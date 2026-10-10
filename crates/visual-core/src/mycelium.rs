@@ -7,7 +7,6 @@
 /// Renders to a raw pixel buffer using Bresenham's line algorithm — no GPU required.
 use crate::{
     color::Rgba,
-    contract::{self, DimensionsError},
     settings::{SceneSettings, SceneSettingsError},
 };
 use rand_chacha::ChaCha12Rng;
@@ -193,7 +192,7 @@ impl MycelialNetwork {
             }
         }
 
-        let growth_speed = 30.0 * io_rate.max(0.05); // minimum crawl even with no I/O
+        let growth_speed = 30.0 * io_rate.max(0.05) * self.settings.growth_rate;
 
         // Grow existing branches
         let mut new_branches: Vec<Branch> = Vec::new();
@@ -223,13 +222,13 @@ impl MycelialNetwork {
         let total_branches = self.branches.len();
         for i in 0..total_branches {
             let branch = &self.branches[i];
-            if branch.growing || !branch.has_node || branch.depth >= MAX_DEPTH {
+            if branch.growing || !branch.has_node || branch.depth >= self.settings.max_depth {
                 continue;
             }
             if branch.length() < MIN_BRANCH_LEN {
                 continue;
             }
-            if total_branches + new_branches.len() >= MAX_BRANCHES {
+            if total_branches + new_branches.len() >= self.settings.branch_limit as usize {
                 break;
             }
 
@@ -256,7 +255,7 @@ impl MycelialNetwork {
             // 1-3 children per node
             let n_children = 1 + (self.rng.next_u32() % 3);
             for _ in 0..n_children {
-                if total_branches + new_branches.len() >= MAX_BRANCHES {
+                if total_branches + new_branches.len() >= self.settings.branch_limit as usize {
                     break;
                 }
                 let fork_angle = (15.0_f32 + (self.rng.next_u32() as f32 / u32::MAX as f32) * 30.0).to_radians();
@@ -293,17 +292,21 @@ impl MycelialNetwork {
         let h = self.height as usize;
         assert!(buffer.len() >= w * h, "buffer too small");
 
-        // Clear to background (MOSS_DEEP or black depending on elapsed time)
+        // Configurable canvas-to-substrate fade and convergence glow. The
+        // legacy defaults preserve the established original palette.
         let bg = if self.elapsed < 1.0 {
-            Rgba::lerp(crate::color::BLACK, MOSS_DEEP, self.elapsed)
+            Rgba::lerp(
+                self.settings.palette.canvas,
+                self.settings.palette.substrate,
+                self.elapsed,
+            )
         } else {
-            MOSS_DEEP
+            self.settings.palette.substrate
         };
 
-        // White flash during final contraction
         let bg = if self.contraction > 0.95 {
             let flash = ((self.contraction - 0.95) / 0.05).clamp(0.0, 1.0);
-            Rgba::lerp(bg, MYCELIAL_WHITE, flash)
+            Rgba::lerp(bg, self.settings.palette.glow, flash)
         } else {
             bg
         };
@@ -321,7 +324,7 @@ impl MycelialNetwork {
                 let cx = self.center.0 as usize;
                 let cy = self.center.1 as usize;
                 if cx < w && cy < h {
-                    buffer[cy * w + cx] = LEAF_GREEN.to_xrgb8888();
+                    buffer[cy * w + cx] = self.settings.palette.filament.to_xrgb8888();
                 }
             }
             return;
@@ -333,27 +336,33 @@ impl MycelialNetwork {
                 continue;
             }
 
+            let drifted_start = self.drifted_point(branch.start);
+            let drifted_end = self.drifted_point(branch.end);
             let (start, end) = if self.contraction > 0.0 {
-                // Contract toward center
+                // Contract the drifted scene toward center.
                 let c = self.contraction;
                 let s = (
-                    branch.start.0 + (self.center.0 - branch.start.0) * c,
-                    branch.start.1 + (self.center.1 - branch.start.1) * c,
+                    drifted_start.0 + (self.center.0 - drifted_start.0) * c,
+                    drifted_start.1 + (self.center.1 - drifted_start.1) * c,
                 );
                 let e = (
-                    branch.end.0 + (self.center.0 - branch.end.0) * c,
-                    branch.end.1 + (self.center.1 - branch.end.1) * c,
+                    drifted_end.0 + (self.center.0 - drifted_end.0) * c,
+                    drifted_end.1 + (self.center.1 - drifted_end.1) * c,
                 );
                 (s, e)
             } else {
-                (branch.start, branch.end)
+                (drifted_start, drifted_end)
             };
 
-            // Color based on depth
+            // Role-based palette mapping is shared by configured scenes.
             let color = match branch.depth {
-                0 => LEAF_GREEN,
-                1..=3 => Rgba::lerp(LEAF_GREEN, LICHEN_GREY, branch.depth as f32 * 0.15),
-                _ => LICHEN_GREY,
+                0 => self.settings.palette.filament,
+                1..=3 => Rgba::lerp(
+                    self.settings.palette.filament,
+                    self.settings.palette.lichen,
+                    branch.depth as f32 * 0.15,
+                ),
+                _ => self.settings.palette.lichen,
             };
 
             // Brightness boost during global pulse
@@ -383,10 +392,14 @@ impl MycelialNetwork {
             // Draw node if present
             if branch.has_node && branch.length() > MIN_BRANCH_LEN {
                 let node_color = if branch.node_brightness > 0.0 {
-                    Rgba::lerp(LEAF_GREEN, SOLAR_GOLD, branch.node_brightness)
-                        .brighten(1.0 + branch.node_brightness * 0.5)
+                    Rgba::lerp(
+                        self.settings.palette.filament,
+                        self.settings.palette.node,
+                        branch.node_brightness,
+                    )
+                    .brighten(1.0 + branch.node_brightness * 0.5)
                 } else {
-                    LEAF_GREEN.brighten(1.2)
+                    self.settings.palette.filament.brighten(1.2)
                 };
                 let radius = (branch.thickness * 1.5 + 1.0) as i32;
                 draw_filled_circle(buffer, w, h, end.0 as i32, end.1 as i32, radius, node_color);
@@ -595,7 +608,7 @@ mod tests {
         for _ in 0..2000 {
             net.grow(0.05, 1.0);
         }
-        assert!(net.branches.len() <= MAX_BRANCHES);
+        assert!(net.branches.len() <= net.settings.branch_limit as usize);
     }
 
     #[test]
