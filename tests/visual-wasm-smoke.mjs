@@ -27,9 +27,10 @@ bindings.initSync({ module: wasmModule });
 
 // Use the pinned upstream Scene Pack example as shared test data. This smoke
 // test maps known fields into the typed API; it is not a schema/manifest loader.
-const scenePack = JSON.parse(
-  await readFile(resolve("tests/fixtures/first-germination.scene.json"), "utf8"),
+const scenePackBytes = await readFile(
+  resolve("tests/fixtures/first-germination.scene.json"),
 );
+const scenePack = JSON.parse(scenePackBytes.toString("utf8"));
 assert.equal(scenePack.schemaVersion, 1);
 assert.equal(scenePack.simulation.engine, "mycelial-network-v1");
 const simulation = scenePack.simulation;
@@ -83,6 +84,63 @@ assert.equal(
   typeof bindings.VisualScene.createConfigured,
   "function",
   "browser adapter exposes the configured numeric-seed constructor",
+);
+
+assert.equal(
+  typeof bindings.VisualScene.createFromScenePack,
+  "function",
+  "browser adapter exposes the validated Scene Pack constructor",
+);
+
+function renderPackBootFixture() {
+  const scene = bindings.VisualScene.createFromScenePack(
+    32,
+    24,
+    scenePackBytes,
+    "boot",
+  );
+  assert.equal(scene.scene_id(), "luminous.first-germination");
+  assert.equal(scene.scene_version(), "0.1.0");
+  assert.equal(scene.scene_title(), "First Germination");
+  assert.equal(scene.fixed_step_hz(), simulation.fixedStepHz);
+  assert.equal(scene.presentation_max_fps(), scenePack.presentations.boot.maxFps);
+  assert.equal(scene.is_static_fallback(), false);
+
+  for (let batch = 0; batch < 4; batch += 1) {
+    scene.advance_ticks(simulation.fixedStepHz, 0.7);
+  }
+  const rgba = Buffer.from(scene.render_presented_rgba());
+  assert.equal(rgba.length, 32 * 24 * 4);
+  scene.free();
+  return rgba;
+}
+
+assert.deepEqual(
+  renderPackBootFixture(),
+  renderConfiguredFixture(),
+  "the browser Scene Pack constructor must map to the same core engine/settings",
+);
+
+const packStaticScene = bindings.VisualScene.createFromScenePack(
+  16,
+  16,
+  scenePackBytes,
+  "staticFallback",
+);
+assert.equal(packStaticScene.is_static_fallback(), true);
+assert.equal(packStaticScene.presentation_max_fps(), 0);
+const packStaticFrame = Buffer.from(packStaticScene.render_presented_rgba());
+assert.deepEqual(packStaticFrame.subarray(0, 4), Buffer.from([6, 9, 8, 255]));
+assert.deepEqual(
+  packStaticFrame.subarray(packStaticFrame.length - 4),
+  Buffer.from([15, 27, 20, 255]),
+);
+packStaticScene.free();
+
+assert.throws(
+  () => bindings.VisualScene.createFromScenePack(32, 24, scenePackBytes, "desktop"),
+  /safeRegions/i,
+  "the browser adapter must reject presentation fields it has not implemented",
 );
 
 
