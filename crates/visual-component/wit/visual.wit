@@ -20,7 +20,10 @@ interface scene {
   /// validated by the host. Presentation/lifecycle policy remains host-owned.
   record scene-settings {
     seed: u32,
+    /// Engine-requested ceiling, which may not exceed resource-max-branches.
     branch-limit: u32,
+    /// Independent host/resource ceiling from resourceBudget.maxBranches.
+    resource-max-branches: u32,
     max-depth: u32,
     growth-rate: f32,
     fixed-step-hz: u32,
