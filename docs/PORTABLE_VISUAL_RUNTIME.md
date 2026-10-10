@@ -28,6 +28,16 @@ The existing `visual-core`, `visual-wasm`, `visual-component`, and `visual-wasi`
 - **Never silently weaken a profile.** If a host cannot meet a requested quality, motion, color, or frame-rate profile, report the negotiated profile and use an explicit fallback.
 - **Keep privileged lifecycle outside the visual component.** Boot progression, authentication, recovery, secure login, and display restoration are controlled by trusted native code, never by a guest visual module.
 
+## Implemented settings boundary on the hardening branch
+
+The first typed settings slice now exists in `crates/visual-core/src/settings.rs` and `crates/visual-core/src/mycelium.rs`. The legacy phrase-based constructor is retained; the additive `with_settings(width, height, seed: u32, settings)` constructor validates dimensions, branch/depth limits, growth rate, tick frequency, pulse period, drift amplitude, opaque RGB palette semantics, and a conservative renderer-owned memory estimate before allocation.
+
+The configured renderer enforces its branch/depth limits during growth, maps all six palette roles to the CPU renderer, applies growth-rate scaling and deterministic positional drift, and schedules periodic pulses by integer simulation ticks. Fixed-step batches are bounded by `min(fixed_step_hz, 120)`, so no call advances more than one simulated second. The legacy variable-delta `grow` path retains its historical minimum crawl at zero activity; the new configured fixed-tick path treats zero activity as no growth.
+
+Both the browser ABI and WIT Component Model now accept typed settings; the WIT resource reconfiguration is atomic on validation failure. Browser smoke fixtures, Rust unit fixtures, and the Wasmtime host harness cover replay, bounds, branch budget, settings rejection and resource cleanup. These are implemented test definitions, not pass claims: exact-head execution remains required.
+
+The remaining interoperability boundary is explicit: there is no Scene Pack JSON loader here yet; presentation variants, safe regions, static gradient fallback generation, host visibility/suspend behavior, and whole-process memory accounting remain adapter/loader work. See `SCENE_PACK_INTEROPERABILITY.md` for the field-by-field mapping and acceptance gates.
+
 ## Determinism and reproducibility
 
 The seed alone is not a complete reproducibility contract. The full replay input is:
