@@ -7,21 +7,55 @@
 use std::cell::RefCell;
 
 use sovereign_visual_core::{
+    color::Rgba,
     contract::{self, StepError},
     mycelium::MycelialNetwork,
+    settings::{ScenePalette, SceneSettings, SceneSettingsError},
 };
 
 wit_bindgen::generate!({
     world: "visual-component",
 });
 
-use exports::luminous::sovereign_visual::scene::{Frame, Guest, GuestVisualScene};
+use exports::luminous::sovereign_visual::scene::{
+    Frame, Guest, GuestVisualScene, Rgb, ScenePalette as WitScenePalette,
+    SceneSettings as WitSceneSettings,
+};
 
 fn step_error(error: StepError) -> String {
     match error {
         StepError::InvalidDelta => "dt-seconds must be finite and within 0..=0.25".to_owned(),
         StepError::InvalidActivity => "activity must be finite and within 0..=1".to_owned(),
     }
+}
+
+fn rgb_to_rgba(color: Rgb) -> Rgba {
+    Rgba(color.r, color.g, color.b, 0xff)
+}
+
+fn settings_from_wit(settings: WitSceneSettings) -> (u32, SceneSettings) {
+    let seed = settings.seed;
+    let palette: WitScenePalette = settings.palette;
+    (
+        seed,
+        SceneSettings {
+            branch_limit: settings.branch_limit,
+            max_depth: settings.max_depth,
+            growth_rate: settings.growth_rate,
+            fixed_step_hz: settings.fixed_step_hz,
+            pulse_period_seconds: settings.pulse_period_seconds,
+            drift_amplitude: settings.drift_amplitude,
+            max_memory_mib: settings.max_memory_mib,
+            palette: ScenePalette {
+                canvas: rgb_to_rgba(palette.canvas),
+                substrate: rgb_to_rgba(palette.substrate),
+                filament: rgb_to_rgba(palette.filament),
+                node: rgb_to_rgba(palette.node),
+                lichen: rgb_to_rgba(palette.lichen),
+                glow: rgb_to_rgba(palette.glow),
+            },
+        },
+    )
 }
 
 struct Component;
@@ -52,6 +86,28 @@ impl GuestVisualScene for VisualScene {
 
     fn pulse(&self) {
         self.network.borrow_mut().pulse();
+    }
+
+    fn configure(
+        &self,
+        width: u32,
+        height: u32,
+        settings: WitSceneSettings,
+    ) -> Result<(), String> {
+        let (seed, settings) = settings_from_wit(settings);
+        let candidate = MycelialNetwork::with_settings(width, height, seed, settings)
+            .map_err(|error: SceneSettingsError| error.to_string())?;
+        // Construct and validate first, then replace atomically. Invalid
+        // configuration never partially mutates the running scene.
+        *self.network.borrow_mut() = candidate;
+        Ok(())
+    }
+
+    fn advance_ticks(&self, ticks: u32, activity: f32) -> Result<(), String> {
+        self.network
+            .borrow_mut()
+            .advance_ticks(ticks, activity)
+            .map_err(|error| error.to_string())
     }
 
     fn contract(&self, progress: f32) -> Result<(), String> {
