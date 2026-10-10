@@ -94,6 +94,72 @@ impl Default for SceneSettings {
     }
 }
 
+/// Render Scene Pack v1's asset-free static fallback as a deterministic
+/// diagonal RGB gradient from canvas (upper-left) to substrate (lower-right).
+///
+/// Interpolation and brightness scaling use integer fixed-point arithmetic
+/// after brightness has been quantized to Q16, avoiding platform-dependent
+/// floating-point pixel interpolation. Brightness is constrained to 0..=1.
+/// Output is top-to-bottom row-major opaque RGBA8.
+pub fn render_static_gradient_rgba(
+    width: u32,
+    height: u32,
+    palette: ScenePalette,
+    brightness: f32,
+) -> Result<Vec<u8>, SceneSettingsError> {
+    contract::validate_dimensions(width, height)
+        .map_err(SceneSettingsError::InvalidDimensions)?;
+    if !brightness.is_finite() || !(0.0..=1.0).contains(&brightness) {
+        return Err(SceneSettingsError::InvalidFallbackBrightness);
+    }
+
+    let colors = [
+        palette.canvas,
+        palette.substrate,
+        palette.filament,
+        palette.node,
+        palette.lichen,
+        palette.glow,
+    ];
+    if colors.iter().any(|color| color.3 != 0xff) {
+        return Err(SceneSettingsError::PaletteMustBeOpaque);
+    }
+
+    const Q16_ONE: u64 = 65_535;
+    let brightness_q16 = (f64::from(brightness) * Q16_ONE as f64).round() as u64;
+    let dx = u64::from(width - 1);
+    let dy = u64::from(height - 1);
+    let denominator = dx * dx + dy * dy;
+    let pixel_count = (width as usize) * (height as usize);
+    let mut rgba = Vec::with_capacity(pixel_count * 4);
+
+    for y in 0..height {
+        for x in 0..width {
+            let projection = u64::from(x) * dx + u64::from(y) * dy;
+            let t_q16 = if denominator == 0 {
+                0
+            } else {
+                ((projection * Q16_ONE + denominator / 2) / denominator).min(Q16_ONE)
+            };
+            let lerp = |start: u8, end: u8| -> u8 {
+                let mixed = (u64::from(start) * (Q16_ONE - t_q16)
+                    + u64::from(end) * t_q16
+                    + Q16_ONE / 2)
+                    / Q16_ONE;
+                ((mixed * brightness_q16 + Q16_ONE / 2) / Q16_ONE) as u8
+            };
+            rgba.extend_from_slice(&[
+                lerp(palette.canvas.0, palette.substrate.0),
+                lerp(palette.canvas.1, palette.substrate.1),
+                lerp(palette.canvas.2, palette.substrate.2),
+                0xff,
+            ]);
+        }
+    }
+
+    Ok(rgba)
+}
+
 /// A typed settings validation failure. Adapters may translate this to their
 /// own stable error ABI without parsing diagnostic strings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -109,6 +175,7 @@ pub enum SceneSettingsError {
     MemoryEstimateOverflow,
     ResourceBudgetExceeded,
     PaletteMustBeOpaque,
+    InvalidFallbackBrightness,
     InvalidActivity,
     TickBatchOutOfRange,
 }
@@ -136,6 +203,9 @@ impl fmt::Display for SceneSettingsError {
                 f,
                 "scene palette colors must be opaque RGB values with alpha 255"
             ),
+            Self::InvalidFallbackBrightness => {
+                write!(f, "static fallback brightness must be finite and in 0..=1")
+            }
             Self::InvalidActivity => write!(f, "activity must be finite and in 0..=1"),
             Self::TickBatchOutOfRange => write!(
                 f,
@@ -336,6 +406,45 @@ mod tests {
             settings.validate_for_dimensions(3840, 2160),
             Err(SceneSettingsError::ResourceBudgetExceeded)
         );
+    }
+
+    #[test]
+    fn static_fallback_gradient_has_exact_endpoints_and_brightness() {
+        let palette = ScenePalette {
+            canvas: Rgba(10, 16, 14, 255),
+            substrate: Rgba(26, 46, 34, 255),
+            filament: Rgba(126, 200, 160, 255),
+            node: Rgba(232, 197, 71, 255),
+            lichen: Rgba(90, 107, 94, 255),
+            glow: Rgba(118, 217, 193, 255),
+        };
+        let frame = render_static_gradient_rgba(2, 2, palette, 1.0).unwrap();
+        assert_eq!(frame.len(), 2 * 2 * 4);
+        assert_eq!(&frame[0..4], &[10, 16, 14, 255]);
+        assert_eq!(&frame[12..16], &[26, 46, 34, 255]);
+
+        let dimmed = render_static_gradient_rgba(2, 2, palette, 0.5).unwrap();
+        assert_eq!(&dimmed[0..4], &[5, 8, 7, 255]);
+        assert_eq!(&dimmed[12..16], &[13, 23, 17, 255]);
+    }
+
+    #[test]
+    fn static_fallback_is_bounded_and_rejects_invalid_brightness() {
+        assert_eq!(
+            render_static_gradient_rgba(0, 1, ScenePalette::default(), 1.0),
+            Err(SceneSettingsError::InvalidDimensions(DimensionsError::Zero))
+        );
+        assert_eq!(
+            render_static_gradient_rgba(1, 1, ScenePalette::default(), f32::NAN),
+            Err(SceneSettingsError::InvalidFallbackBrightness)
+        );
+        assert_eq!(
+            render_static_gradient_rgba(1, 1, ScenePalette::default(), 1.1),
+            Err(SceneSettingsError::InvalidFallbackBrightness)
+        );
+
+        let pixel = render_static_gradient_rgba(1, 1, ScenePalette::default(), 1.0).unwrap();
+        assert_eq!(pixel, vec![0, 0, 0, 255]);
     }
 
     #[test]
