@@ -10,6 +10,14 @@ Do not create a second mycelial simulation and do not pretend the current seed-p
 
 The Scene Pack remains data, not executable code. JSON Schema validation, duplicate-key rejection, path and asset-hash checks belong in the loader/adapter boundary, outside the frame loop. The renderer receives an already-validated, bounded typed configuration.
 
+## Implemented core/API slice on the hardening branch
+
+The reusable core now includes `SceneSettings` and `ScenePalette` plus the additive `MycelialNetwork::with_settings(width, height, seed, settings)` constructor. The browser adapter also exposes a numeric-seed `VisualScene.createConfigured(...)` entry point and `advance_ticks`. The implementation enforces branch/depth limits during growth, growth-rate scaling, tick-based pulse scheduling, deterministic positional drift, six renderer palette roles, and a conservative renderer-owned memory estimate. Catch-up batches are capped at 120 ticks.
+
+The browser runtime smoke fixture now exercises this configured API with the First Germination seed/settings/palette values, checks replay identity and invalid configuration rejection, and retains the original phrase-based fixture for backward compatibility.
+
+**Still not implemented:** JSON/Scene Pack parsing, presentation-variant/safe-region semantics, static gradient fallback generation, full-process memory accounting, lifecycle enforcement in each host, and the configured settings constructor in the WIT Component Model interface. Therefore the project must not yet claim complete Scene Pack v1 compatibility or equivalent configured behavior across WASM and WASI.
+
 ## Current gaps to resolve
 
 The current core is a deterministic CPU reference, but the exposed APIs do not implement every Scene Pack v1 semantic.
@@ -76,7 +84,7 @@ Before claiming Scene Pack v1 support:
 
 ## Relationship to the current Wasmtime work
 
-The capability-denied Wasmtime host is a prerequisite qualification test for the existing resource-based WIT API. Its existence does not itself make the core Scene Pack-compatible. The scene-settings extension should be implemented after that test is compiling and running, so one contract change does not obscure whether the base component runtime works.
+The capability-denied Wasmtime host is a prerequisite qualification test for the existing resource-based WIT API. Its existence does not itself make the core Scene Pack-compatible. The new typed core and browser settings path can be tested independently; extend the WIT Component Model surface after the base host harness compiles and instantiates the current interface, so the two contract changes remain separately diagnosable.
 
 Presentation and host lifecycle policy stay outside the guest. In particular, this component never authenticates users, changes the lock state, controls the boot transaction, or obtains direct display access.
 
