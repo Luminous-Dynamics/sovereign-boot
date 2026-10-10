@@ -13,6 +13,7 @@ use serde::de::{self, MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer};
 use serde_json::{Map as JsonMap, Number, Value};
 use sovereign_visual_core::color::Rgba;
+use sovereign_visual_core::mycelium::MycelialNetwork;
 use sovereign_visual_core::settings::{ScenePalette, SceneSettings, SceneSettingsError};
 
 /// Maximum accepted manifest size. The schema caps collection sizes too, but
@@ -440,6 +441,17 @@ impl ValidatedScenePack {
             .validate_for_dimensions(width, height)
             .map_err(ScenePackError::CoreSettings)
     }
+
+    /// Construct the shared native/reference renderer from the validated pack.
+    /// Host presentation and lifecycle policy remain outside the engine.
+    pub fn instantiate(
+        &self,
+        width: u32,
+        height: u32,
+    ) -> Result<MycelialNetwork, ScenePackError> {
+        MycelialNetwork::with_settings(width, height, self.seed, self.settings)
+            .map_err(ScenePackError::CoreSettings)
+    }
 }
 
 /// Parse and validate a Scene Pack v1 manifest. The parser rejects duplicate
@@ -604,6 +616,13 @@ fn validate_scene_id(value: &str) -> Result<(), ScenePackError> {
 }
 
 fn valid_segmented_id(value: &str) -> bool {
+    if !value
+        .as_bytes()
+        .first()
+        .is_some_and(u8::is_ascii_lowercase)
+    {
+        return false;
+    }
     let mut previous_separator = true;
     for (index, byte) in value.bytes().enumerate() {
         if byte.is_ascii_lowercase() || byte.is_ascii_digit() {
@@ -1103,6 +1122,9 @@ mod tests {
         assert_eq!(pack.scene_id(), "luminous.first-germination");
         assert_eq!(pack.scene_version(), "0.1.0");
         assert_eq!(pack.seed(), 20261010);
+        let scene = pack.instantiate(32, 24).unwrap();
+        assert_eq!((scene.width(), scene.height()), (32, 24));
+        assert!(scene.branch_count() <= pack.resource_budget().max_branches);
         assert_eq!(pack.settings().branch_limit, 2048);
         assert_eq!(pack.settings().resource_max_branches, 2048);
         assert_eq!(pack.settings().fixed_step_hz, 30);
@@ -1143,8 +1165,12 @@ mod tests {
     #[test]
     fn rejects_resource_budget_contradictions_and_null_optionals() {
         let under_budget = FIXTURE.replace(
-            r#""maxBranches": 2048"#,
-            r#""maxBranches": 1024"#,
+            r#""resourceBudget": {
+    "maxFps": 30,
+    "maxBranches": 2048,"#,
+            r#""resourceBudget": {
+    "maxFps": 30,
+    "maxBranches": 1024,"#,
         );
         assert!(matches!(
             parse_scene_pack_v1(under_budget.as_bytes()),
@@ -1159,6 +1185,18 @@ mod tests {
         assert!(matches!(
             parse_scene_pack_v1(null_description.as_bytes()),
             Err(ScenePackError::SchemaViolation(_))
+        ));
+    }
+
+    #[test]
+    fn rejects_scene_ids_that_do_not_start_with_a_lowercase_letter() {
+        let invalid = FIXTURE.replace(
+            r#""sceneId": "luminous.first-germination""#,
+            r#""sceneId": "1uminous.first-germination""#,
+        );
+        assert!(matches!(
+            parse_scene_pack_v1(invalid.as_bytes()),
+            Err(ScenePackError::InvalidValue { field, .. }) if field == "sceneId"
         ));
     }
 
