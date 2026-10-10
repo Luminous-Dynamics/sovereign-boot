@@ -18,140 +18,60 @@ bindgen!({
 });
 
 use exports::luminous::sovereign_visual::scene::{Rgb, ScenePalette, SceneSettings};
-use serde_json::Value;
+use sovereign_visual_pack::{parse_scene_pack_v1, PresentationVariant, ValidatedScenePack};
 
-fn missing_field(label: &str) -> Box<dyn Error> {
-    io::Error::new(
-        io::ErrorKind::InvalidData,
-        format!("missing/invalid Scene Pack field: {label}"),
-    )
-    .into()
-}
-
-fn field<'a>(
-    value: &'a Value,
-    key: &str,
-    label: &str,
-) -> Result<&'a Value, Box<dyn Error>> {
-    value.get(key).ok_or_else(|| missing_field(label))
-}
-
-fn as_u32(value: &Value, label: &str) -> Result<u32, Box<dyn Error>> {
-    value
-        .as_u64()
-        .and_then(|number| u32::try_from(number).ok())
-        .ok_or_else(|| missing_field(label))
-}
-
-fn as_f32(value: &Value, label: &str) -> Result<f32, Box<dyn Error>> {
-    let number = value
-        .as_f64()
-        .filter(|number| number.is_finite())
-        .ok_or_else(|| missing_field(label))? as f32;
-    if !number.is_finite() {
-        return Err(missing_field(label));
-    }
-    Ok(number)
-}
-
-fn rgb_from_hex(value: &Value, label: &str) -> Result<Rgb, Box<dyn Error>> {
-    let text = value.as_str().ok_or_else(|| missing_field(label))?;
-    let hex = text.strip_prefix('#').ok_or_else(|| missing_field(label))?;
-    let bytes = hex.as_bytes();
-    if bytes.len() != 6 || !bytes.iter().all(|byte| byte.is_ascii_hexdigit()) {
-        return Err(missing_field(label));
-    }
-    let channel = |offset: usize| -> Result<u8, Box<dyn Error>> {
-        let pair = std::str::from_utf8(&bytes[offset..offset + 2])?;
-        Ok(u8::from_str_radix(pair, 16)?)
-    };
-    Ok(Rgb {
-        r: channel(0)?,
-        g: channel(2)?,
-        b: channel(4)?,
-    })
-}
-
-/// Map the pinned First Germination fixture into the typed WIT record.
-/// This is test-data mapping, not the production schema/path/hash loader.
-fn sample_settings(
-    manifest: &Value,
+/// Convert the production parser's immutable core settings to the WIT wire
+/// record. The parser owns validation; this helper only adapts data types.
+fn settings_for_wit(
+    pack: &ValidatedScenePack,
     branch_limit_override: Option<u32>,
-) -> Result<SceneSettings, Box<dyn Error>> {
-    if as_u32(field(manifest, "schemaVersion", "schemaVersion")?, "schemaVersion")? != 1 {
-        return Err(missing_field("unsupported schemaVersion"));
-    }
-
-    let simulation = field(manifest, "simulation", "simulation")?;
-    if field(simulation, "engine", "simulation.engine")?.as_str()
-        != Some("mycelial-network-v1")
-    {
-        return Err(missing_field("unsupported simulation.engine"));
-    }
-    let parameters = field(simulation, "parameters", "simulation.parameters")?;
-    let palette = field(manifest, "palette", "palette")?;
-    let resources = field(manifest, "resourceBudget", "resourceBudget")?;
-
-    let branch_limit = match branch_limit_override {
-        Some(value) => value,
-        None => as_u32(
-            field(parameters, "branchLimit", "simulation.parameters.branchLimit")?,
-            "simulation.parameters.branchLimit",
-        )?,
-    };
-
-    Ok(SceneSettings {
-        seed: as_u32(field(simulation, "seed", "simulation.seed")?, "simulation.seed")?,
-        branch_limit,
-        resource_max_branches: as_u32(
-            field(resources, "maxBranches", "resourceBudget.maxBranches")?,
-            "resourceBudget.maxBranches",
-        )?,
-        max_depth: as_u32(
-            field(parameters, "maxDepth", "simulation.parameters.maxDepth")?,
-            "simulation.parameters.maxDepth",
-        )?,
-        growth_rate: as_f32(
-            field(parameters, "growthRate", "simulation.parameters.growthRate")?,
-            "simulation.parameters.growthRate",
-        )?,
-        fixed_step_hz: as_u32(
-            field(simulation, "fixedStepHz", "simulation.fixedStepHz")?,
-            "simulation.fixedStepHz",
-        )?,
-        pulse_period_seconds: as_f32(
-            field(
-                parameters,
-                "pulsePeriodSeconds",
-                "simulation.parameters.pulsePeriodSeconds",
-            )?,
-            "simulation.parameters.pulsePeriodSeconds",
-        )?,
-        drift_amplitude: as_f32(
-            field(parameters, "driftAmplitude", "simulation.parameters.driftAmplitude")?,
-            "simulation.parameters.driftAmplitude",
-        )?,
-        max_memory_mib: as_u32(
-            field(resources, "maxMemoryMiB", "resourceBudget.maxMemoryMiB")?,
-            "resourceBudget.maxMemoryMiB",
-        )?,
+) -> SceneSettings {
+    let core = pack.settings();
+    let palette = core.palette;
+    SceneSettings {
+        seed: pack.seed(),
+        branch_limit: branch_limit_override.unwrap_or(core.branch_limit),
+        resource_max_branches: core.resource_max_branches,
+        max_depth: core.max_depth,
+        growth_rate: core.growth_rate,
+        fixed_step_hz: core.fixed_step_hz,
+        pulse_period_seconds: core.pulse_period_seconds,
+        drift_amplitude: core.drift_amplitude,
+        max_memory_mib: core.max_memory_mib,
         palette: ScenePalette {
-            canvas: rgb_from_hex(field(palette, "canvas", "palette.canvas")?, "palette.canvas")?,
-            substrate: rgb_from_hex(
-                field(palette, "substrate", "palette.substrate")?,
-                "palette.substrate",
-            )?,
-            filament: rgb_from_hex(
-                field(palette, "filament", "palette.filament")?,
-                "palette.filament",
-            )?,
-            node: rgb_from_hex(field(palette, "node", "palette.node")?, "palette.node")?,
-            lichen: rgb_from_hex(field(palette, "lichen", "palette.lichen")?, "palette.lichen")?,
-            glow: rgb_from_hex(field(palette, "glow", "palette.glow")?, "palette.glow")?,
+            canvas: Rgb {
+                r: palette.canvas.0,
+                g: palette.canvas.1,
+                b: palette.canvas.2,
+            },
+            substrate: Rgb {
+                r: palette.substrate.0,
+                g: palette.substrate.1,
+                b: palette.substrate.2,
+            },
+            filament: Rgb {
+                r: palette.filament.0,
+                g: palette.filament.1,
+                b: palette.filament.2,
+            },
+            node: Rgb {
+                r: palette.node.0,
+                g: palette.node.1,
+                b: palette.node.2,
+            },
+            lichen: Rgb {
+                r: palette.lichen.0,
+                g: palette.lichen.1,
+                b: palette.lichen.2,
+            },
+            glow: Rgb {
+                r: palette.glow.0,
+                g: palette.glow.1,
+                b: palette.glow.2,
+            },
         },
-    })
+    }
 }
-
 fn fnv1a64(bytes: &[u8]) -> u64 {
     let mut hash = 0xcbf2_9ce4_8422_2325_u64;
     for byte in bytes {
@@ -180,34 +100,22 @@ fn main() -> Result<(), Box<dyn Error>> {
             )
         })?;
 
-    // Resolve values from the pinned upstream contract fixture. This is only
-    // a test-data mapper, not production schema/path/hash/signature validation.
+    // Exercise the production parser on the pinned upstream fixture before
+    // any guest calls. The fixture has no assets, so this no-import host needs
+    // no file resolver or SHA-256 capability.
     let fixture_bytes = std::fs::read("tests/fixtures/first-germination.scene.json")?;
-    let manifest: Value = serde_json::from_slice(&fixture_bytes)?;
-    let presentations = field(&manifest, "presentations", "presentations")?;
-    let static_presentation =
-        field(presentations, "staticFallback", "presentations.staticFallback")?;
-    let static_fallback_brightness = as_f32(
-        field(
-            static_presentation,
-            "brightness",
-            "presentations.staticFallback.brightness",
-        )?,
-        "presentations.staticFallback.brightness",
-    )?;
-    let configured_settings = sample_settings(&manifest, None)?;
-    let aggregate_branch_limit = as_u32(
-        field(
-            field(&manifest, "resourceBudget", "resourceBudget")?,
-            "maxBranches",
-            "resourceBudget.maxBranches",
-        )?,
-        "resourceBudget.maxBranches",
-    )?;
+    let manifest = parse_scene_pack_v1(&fixture_bytes)?;
+    let static_fallback_brightness = manifest
+        .presentations()
+        .get(PresentationVariant::StaticFallback)
+        .brightness;
+    let configured_settings = settings_for_wit(&manifest, None);
+    let aggregate_branch_limit = manifest.resource_budget().max_branches;
     if configured_settings.branch_limit > aggregate_branch_limit {
-        return Err(missing_field(
-            "simulation.parameters.branchLimit exceeds resourceBudget.maxBranches",
-        ));
+        return Err(io::Error::other(
+            "validated scene branchLimit exceeds resourceBudget.maxBranches",
+        )
+        .into());
     }
 
     let mut config = Config::new();
@@ -415,7 +323,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Invalid settings must not mutate the existing scene, and catch-up
     // requests must remain bounded even through a Component Model caller.
     let unchanged_scene = scene_api.call_constructor(&mut store, 16, 16, "unchanged")?;
-    let mut under_budget = sample_settings(&manifest, None)?;
+    let mut under_budget = settings_for_wit(&manifest, None);
     under_budget.resource_max_branches = configured_settings.branch_limit - 1;
     if scene_api
         .call_configure(&mut store, unchanged_scene, 48, 24, under_budget)?
@@ -438,7 +346,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             unchanged_scene,
             48,
             24,
-            sample_settings(&manifest, Some(8193))?,
+            settings_for_wit(&manifest, Some(8193)),
         )?
         .is_ok()
     {
