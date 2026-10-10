@@ -779,6 +779,14 @@ mod tests {
     }
 
     #[test]
+    fn legacy_variable_delta_api_preserves_minimum_crawl() {
+        let mut net = MycelialNetwork::new(32, 24, "legacy-minimum-crawl");
+        let initial = net.branches[0].growth_progress;
+        net.grow(1.0 / 30.0, 0.0);
+        assert!(net.branches[0].growth_progress > initial);
+    }
+
+    #[test]
     fn configured_tick_rejects_invalid_activity_and_unbounded_batches() {
         let mut net = MycelialNetwork::with_settings(
             32,
