@@ -77,6 +77,28 @@ function renderConfiguredFixture() {
   assert.equal(scene.contract_version(), 1);
   assert.equal(scene.width(), 32);
   assert.equal(scene.height(), 24);
+  const beforeFallback = Buffer.from(scene.render_rgba());
+  const staticFallback = Buffer.from(scene.render_static_fallback(1.0));
+  assert.equal(staticFallback.length, 32 * 24 * 4);
+  assert.deepEqual(
+    staticFallback.subarray(0, 4),
+    Buffer.from([10, 16, 14, 255]),
+    "static gradient starts at the configured canvas color",
+  );
+  assert.deepEqual(
+    staticFallback.subarray(staticFallback.length - 4),
+    Buffer.from([26, 46, 34, 255]),
+    "static gradient ends at the configured substrate color",
+  );
+  assert.deepEqual(
+    Buffer.from(scene.render_rgba()),
+    beforeFallback,
+    "rendering the static fallback must not mutate the scene",
+  );
+  assert.throws(
+    () => scene.render_static_fallback(1.1),
+    /brightness/i,
+  );
   assert.deepEqual(
     Buffer.from(scene.render_rgba().slice(0, 4)),
     Buffer.from([10, 16, 14, 255]),
