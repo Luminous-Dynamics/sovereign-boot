@@ -65,6 +65,10 @@ Negotiation is deterministic: choose the highest mutually supported contract ver
 
 This capability document is a design sketch, not yet a published WIT interface. It should be implemented only after the existing WIT and browser APIs are reviewed together to avoid two competing sources of truth.
 
+## Graphics backend decision
+
+The architecture decision record is in [`GRAPHICS_BACKEND_DECISION.md`](GRAPHICS_BACKEND_DECISION.md). It keeps CPU RGBA as the reference, treats wgpu/native and browser-WebGPU as optional future renderers, and leaves wasi:webgpu and wasi-gfx behind a future adapter boundary while their surface/runtime contracts continue to evolve.
+
 ## Proposed portable render-plan boundary
 
 The current RGBA frame API is a valuable compatibility and test oracle, but full-frame copies scale poorly on high-resolution and constrained devices. Introduce a render-plan boundary only after profiling proves it is needed.
