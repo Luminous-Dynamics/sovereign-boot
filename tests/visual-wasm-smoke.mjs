@@ -9,8 +9,10 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const packageDir = resolve(process.argv[2] ?? "");
-if (!process.argv[2]) {
-  throw new Error("Usage: node tests/visual-wasm-smoke.mjs <generated-package-dir>");
+if (!process.argv[2] || !process.argv[3]) {
+  throw new Error(
+    "Usage: node tests/visual-wasm-smoke.mjs <generated-package-dir> <native-rgba-reference>",
+  );
 }
 
 const wasmPath = join(packageDir, "sovereign_visual_wasm_bg.wasm");
@@ -43,10 +45,19 @@ function renderFixture(seed) {
   return Buffer.from(frame);
 }
 
+const wasmFrame = renderFixture("portable-smoke-fixture");
 assert.deepEqual(
-  renderFixture("portable-smoke-fixture"),
+  wasmFrame,
   renderFixture("portable-smoke-fixture"),
   "same seed and steps should yield identical RGBA output",
+);
+
+const nativeFrame = await readFile(resolve(process.argv[3]));
+assert.equal(nativeFrame.length, 32 * 24 * 4);
+assert.deepEqual(
+  wasmFrame,
+  nativeFrame,
+  "native Rust and browser WASM must render identical RGBA bytes for the same fixture",
 );
 
 assert.throws(() => new bindings.VisualScene(0, 24, "invalid"), /dimensions/i);
@@ -55,4 +66,4 @@ assert.throws(() => scene.advance(1, 0.5), /dt_seconds/i);
 assert.throws(() => scene.advance(0.1, 1.5), /activity/i);
 scene.free();
 
-console.log("browser WASM runtime smoke: PASS");
+console.log("native/browser WASM RGBA parity: PASS");
