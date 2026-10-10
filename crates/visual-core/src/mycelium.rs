@@ -784,9 +784,21 @@ mod tests {
             Err(SceneSettingsError::InvalidActivity)
         );
         assert_eq!(
-            net.advance_ticks(MAX_TICKS_PER_BATCH + 1, 0.7),
+            net.advance_ticks(31, 0.7),
             Err(SceneSettingsError::TickBatchOutOfRange)
         );
+
+        // The effective batch ceiling follows the configured tick rate, not
+        // the absolute 120-tick safety ceiling.
+        let mut low_rate = SceneSettings::default();
+        low_rate.fixed_step_hz = 10;
+        let mut low_rate_scene =
+            MycelialNetwork::with_settings(32, 24, 2, low_rate).unwrap();
+        assert_eq!(
+            low_rate_scene.advance_ticks(11, 0.7),
+            Err(SceneSettingsError::TickBatchOutOfRange)
+        );
+        low_rate_scene.advance_ticks(10, 0.7).unwrap();
 
         let initial_progress = net.branches[0].growth_progress;
         net.advance_ticks(30, 0.0).unwrap();
