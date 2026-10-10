@@ -176,7 +176,9 @@ pub enum SceneSettingsError {
     ResourceBudgetExceeded,
     PaletteMustBeOpaque,
     InvalidFallbackBrightness,
+    InvalidFrameDelta,
     InvalidActivity,
+    MixedStepModes,
     TickBatchOutOfRange,
 }
 
@@ -206,7 +208,14 @@ impl fmt::Display for SceneSettingsError {
             Self::InvalidFallbackBrightness => {
                 write!(f, "static fallback brightness must be finite and in 0..=1")
             }
+            Self::InvalidFrameDelta => {
+                write!(f, "frame delta must be finite and in 0..=0.25 seconds")
+            }
             Self::InvalidActivity => write!(f, "activity must be finite and in 0..=1"),
+            Self::MixedStepModes => write!(
+                f,
+                "a scene cannot mix variable-delta stepping with fixed-tick stepping"
+            ),
             Self::TickBatchOutOfRange => write!(
                 f,
                 "tick batch must not exceed one simulated second or the absolute 120-tick ceiling"
