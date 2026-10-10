@@ -209,7 +209,7 @@ impl fmt::Display for SceneSettingsError {
             Self::InvalidActivity => write!(f, "activity must be finite and in 0..=1"),
             Self::TickBatchOutOfRange => write!(
                 f,
-                "tick batch exceeds the configured one-second ceiling or absolute 120-tick ceiling"
+                "tick batch must not exceed one simulated second or the absolute 120-tick ceiling"
             ),
         }
     }
