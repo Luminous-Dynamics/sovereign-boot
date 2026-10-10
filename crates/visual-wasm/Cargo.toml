@@ -1,0 +1,21 @@
+[package]
+name = "sovereign-visual-wasm"
+version = "0.1.0"
+edition = "2024"
+description = "Browser/WASM adapter for the Sovereign Visual Core"
+license = "AGPL-3.0-or-later"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+web = ["dep:wasm-bindgen"]
+
+[dependencies]
+sovereign-visual-core = { path = "../visual-core" }
+wasm-bindgen = { version = "=0.2.108", optional = true }
+
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+# rand 0.8/getrandom 0.2 needs its JavaScript host backend for browser WASM.
+getrandom = { version = "0.2", features = ["js"] }
