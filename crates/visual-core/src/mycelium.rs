@@ -7,7 +7,7 @@
 /// Renders to a raw pixel buffer using Bresenham's line algorithm — no GPU required.
 use crate::{
     color::Rgba,
-    settings::{SceneSettings, SceneSettingsError},
+    settings::{MAX_TICKS_PER_BATCH, SceneSettings, SceneSettingsError},
 };
 use rand_chacha::ChaCha12Rng;
 use rand_core::{RngCore, SeedableRng};
@@ -154,6 +154,9 @@ impl MycelialNetwork {
         if !activity.is_finite() || !(0.0..=1.0).contains(&activity) {
             return Err(SceneSettingsError::InvalidActivity);
         }
+        if ticks > MAX_TICKS_PER_BATCH {
+            return Err(SceneSettingsError::TickBatchOutOfRange);
+        }
         for _ in 0..ticks {
             self.advance_tick(activity)?;
         }
@@ -192,7 +195,7 @@ impl MycelialNetwork {
             }
         }
 
-        let growth_speed = 30.0 * io_rate.max(0.05) * self.settings.growth_rate;
+        let growth_speed = 30.0 * io_rate.max(0.0) * self.settings.growth_rate;
 
         // Grow existing branches
         let mut new_branches: Vec<Branch> = Vec::new();
@@ -753,7 +756,7 @@ mod tests {
     }
 
     #[test]
-    fn configured_tick_rejects_invalid_activity() {
+    fn configured_tick_rejects_invalid_activity_and_unbounded_batches() {
         let mut net = MycelialNetwork::with_settings(
             32,
             24,
@@ -769,5 +772,13 @@ mod tests {
             net.advance_tick(1.1),
             Err(SceneSettingsError::InvalidActivity)
         );
+        assert_eq!(
+            net.advance_ticks(MAX_TICKS_PER_BATCH + 1, 0.7),
+            Err(SceneSettingsError::TickBatchOutOfRange)
+        );
+
+        let initial_progress = net.branches[0].growth_progress;
+        net.advance_ticks(30, 0.0).unwrap();
+        assert_eq!(net.branches[0].growth_progress, initial_progress);
     }
 }
