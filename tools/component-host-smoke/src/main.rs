@@ -208,6 +208,27 @@ fn main() -> Result<(), Box<dyn Error>> {
     if configured_frame.rgba != configured_replay.rgba {
         return Err(io::Error::other("configured WIT scenes did not replay byte-identically").into());
     }
+
+    let static_fallback = scene_api
+        .call_render_static_fallback(&mut store, configured_a, 1.0)?
+        .map_err(|message| io::Error::other(format!("static fallback: {message}")))?;
+    if (static_fallback.width, static_fallback.height) != (32, 24)
+        || static_fallback.rgba.len() != configured_expected_len
+        || &static_fallback.rgba[0..4] != &[10, 16, 14, 255]
+        || &static_fallback.rgba[static_fallback.rgba.len() - 4..] != &[26, 46, 34, 255]
+    {
+        return Err(io::Error::other("WIT static fallback failed its endpoint/shape contract").into());
+    }
+    if scene_api
+        .call_render_static_fallback(&mut store, configured_a, f32::NAN)?
+        .is_ok()
+    {
+        return Err(io::Error::other("component accepted non-finite static fallback brightness").into());
+    }
+    if scene_api.call_render(&mut store, configured_a)?.rgba != configured_frame.rgba {
+        return Err(io::Error::other("static fallback mutated scene state").into());
+    }
+
     let configured_branches = scene_api.call_branch_count(&mut store, configured_a)?;
     if configured_branches > 2048 {
         return Err(io::Error::other("configured WIT scene exceeded branch limit").into());
