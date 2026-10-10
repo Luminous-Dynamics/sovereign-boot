@@ -82,14 +82,15 @@
 
       <div class="controls" aria-label="Animation controls">
         <button id="pause" type="button" aria-pressed="false" disabled>Pause animation</button>
-        <button id="regenerate" type="button" disabled>Regenerate scene</button>
+        <button id="restart" type="button" disabled>Restart scene</button>
       </div>
       <p id="status" role="status" aria-live="polite">Loading WebAssembly module…</p>
 
       <p class="note">
-        The demo is local-first and requires no account or network service. When this
-        page is hidden, the animation pauses. The system's reduced-motion preference
-        disables continuous animation. All frame generation runs locally in WebAssembly.
+        The demo requires no account or remote service. It loads a pinned same-origin Scene Pack
+        shipped with this directory; all parsing and frame generation run locally in WebAssembly.
+        When this page is hidden, animation pauses. The system's reduced-motion preference
+        selects the manifest's deterministic static fallback.
       </p>
     </main>
     <script type="module" src="./app.js"></script>
