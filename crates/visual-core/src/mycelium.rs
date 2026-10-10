@@ -325,6 +325,25 @@ impl MycelialNetwork {
             }
         }
     }
+    /// Render a tightly packed RGBA8 frame in top-to-bottom row-major order.
+    ///
+    /// This is the portable pixel contract used by browser and Component Model
+    /// hosts. The host owns presentation and scheduling.
+    pub fn render_rgba(&self) -> Vec<u8> {
+        let pixel_count = (self.width as usize) * (self.height as usize);
+        let mut packed = vec![0_u32; pixel_count];
+        self.render(&mut packed);
+
+        let mut rgba = Vec::with_capacity(pixel_count * 4);
+        for pixel in packed {
+            rgba.push(((pixel >> 16) & 0xff) as u8);
+            rgba.push(((pixel >> 8) & 0xff) as u8);
+            rgba.push((pixel & 0xff) as u8);
+            rgba.push(0xff);
+        }
+        rgba
+    }
+
 }
 
 /// Bresenham's line algorithm.
@@ -566,6 +585,14 @@ mod tests {
         draw_filled_circle(&mut buf, 20, 20, 10, 10, 3, SOLAR_GOLD);
         // Center pixel should be set
         assert_ne!(buf[10 * 20 + 10], 0);
+    }
+
+    #[test]
+    fn rgba_frame_is_tightly_packed_and_opaque() {
+        let network = MycelialNetwork::new(8, 4, "rgba fixture");
+        let frame = network.render_rgba();
+        assert_eq!(frame.len(), 8 * 4 * 4);
+        assert!(frame.chunks_exact(4).all(|pixel| pixel[3] == 0xff));
     }
 
     #[test]
