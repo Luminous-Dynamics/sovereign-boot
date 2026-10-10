@@ -55,14 +55,15 @@ jobs:
           rustup +1.96.0 target add wasm32-wasip2
           rustc +1.96.0 --version > "$RUNNER_TEMP/rustc-version.txt"
 
+      # Resolve first so the lockfile can be preserved even when the guest build fails.
+      - name: Resolve isolated host dependency graph
+        run: cargo +1.96.0 generate-lockfile --manifest-path tools/component-host-smoke/Cargo.toml
+
       - name: Check host formatting
         run: cargo +1.96.0 fmt --manifest-path tools/component-host-smoke/Cargo.toml -- --check
 
       - name: Build the production Component Model guest
         run: cargo +1.96.0 build --locked --release -p sovereign-visual-component --target wasm32-wasip2
-
-      - name: Resolve isolated host dependency graph
-        run: cargo +1.96.0 generate-lockfile --manifest-path tools/component-host-smoke/Cargo.toml
 
       - name: Execute guest through the no-import Wasmtime host
         run: |
@@ -81,11 +82,16 @@ jobs:
             --output "$RUNNER_TEMP/component-evidence/qualification.json"
 
       - name: Assemble reviewable evidence packet
+        if: always()
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/component-evidence"
-          cp tools/component-host-smoke/Cargo.lock "$RUNNER_TEMP/component-evidence/component-host-Cargo.lock"
-          cp "$RUNNER_TEMP/component-runtime.log" "$RUNNER_TEMP/component-evidence/runtime.log"
+          if [ -f tools/component-host-smoke/Cargo.lock ]; then
+            cp tools/component-host-smoke/Cargo.lock "$RUNNER_TEMP/component-evidence/component-host-Cargo.lock"
+          fi
+          if [ -f "$RUNNER_TEMP/component-runtime.log" ]; then
+            cp "$RUNNER_TEMP/component-runtime.log" "$RUNNER_TEMP/component-evidence/runtime.log"
+          fi
 
       - name: Upload runtime evidence and lockfile
         if: always()
