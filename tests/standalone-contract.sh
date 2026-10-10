@@ -19,6 +19,8 @@ grep -q 'GuestVisualScene' crates/visual-component/src/lib.rs
 test -s crates/visual-core/src/lib.rs
 test -s crates/visual-core/src/mycelium.rs
 test -s crates/visual-wasm/src/lib.rs
+test -s tests/visual-wasm-smoke.mjs
+grep -q 'render_rgba' tests/visual-wasm-smoke.mjs
 test -s crates/visual-wasi/src/main.rs
 grep -q 'pub use sovereign_visual_core::{color, mycelium};' crates/quicken-fb/src/lib.rs
 grep -q 'render_rgba' crates/visual-wasm/src/lib.rs
@@ -48,6 +50,9 @@ grep -q 'buildAndTestSubdir = "crates/quicken-fb";' flake.nix
 grep -q 'cargoLock.lockFile = ./Cargo.lock;' flake.nix
 grep -q 'Install WebAssembly targets' .github/workflows/ci.yml
 grep -q 'wasm32-unknown-unknown --features web --release --locked' .github/workflows/ci.yml
+grep -q 'cargo +1.96.0 install wasm-bindgen-cli --version 0.2.108 --locked' .github/workflows/ci.yml
+grep -q 'wasm-bindgen --target web' .github/workflows/ci.yml
+grep -q 'node tests/visual-wasm-smoke.mjs' .github/workflows/ci.yml
 grep -q 'wasm32-wasip2 --release --locked' .github/workflows/ci.yml
 grep -q 'cargo +1.96.0 build -p sovereign-visual-component --target wasm32-wasip2 --release --locked' .github/workflows/ci.yml
 
