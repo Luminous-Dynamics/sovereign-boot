@@ -20,6 +20,9 @@ jobs:
       - name: Install Rust 1.96
         run: rustup toolchain install 1.96.0 --profile minimal --component rustfmt --component clippy
 
+      - name: Install WebAssembly targets
+        run: rustup +1.96.0 target add wasm32-unknown-unknown wasm32-wasip2
+
       - name: Standalone contract
         run: bash tests/standalone-contract.sh
 
@@ -31,6 +34,12 @@ jobs:
 
       - name: Test
         run: cargo +1.96.0 test --workspace --locked
+
+      - name: Build browser WASM adapter
+        run: cargo +1.96.0 build -p sovereign-visual-wasm --target wasm32-unknown-unknown --features web --release --locked
+
+      - name: Build WASI component
+        run: cargo +1.96.0 build -p sovereign-visual-wasi --target wasm32-wasip2 --release --locked
 
       - name: Clippy
         run: cargo +1.96.0 clippy --workspace --all-targets --locked -- -D warnings
@@ -69,7 +78,7 @@ jobs:
 
   provenance:
     name: Signed renderer provenance
-    needs: nix
+    needs: [cargo, nix]
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.nix.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
@@ -118,6 +127,8 @@ jobs:
               "cargo_check": "pass",
               "cargo_test": "pass",
               "cargo_clippy": "pass",
+              "browser_wasm_build": "pass",
+              "wasi_component_build": "pass",
               "nix_flake_check": "pass",
               "nix_format": "pass",
               "physical_canary_app_build": "pass",
