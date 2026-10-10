@@ -566,6 +566,7 @@ fn draw_filled_circle(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::color::{LEAF_GREEN, SOLAR_GOLD};
 
     #[test]
     fn test_network_creation() {
@@ -689,5 +690,84 @@ mod tests {
         a.render(&mut frame_a);
         b.render(&mut frame_b);
         assert_eq!(frame_a, frame_b);
+    }
+
+    #[test]
+    fn numeric_seed_settings_replay_identically_and_obey_branch_budget() {
+        let mut settings = SceneSettings::default();
+        settings.branch_limit = 1;
+        settings.max_depth = 1;
+        settings.growth_rate = 0.28;
+        settings.fixed_step_hz = 30;
+
+        let mut a = MycelialNetwork::with_settings(80, 60, 20261010, settings).unwrap();
+        let mut b = MycelialNetwork::with_settings(80, 60, 20261010, settings).unwrap();
+        assert_eq!(a.branches.len(), 1);
+        assert_eq!(b.branches.len(), 1);
+
+        a.advance_ticks(300, 0.7).unwrap();
+        b.advance_ticks(300, 0.7).unwrap();
+        assert_eq!(a.render_rgba(), b.render_rgba());
+        assert!(a.branches.len() <= 1);
+        assert!(a.branches.iter().all(|branch| branch.depth <= 1));
+    }
+
+    #[test]
+    fn configured_palette_controls_initial_and_settled_background() {
+        let mut settings = SceneSettings::default();
+        settings.palette.canvas = Rgba(1, 2, 3, 255);
+        settings.palette.substrate = Rgba(4, 5, 6, 255);
+        let mut net = MycelialNetwork::with_settings(32, 24, 7, settings).unwrap();
+
+        assert_eq!(&net.render_rgba()[0..4], &[1, 2, 3, 255]);
+        net.elapsed = 1.0;
+        assert_eq!(&net.render_rgba()[0..4], &[4, 5, 6, 255]);
+    }
+
+    #[test]
+    fn fixed_tick_pulse_schedule_uses_integer_ticks() {
+        let mut settings = SceneSettings::default();
+        settings.fixed_step_hz = 10;
+        settings.pulse_period_seconds = 0.2;
+        let mut net = MycelialNetwork::with_settings(32, 24, 42, settings).unwrap();
+
+        net.advance_tick(0.0).unwrap();
+        assert_eq!(net.global_pulse, 0.0);
+        net.advance_tick(0.0).unwrap();
+        assert_eq!(net.global_pulse, 1.0);
+    }
+
+    #[test]
+    fn drift_amplitude_changes_configured_render_only() {
+        let mut still_settings = SceneSettings::default();
+        still_settings.drift_amplitude = 0.0;
+        let mut drift_settings = still_settings;
+        drift_settings.drift_amplitude = 0.8;
+
+        let mut still = MycelialNetwork::with_settings(80, 60, 99, still_settings).unwrap();
+        let mut drift = MycelialNetwork::with_settings(80, 60, 99, drift_settings).unwrap();
+        still.advance_ticks(150, 0.7).unwrap();
+        drift.advance_ticks(150, 0.7).unwrap();
+
+        assert_ne!(still.render_rgba(), drift.render_rgba());
+    }
+
+    #[test]
+    fn configured_tick_rejects_invalid_activity() {
+        let mut net = MycelialNetwork::with_settings(
+            32,
+            24,
+            1,
+            SceneSettings::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            net.advance_tick(f32::NAN),
+            Err(SceneSettingsError::InvalidActivity)
+        );
+        assert_eq!(
+            net.advance_tick(1.1),
+            Err(SceneSettingsError::InvalidActivity)
+        );
     }
 }
