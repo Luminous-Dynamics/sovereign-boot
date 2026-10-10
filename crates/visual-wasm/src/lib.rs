@@ -153,15 +153,15 @@ mod web {
         }
 
         pub fn width(&self) -> u32 {
-            self.network.width
+            self.network.width()
         }
 
         pub fn height(&self) -> u32 {
-            self.network.height
+            self.network.height()
         }
 
         pub fn branch_count(&self) -> u32 {
-            self.network.branches.len().min(u32::MAX as usize) as u32
+            self.network.branch_count()
         }
     }
 
