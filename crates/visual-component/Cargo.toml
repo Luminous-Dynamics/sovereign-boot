@@ -1,0 +1,13 @@
+[package]
+name = "sovereign-visual-component"
+version = "0.1.0"
+edition = "2024"
+description = "WIT-defined WebAssembly Component Model adapter for Sovereign Visual Core"
+license = "AGPL-3.0-or-later"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+sovereign-visual-core = { path = "../visual-core" }
+wit-bindgen = "=0.57.1"
