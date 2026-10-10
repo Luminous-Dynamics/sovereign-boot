@@ -121,4 +121,18 @@ mod tests {
         assert!(width <= MAX_DIMENSION && height <= MAX_DIMENSION);
         assert!(u64::from(width) * u64::from(height) <= MAX_PIXELS);
     }
+
+    #[test]
+    fn component_guest_matches_native_core_rgba_for_same_seed_and_steps() {
+        let seed = "component-parity-fixture";
+        let mut native = MycelialNetwork::new(32, 24, seed);
+        let guest = <VisualScene as GuestVisualScene>::new(32, 24, seed.to_owned());
+
+        for _ in 0..20 {
+            native.grow(1.0 / 30.0, 0.7);
+            guest.advance(1.0 / 30.0, 0.7).unwrap();
+        }
+
+        assert_eq!(guest.render().rgba, native.render_rgba());
+    }
 }
