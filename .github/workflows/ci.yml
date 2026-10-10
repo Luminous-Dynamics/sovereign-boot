@@ -38,6 +38,21 @@ jobs:
       - name: Build browser WASM adapter
         run: cargo +1.96.0 build -p sovereign-visual-wasm --target wasm32-unknown-unknown --features web --release --locked
 
+      - name: Install matching wasm-bindgen CLI
+        run: cargo +1.96.0 install wasm-bindgen-cli --version 0.2.108 --locked
+
+      - name: Generate browser JavaScript bindings
+        shell: bash
+        run: |
+          set -euo pipefail
+          package_dir="$RUNNER_TEMP/visual-wasm-pkg"
+          mkdir -p "$package_dir"
+          wasm-bindgen --target web --out-dir "$package_dir" target/wasm32-unknown-unknown/release/sovereign_visual_wasm.wasm
+          printf '{"type":"module"}\\n' > "$package_dir/package.json"
+
+      - name: Smoke-test browser WASM runtime
+        run: node tests/visual-wasm-smoke.mjs "$RUNNER_TEMP/visual-wasm-pkg"
+
       - name: Build WASI component
         run: cargo +1.96.0 build -p sovereign-visual-wasi --target wasm32-wasip2 --release --locked
 
@@ -131,6 +146,8 @@ jobs:
               "cargo_test": "pass",
               "cargo_clippy": "pass",
               "browser_wasm_build": "pass",
+              "browser_wasm_bindings_generated": "pass",
+              "browser_wasm_runtime_smoke": "pass",
               "wasi_cli_build": "pass",
               "wasi_component_build": "pass",
               "nix_flake_check": "pass",
