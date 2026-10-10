@@ -59,8 +59,11 @@ jobs:
           wasm-bindgen --target web --out-dir "$package_dir" target/wasm32-unknown-unknown/release/sovereign_visual_wasm.wasm
           printf '{"type":"module"}\n' > "$package_dir/package.json"
 
-      - name: Smoke-test browser WASM runtime
-        run: node tests/visual-wasm-smoke.mjs "$RUNNER_TEMP/visual-wasm-pkg"
+      - name: Render native RGBA reference
+        run: cargo +1.96.0 run --locked -p sovereign-visual-core --example rgba-fixture > "$RUNNER_TEMP/native.rgba"
+
+      - name: Smoke-test browser WASM runtime and native parity
+        run: node tests/visual-wasm-smoke.mjs "$RUNNER_TEMP/visual-wasm-pkg" "$RUNNER_TEMP/native.rgba"
 
       - name: Check browser host JavaScript syntax
         run: node --input-type=module --check < crates/visual-wasm/www/app.js
