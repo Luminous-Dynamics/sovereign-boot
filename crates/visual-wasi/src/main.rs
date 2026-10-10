@@ -4,7 +4,11 @@
 //! where stdout goes; this executable does not claim direct display access.
 
 use sovereign_visual_core::{contract, mycelium::MycelialNetwork};
-use std::io::{self, Write};
+use sovereign_visual_pack::{
+    Composition, MAX_MANIFEST_BYTES, Motion, PresentationVariant, ValidatedScenePack,
+    parse_scene_pack_v1,
+};
+use std::io::{self, Read, Write};
 use std::process::ExitCode;
 
 #[derive(Debug)]
@@ -16,6 +20,9 @@ struct Options {
     activity: f32,
     help: bool,
     contract_version: bool,
+    scene_pack_stdin: bool,
+    presentation: Option<String>,
+    seed_was_explicit: bool,
 }
 
 impl Default for Options {
@@ -28,6 +35,9 @@ impl Default for Options {
             activity: 1.0,
             help: false,
             contract_version: false,
+            scene_pack_stdin: false,
+            presentation: None,
+            seed_was_explicit: false,
         }
     }
 }
@@ -40,6 +50,10 @@ fn parse_options() -> Result<Options, String> {
         match arg.as_str() {
             "--help" | "-h" => out.help = true,
             "--contract-version" => out.contract_version = true,
+            "--scene-pack-stdin" => out.scene_pack_stdin = true,
+            "--presentation" => {
+                out.presentation = Some(args.next().ok_or("--presentation requires a value")?);
+            }
             "--width" => {
                 out.width = args
                     .next()
@@ -56,6 +70,7 @@ fn parse_options() -> Result<Options, String> {
             }
             "--seed" => {
                 out.seed = args.next().ok_or("--seed requires a value")?;
+                out.seed_was_explicit = true;
             }
             "--steps" => {
                 out.steps = args
@@ -75,6 +90,17 @@ fn parse_options() -> Result<Options, String> {
         }
     }
 
+    if !out.help {
+        if out.presentation.is_some() && !out.scene_pack_stdin {
+            return Err("--presentation requires --scene-pack-stdin".into());
+        }
+        if out.scene_pack_stdin && out.seed_was_explicit {
+            return Err("--seed cannot override the numeric seed in a Scene Pack".into());
+        }
+        if out.contract_version && (out.scene_pack_stdin || out.presentation.is_some()) {
+            return Err("--contract-version cannot be combined with Scene Pack rendering options".into());
+        }
+    }
     if !out.help && !out.contract_version {
         validate_options(&out)?;
     }
