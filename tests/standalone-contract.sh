@@ -5,6 +5,16 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
 
 grep -q '"crates/quicken-fb"' Cargo.toml
+grep -q '"crates/visual-core"' Cargo.toml
+grep -q '"crates/visual-wasm"' Cargo.toml
+grep -q '"crates/visual-wasi"' Cargo.toml
+test -s crates/visual-core/src/lib.rs
+test -s crates/visual-core/src/mycelium.rs
+test -s crates/visual-wasm/src/lib.rs
+test -s crates/visual-wasi/src/main.rs
+grep -q 'pub use sovereign_visual_core::{color, mycelium};' crates/quicken-fb/src/lib.rs
+grep -q 'render_rgba' crates/visual-wasm/src/lib.rs
+grep -q 'binary PPM' crates/visual-wasi/src/main.rs
 ! grep -q '"crates/spore-kernel"' Cargo.toml
 
 ! grep -q 'workspace = true' crates/quicken-fb/Cargo.toml
@@ -23,13 +33,14 @@ grep -q -- '--probe' crates/quicken-fb/src/main.rs
 ! grep -Eq 'spore-recovery-linux|spore-boot-state|spore-boot-tools.nix' nix/modules/sovereign-boot.nix flake.nix
 ! grep -q '\.\./\.\./\.\./' flake.nix nix/modules/sovereign-boot.nix
 
-echo "sovereign-boot standalone contract: PASS"
-
 # Nix must package from the repository root so the root Cargo.lock is present,
 # while compiling/testing only the quicken-fb workspace member.
 grep -q 'src = ./\.;' flake.nix
 grep -q 'buildAndTestSubdir = "crates/quicken-fb";' flake.nix
 grep -q 'cargoLock.lockFile = ./Cargo.lock;' flake.nix
+grep -q 'Install WebAssembly targets' .github/workflows/ci.yml
+grep -q 'wasm32-unknown-unknown --features web --release --locked' .github/workflows/ci.yml
+grep -q 'wasm32-wasip2 --release --locked' .github/workflows/ci.yml
 
 # Probe must expose selected connector identity and CRTC in its receipt.
 grep -q 'connector_interface' crates/quicken-fb/src/framebuffer.rs
@@ -130,4 +141,4 @@ grep -Fq 'before = [' nix/modules/sovereign-boot.nix
 ! sed -n '/systemd.services.sovereign-boot-physical-canary = {/,/systemd.services.sovereign-boot-animation = {/p' nix/modules/sovereign-boot.nix | grep -q 'Conflicts'
 grep -q 'ProtectSystem = "strict";' nix/modules/sovereign-boot.nix
 
-echo "sovereign-boot restoration/buffer contract: PASS"
+echo "sovereign-boot renderer/WASM/WASI standalone contract: PASS"
