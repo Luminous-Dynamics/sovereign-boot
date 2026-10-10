@@ -403,6 +403,20 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Invalid settings must not mutate the existing scene, and catch-up
     // requests must remain bounded even through a Component Model caller.
     let unchanged_scene = scene_api.call_constructor(&mut store, 16, 16, "unchanged")?;
+    let mut under_budget = sample_settings(&manifest, None)?;
+    under_budget.resource_max_branches = configured_settings.branch_limit - 1;
+    if scene_api
+        .call_configure(&mut store, unchanged_scene, 48, 24, under_budget)?
+        .is_ok()
+    {
+        return Err(io::Error::other("component accepted a scene branch request above the resource ceiling").into());
+    }
+    if (scene_api.call_width(&mut store, unchanged_scene)?,
+        scene_api.call_height(&mut store, unchanged_scene)?) != (16, 16)
+    {
+        return Err(io::Error::other("under-budget rejection partially mutated the scene").into());
+    }
+
     if scene_api
         .call_configure(&mut store, unchanged_scene, 48, 24, sample_settings(&manifest, Some(8193))?)?
         .is_ok()
