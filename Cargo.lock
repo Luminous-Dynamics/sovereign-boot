@@ -865,13 +865,12 @@ checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 name = "symthaea-quicken-fb"
 version = "0.1.0"
 dependencies = [
- "blake3",
  "bytemuck",
  "drm",
  "drm-ffi",
  "nix 0.29.0",
  "proptest",
- "rand 0.8.6",
+ "sovereign-visual-core",
 ]
 
 
@@ -1312,4 +1311,27 @@ version = "1.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"
 
+[[package]]
+name = "sovereign-visual-core"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "rand 0.8.6",
+]
+
+[[package]]
+name = "sovereign-visual-wasi"
+version = "0.1.0"
+dependencies = [
+ "sovereign-visual-core",
+]
+
+[[package]]
+name = "sovereign-visual-wasm"
+version = "0.1.0"
+dependencies = [
+ "getrandom 0.2.17",
+ "sovereign-visual-core",
+ "wasm-bindgen",
+]
 
