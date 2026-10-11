@@ -55,6 +55,7 @@ SOURCE_PATHS = (
     "tests/fixtures/first-germination.scene.json",
     "tools/component-host-smoke/Cargo.toml",
     "tools/component-host-smoke/src/main.rs",
+    "tools/component-host-smoke/assemble-packet.py",
     "tools/component-host-smoke/collect-evidence.py",
     "tools/component-host-smoke/test_collect_evidence.py",
 )

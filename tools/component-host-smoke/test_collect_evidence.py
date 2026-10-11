@@ -20,6 +20,12 @@ assert SPEC is not None and SPEC.loader is not None
 collector = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(collector)
 
+PACKET_SCRIPT = Path(__file__).with_name("assemble-packet.py")
+PACKET_SPEC = importlib.util.spec_from_file_location("component_evidence_packet", PACKET_SCRIPT)
+assert PACKET_SPEC is not None and PACKET_SPEC.loader is not None
+packet = importlib.util.module_from_spec(PACKET_SPEC)
+PACKET_SPEC.loader.exec_module(packet)
+
 
 class EvidenceCollectorTests(unittest.TestCase):
     def test_complete_runtime_success_record_has_no_missing_markers(self) -> None:
@@ -92,6 +98,89 @@ class EvidenceCollectorTests(unittest.TestCase):
         self.assertIn('"runtime_log": "$(digest_if_file "$RUNNER_TEMP/component-runtime.log")"', workflow)
         self.assertIn('"collector_stderr": "$(digest_if_file "$RUNNER_TEMP/component-evidence/collector-stderr.log")"', workflow)
 
+    def test_packet_pass_requires_all_steps_and_a_valid_receipt(self) -> None:
+        passed = {name: "success" for name in packet.REQUIRED_STEPS}
+        self.assertEqual(
+            "pass",
+            packet.qualification_result(passed, receipt_present=True, receipt_valid=True),
+        )
+        self.assertEqual(
+            "failure",
+            packet.qualification_result(passed, receipt_present=False, receipt_valid=False),
+        )
+        self.assertEqual(
+            "failure",
+            packet.qualification_result(dict(passed, build="failure"), receipt_present=True, receipt_valid=True),
+        )
+        self.assertEqual(
+            "cancelled",
+            packet.qualification_result(dict(passed, runtime="cancelled"), receipt_present=False, receipt_valid=False),
+        )
+        self.assertEqual(
+            "not_issued",
+            packet.qualification_result(dict(passed, receipt="skipped"), receipt_present=False, receipt_valid=False),
+        )
+
+    def test_packet_receipt_validation_binds_commit_context_and_artifacts(self) -> None:
+        digest = "a" * 64
+        hashes = {
+            "component": digest,
+            "host_lockfile": "b" * 64,
+            "scene_pack_fixture": "c" * 64,
+            "runtime_log": "d" * 64,
+        }
+        sizes = {"component": 10, "host_lockfile": 20, "scene_pack_fixture": 30}
+        expected_commit = "e" * 40
+        workflow_ref = "Luminous-Dynamics/sovereign-boot/.github/workflows/component-runtime-qualification.yml@refs/pull/1/merge"
+        source_paths = [
+            ".gitignore",
+            ".github/workflows/component-runtime-qualification.yml",
+            "tools/component-host-smoke/assemble-packet.py",
+            "tools/component-host-smoke/collect-evidence.py",
+            "tools/component-host-smoke/test_collect_evidence.py",
+            "tools/component-host-smoke/src/main.rs",
+        ]
+        receipt = {
+            "schema": "luminous-sovereign-visual-component-runtime-evidence-v1",
+            "result": "pass",
+            "source": {
+                "commit": expected_commit,
+                "expected_commit": expected_commit,
+                "files": [{"path": name, "sha256": digest} for name in source_paths],
+            },
+            "execution": {
+                "run_id": "12345",
+                "run_attempt": "1",
+                "workflow_ref": workflow_ref,
+                "runner_os": "Linux",
+                "runtime_log_sha256": hashes["runtime_log"],
+            },
+            "artifacts": {
+                "component": {"sha256": hashes["component"], "bytes": sizes["component"]},
+                "host_lockfile": {"sha256": hashes["host_lockfile"], "bytes": sizes["host_lockfile"]},
+                "scene_pack_fixture": {"sha256": hashes["scene_pack_fixture"], "bytes": sizes["scene_pack_fixture"]},
+            },
+        }
+        kwargs = {
+            "expected_commit": expected_commit,
+            "run_id": "12345",
+            "run_attempt": "1",
+            "workflow_ref": workflow_ref,
+            "runner_os": "Linux",
+            "hashes": hashes,
+            "sizes": sizes,
+        }
+        valid, reason = packet.validate_receipt_document(receipt, **kwargs)
+        self.assertTrue(valid, reason)
+        wrong_commit = dict(receipt, source=dict(receipt["source"], commit="f" * 40))
+        self.assertFalse(packet.validate_receipt_document(wrong_commit, **kwargs)[0])
+        wrong_hashes = dict(hashes, component="0" * 64)
+        self.assertFalse(
+            packet.validate_receipt_document(receipt, **dict(kwargs, hashes=wrong_hashes))[0]
+        )
+        wrong_context = dict(receipt, execution=dict(receipt["execution"], run_id="99999"))
+        self.assertFalse(packet.validate_receipt_document(wrong_context, **kwargs)[0])
+
     def test_duplicate_receipt_lines_are_rejected(self) -> None:
         line = " ".join(collector.REQUIRED_MARKERS)
         self.assertIn(
@@ -108,6 +197,7 @@ class EvidenceCollectorTests(unittest.TestCase):
             "crates/visual-core/src/mycelium.rs",
             "crates/visual-pack/src/lib.rs",
             "tests/fixtures/first-germination.scene.json",
+            "tools/component-host-smoke/assemble-packet.py",
             "tools/component-host-smoke/collect-evidence.py",
             "tools/component-host-smoke/test_collect_evidence.py",
         ):
