@@ -511,6 +511,20 @@ class EvidenceCollectorTests(unittest.TestCase):
                 end = workflow.index(end_marker, start + len(start_marker))
                 self.assertIn(required_path, workflow[start:end])
 
+    def test_issuer_and_independent_verifier_require_identical_source_inventory(self) -> None:
+        issued_paths = tuple(collector.SOURCE_PATHS)
+        verified_paths = packet.REQUIRED_SOURCE_PATHS
+        self.assertEqual(
+            len(issued_paths),
+            len(set(issued_paths)),
+            "the receipt issuer must not duplicate source inventory paths",
+        )
+        self.assertEqual(
+            set(issued_paths),
+            set(verified_paths),
+            "the independent packet verifier must enforce the same inventory as the issuer",
+        )
+
     def test_generated_host_lock_is_artifact_not_committed_source(self) -> None:
         self.assertNotIn("tools/component-host-smoke/Cargo.lock", collector.SOURCE_PATHS)
 
