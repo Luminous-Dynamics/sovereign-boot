@@ -147,9 +147,9 @@ jobs:
             "sha256": {
               "host_lockfile": "$(digest_if_file tools/component-host-smoke/Cargo.lock)",
               "component": "$(digest_if_file target/wasm32-wasip2/release/sovereign_visual_component.wasm)",
-              "runtime_log": "$(digest_if_file "$RUNNER_TEMP/component-runtime.log)",
-              "runtime_stderr": "$(digest_if_file "$RUNNER_TEMP/component-runtime-stderr.log)",
-              "qualification_receipt": "$(digest_if_file "$RUNNER_TEMP/component-evidence/qualification.json)"
+              "runtime_log": "$(digest_if_file "$RUNNER_TEMP/component-runtime.log")",
+              "runtime_stderr": "$(digest_if_file "$RUNNER_TEMP/component-runtime-stderr.log")",
+              "qualification_receipt": "$(digest_if_file "$RUNNER_TEMP/component-evidence/qualification.json")"
             }
           }
           EOF
