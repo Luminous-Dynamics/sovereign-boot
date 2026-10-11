@@ -36,7 +36,7 @@
   "derivedFiles": [
     {
       "path": "tools/ambient_validation/validate_scene_pack.py",
-      "gitBlobSha1": "47980faf6429e998a1f39cd42041c9a778f87218",
+      "gitBlobSha1": "d6573219e589d506d59b3b253c6558ba5c9607b5",
       "purpose": "pinned local integration overlay for safe asset resolution and deterministic Draft 2020-12 URI/legacy-keyword diagnostics"
     }
   ]

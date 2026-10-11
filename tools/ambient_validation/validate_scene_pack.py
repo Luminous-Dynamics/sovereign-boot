@@ -23,7 +23,14 @@ STRICT_FORMAT_CHECKER = FormatChecker()
 def _strict_absolute_uri(value: Any) -> bool:
     if not isinstance(value, str):
         return True
-    if not value or re.search(r"[\x00-\x20\x7f<>\"{}|\\^]", value) or chr(96) in value:
+    if (
+        not value
+        or not value.isascii()
+        or re.search(r"[\x00-\x20\x7f<>\"{}|\\^]", value)
+        or chr(96) in value
+        or re.search(r"%(?![0-9A-Fa-f]{2})", value)
+    ):
+        return False
         return False
     from urllib.parse import urlsplit
 

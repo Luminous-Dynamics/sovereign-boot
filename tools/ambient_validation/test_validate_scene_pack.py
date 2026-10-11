@@ -95,6 +95,24 @@ class ScenePackValidationTests(unittest.TestCase):
         issues = validate_manifest(self.schema, candidate, package_root=EXAMPLE_PATH.parent)
         self.assertIn("schema.invalid", {issue.code for issue in issues})
 
+    def test_invalid_percent_escape_in_uri_is_rejected(self):
+        candidate = copy.deepcopy(self.example)
+        candidate["license"]["sourceUrl"] = "https://example.invalid/%zz"
+        issues = validate_manifest(self.schema, candidate, package_root=EXAMPLE_PATH.parent)
+        self.assertIn("schema.invalid", {issue.code for issue in issues})
+
+    def test_non_ascii_uri_is_rejected(self):
+        candidate = copy.deepcopy(self.example)
+        candidate["license"]["sourceUrl"] = "https://example.invalid/café"
+        issues = validate_manifest(self.schema, candidate, package_root=EXAMPLE_PATH.parent)
+        self.assertIn("schema.invalid", {issue.code for issue in issues})
+
+    def test_percent_encoded_uri_is_accepted(self):
+        candidate = copy.deepcopy(self.example)
+        candidate["license"]["sourceUrl"] = "https://example.invalid/caf%C3%A9"
+        issues = validate_manifest(self.schema, candidate, package_root=EXAMPLE_PATH.parent)
+        self.assertEqual([], issues, "\n".join(map(str, issues)))
+
     def test_invalid_schema_meta_schema_is_rejected(self):
         candidate_schema = copy.deepcopy(self.schema)
         candidate_schema["properties"]["schemaVersion"]["type"] = "not-a-json-schema-type"
