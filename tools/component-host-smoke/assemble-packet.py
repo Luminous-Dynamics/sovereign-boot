@@ -189,6 +189,7 @@ def validate_receipt_document(
     sizes: dict[str, int],
     source_root: Path,
     runtime_log_text: str,
+    rustc_version_text: str,
     checkout_commit: str,
     checkout_tree: str,
 ) -> tuple[bool, str]:
@@ -242,6 +243,8 @@ def validate_receipt_document(
         return False, "runtime log digest does not match the receipt"
     if execution.get("workflow") != "Component Model runtime qualification":
         return False, "receipt workflow name does not match the qualification lane"
+    if execution.get("rustc_version") != rustc_version_text.strip():
+        return False, "receipt Rust compiler version does not match the retained compiler version record"
     if execution.get("required_runtime_markers") != list(REQUIRED_RUNTIME_MARKERS):
         return False, "receipt required runtime marker policy does not match the packet policy"
     runtime_valid, runtime_error = validate_runtime_log(runtime_log_text)
@@ -308,27 +311,30 @@ def main() -> int:
     runner_os = env.get("RUNNER_OS", "").strip()
     workflow_ref = env.get("GITHUB_WORKFLOW_REF", "").strip()
 
+    fixture_path = ROOT / "tests/fixtures/first-germination.scene.json"
     source_paths = {
         "host_lockfile": ROOT / "tools/component-host-smoke/Cargo.lock",
         "component": ROOT / "target/wasm32-wasip2/release/sovereign_visual_component.wasm",
+        "scene_pack_fixture": fixture_path,
+        "rustc_version": runner_temp / "rustc-version.txt",
         "runtime_log": runner_temp / "component-runtime.log",
         "runtime_stderr": runner_temp / "component-runtime-stderr.log",
     }
     packet_paths = {
         "host_lockfile": evidence_dir / "component-host-Cargo.lock",
         "component": evidence_dir / "sovereign_visual_component.wasm",
+        "scene_pack_fixture": evidence_dir / "first-germination.scene.json",
+        "rustc_version": evidence_dir / "rustc-version.txt",
         "runtime_log": evidence_dir / "runtime.log",
         "runtime_stderr": evidence_dir / "runtime.stderr.log",
     }
     for key, source in source_paths.items():
         copy_if_present(source, packet_paths[key])
 
-    fixture_path = ROOT / "tests/fixtures/first-germination.scene.json"
     receipt_path = evidence_dir / "qualification.json"
     collector_stderr_path = evidence_dir / "collector-stderr.log"
     files_for_hash = {
         **packet_paths,
-        "scene_pack_fixture": fixture_path,
         "qualification_receipt": receipt_path,
         "collector_stderr": collector_stderr_path,
     }
@@ -363,6 +369,7 @@ def main() -> int:
         else:
             try:
                 runtime_log_text = packet_paths["runtime_log"].read_text(encoding="utf-8")
+                rustc_version_text = packet_paths["rustc_version"].read_text(encoding="utf-8")
                 valid, validation_error = validate_receipt_document(
                     receipt,
                     expected_commit=expected_commit,
@@ -374,6 +381,7 @@ def main() -> int:
                     sizes=sizes,
                     source_root=ROOT,
                     runtime_log_text=runtime_log_text,
+                    rustc_version_text=rustc_version_text,
                     checkout_commit=checkout_commit,
                     checkout_tree=checkout_tree,
                 )

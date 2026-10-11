@@ -196,6 +196,7 @@ class EvidenceCollectorTests(unittest.TestCase):
             runner_temp.mkdir(parents=True, exist_ok=True)
             (runner_temp / "component-runtime.log").write_text(runtime_log, encoding="utf-8")
             (runner_temp / "component-runtime-stderr.log").write_text("", encoding="utf-8")
+            (runner_temp / "rustc-version.txt").write_text("rustc 1.96.0 (synthetic)", encoding="utf-8")
             evidence.mkdir(parents=True, exist_ok=True)
             (evidence / "collector-stderr.log").write_text("", encoding="utf-8")
 
@@ -219,6 +220,7 @@ class EvidenceCollectorTests(unittest.TestCase):
                 },
                 "execution": {
                     "workflow": "Component Model runtime qualification",
+                    "rustc_version": "rustc 1.96.0 (synthetic)",
                     "run_id": "12345",
                     "run_attempt": "1",
                     "workflow_ref": workflow_ref,
@@ -297,6 +299,14 @@ class EvidenceCollectorTests(unittest.TestCase):
                 lockfile_bytes,
                 (evidence / "component-host-Cargo.lock").read_bytes(),
             )
+            self.assertEqual(
+                fixture_bytes,
+                (evidence / "first-germination.scene.json").read_bytes(),
+            )
+            self.assertEqual(
+                "rustc 1.96.0 (synthetic)",
+                (evidence / "rustc-version.txt").read_text(encoding="utf-8"),
+            )
 
     def test_packet_receipt_validation_binds_source_context_runtime_and_artifacts(self) -> None:
         expected_commit = "e" * 40
@@ -333,6 +343,7 @@ class EvidenceCollectorTests(unittest.TestCase):
                 },
                 "execution": {
                     "workflow": "Component Model runtime qualification",
+                    "rustc_version": "rustc 1.96.0 (synthetic)",
                     "run_id": "12345",
                     "run_attempt": "1",
                     "workflow_ref": workflow_ref,
@@ -357,6 +368,7 @@ class EvidenceCollectorTests(unittest.TestCase):
                 "sizes": sizes,
                 "source_root": source_root,
                 "runtime_log_text": runtime_log,
+                "rustc_version_text": "rustc 1.96.0 (synthetic)",
                 "checkout_commit": expected_commit,
                 "checkout_tree": "f" * 40,
             }
@@ -399,6 +411,8 @@ class EvidenceCollectorTests(unittest.TestCase):
             self.assertFalse(
                 packet.validate_receipt_document(receipt, **dict(kwargs, hashes=wrong_hashes))[0]
             )
+            wrong_rustc = dict(receipt, execution=dict(receipt["execution"], rustc_version="rustc 1.95.0"))
+            self.assertFalse(packet.validate_receipt_document(wrong_rustc, **kwargs)[0])
             wrong_context = dict(receipt, execution=dict(receipt["execution"], run_id="99999"))
             self.assertFalse(packet.validate_receipt_document(wrong_context, **kwargs)[0])
             malformed_run = dict(receipt, execution=dict(receipt["execution"], run_id="not-numeric"))
