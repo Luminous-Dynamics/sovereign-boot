@@ -29,6 +29,7 @@ ALLOWED_OUTCOMES = {"success", "failure", "cancelled", "skipped"}
 REQUIRED_SOURCE_PATHS = frozenset({
     ".gitignore",
     ".github/workflows/component-runtime-qualification.yml",
+    "contracts/tests/scene-pack-v1-negative-fixtures.json",
     "Cargo.toml",
     "Cargo.lock",
     "rust-toolchain.toml",
@@ -158,6 +159,41 @@ def validate_source_inventory(source_files: Any, source_root: Path) -> tuple[boo
                     return False, (
                         f"Rust module declared by {relative} is not source-bound: "
                         f"{module_name}"
+                    )
+
+            include_call_count = len(
+                re.findall(r"\binclude(?:_str|_bytes)?!\s*\(", source_text)
+            )
+            include_matches = list(
+                re.finditer(
+                    r'\binclude(?:_str|_bytes)?!\s*\(\s*"([^"]+)"\s*\)',
+                    source_text,
+                    flags=re.DOTALL,
+                )
+            )
+            if include_call_count != len(include_matches):
+                return False, (
+                    f"Rust file {relative} contains compile-time include syntax "
+                    "that is not a directly auditable string path"
+                )
+            for include_match in include_matches:
+                include_path = include_match.group(1)
+                if "\\" in include_path:
+                    return False, f"Rust include path uses a non-portable separator: {relative}"
+                include_pure = PurePosixPath(include_path)
+                if include_pure.is_absolute() or any(part in ("", ".", "..") for part in include_pure.parts):
+                    # Parent traversals are valid relative Rust paths; resolve them
+                    # against the source file below and enforce repository containment.
+                    if include_pure.is_absolute():
+                        return False, f"Rust include path is absolute: {relative}"
+                included = (candidate.parent / Path(*include_pure.parts)).resolve()
+                if not included.is_relative_to(root):
+                    return False, f"Rust include path escapes checkout: {relative} -> {include_path}"
+                included_relative = included.relative_to(root).as_posix()
+                if included_relative not in records:
+                    return False, (
+                        f"Rust compile-time include from {relative} is not source-bound: "
+                        f"{included_relative}"
                     )
     return True, ""
 

@@ -100,6 +100,35 @@ class EvidenceCollectorTests(unittest.TestCase):
         self.assertIn('"runtime_log": "$(digest_if_file "$RUNNER_TEMP/component-runtime.log")"', workflow)
         self.assertIn('"collector_stderr": "$(digest_if_file "$RUNNER_TEMP/component-evidence/collector-stderr.log")"', workflow)
 
+    def test_source_inventory_rejects_unbound_compile_time_include(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            records = []
+            for relative in sorted(packet.REQUIRED_SOURCE_PATHS):
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("source:" + relative, encoding="utf-8")
+                content = path.read_bytes()
+                records.append({
+                    "path": relative,
+                    "bytes": len(content),
+                    "sha256": hashlib.sha256(content).hexdigest(),
+                })
+            rust_source = root / "crates/visual-pack/src/lib.rs"
+            rust_source.write_text(
+                'const UNBOUND: &str = include_str!("../../../contracts/tests/unbound-runtime-fixture.json");\\n',
+                encoding="utf-8",
+            )
+            contents = rust_source.read_bytes()
+            for record in records:
+                if record["path"] == "crates/visual-pack/src/lib.rs":
+                    record["bytes"] = len(contents)
+                    record["sha256"] = hashlib.sha256(contents).hexdigest()
+                    break
+            valid, reason = packet.validate_source_inventory(records, root)
+            self.assertFalse(valid)
+            self.assertIn("not source-bound", reason)
+
     def test_packet_pass_requires_all_steps_and_a_valid_receipt(self) -> None:
         passed = {name: "success" for name in packet.REQUIRED_STEPS}
         self.assertEqual(
@@ -455,6 +484,7 @@ class EvidenceCollectorTests(unittest.TestCase):
         for relative in (
             ".gitignore",
             ".github/workflows/component-runtime-qualification.yml",
+            "contracts/tests/scene-pack-v1-negative-fixtures.json",
             "crates/visual-component/src/lib.rs",
             "crates/visual-component/wit/visual.wit",
             "crates/visual-core/src/mycelium.rs",
