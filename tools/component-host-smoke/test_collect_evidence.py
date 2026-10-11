@@ -78,6 +78,7 @@ class EvidenceCollectorTests(unittest.TestCase):
             workflow.index("- name: Resolve isolated host dependency graph"),
             workflow.index("- name: Test evidence receipt validation"),
         )
+        self.assertIn("run: python3 -B tools/component-host-smoke/test_collect_evidence.py", workflow)
         self.assertIn("if: always()", workflow)
         upload = workflow.split("- name: Upload runtime evidence and lockfile", 1)[1]
         self.assertIn("path: ${{ runner.temp }}/component-evidence/", upload)

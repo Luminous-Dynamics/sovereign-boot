@@ -62,7 +62,7 @@ jobs:
 
       - name: Test evidence receipt validation
         id: receipt_tests
-        run: python3 tools/component-host-smoke/test_collect_evidence.py
+        run: python3 -B tools/component-host-smoke/test_collect_evidence.py
 
       - name: Check host formatting
         id: host_format
