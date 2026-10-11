@@ -27,10 +27,22 @@ pub enum ScenePackError {
     ManifestTooLarge,
     InvalidJson(String),
     SchemaViolation(String),
-    InvalidValue { field: String, reason: String },
-    AssetVerificationFailed { path: String, reason: String },
-    AssetDigestMismatch { path: String, expected: String, actual: String },
-    InvalidAssetDigest { path: String },
+    InvalidValue {
+        field: String,
+        reason: String,
+    },
+    AssetVerificationFailed {
+        path: String,
+        reason: String,
+    },
+    AssetDigestMismatch {
+        path: String,
+        expected: String,
+        actual: String,
+    },
+    InvalidAssetDigest {
+        path: String,
+    },
     CoreSettings(SceneSettingsError),
 }
 
@@ -48,12 +60,19 @@ impl fmt::Display for ScenePackError {
             Self::AssetVerificationFailed { path, reason } => {
                 write!(f, "asset verification failed for {path}: {reason}")
             }
-            Self::AssetDigestMismatch { path, expected, actual } => write!(
+            Self::AssetDigestMismatch {
+                path,
+                expected,
+                actual,
+            } => write!(
                 f,
                 "asset SHA-256 mismatch for {path}: expected {expected}, received {actual}"
             ),
             Self::InvalidAssetDigest { path } => {
-                write!(f, "asset verifier returned an invalid SHA-256 digest for {path}")
+                write!(
+                    f,
+                    "asset verifier returned an invalid SHA-256 digest for {path}"
+                )
             }
             Self::CoreSettings(error) => write!(f, "core rejected Scene Pack settings: {error}"),
         }
@@ -439,11 +458,7 @@ impl ValidatedScenePack {
 
     /// Validate the renderer-owned part of the profile for a concrete output
     /// size. This catches the pixel/memory-budget constraint before allocation.
-    pub fn validate_dimensions(
-        &self,
-        width: u32,
-        height: u32,
-    ) -> Result<(), ScenePackError> {
+    pub fn validate_dimensions(&self, width: u32, height: u32) -> Result<(), ScenePackError> {
         self.settings
             .validate_for_dimensions(width, height)
             .map_err(ScenePackError::CoreSettings)
@@ -451,11 +466,7 @@ impl ValidatedScenePack {
 
     /// Construct the shared native/reference renderer from the validated pack.
     /// Host presentation and lifecycle policy remain outside the engine.
-    pub fn instantiate(
-        &self,
-        width: u32,
-        height: u32,
-    ) -> Result<MycelialNetwork, ScenePackError> {
+    pub fn instantiate(&self, width: u32, height: u32) -> Result<MycelialNetwork, ScenePackError> {
         MycelialNetwork::with_settings(width, height, self.seed, self.settings)
             .map_err(ScenePackError::CoreSettings)
     }
@@ -488,16 +499,29 @@ pub fn parse_scene_pack_v1(bytes: &[u8]) -> Result<ValidatedScenePack, ScenePack
     if raw.title.is_empty() || raw.title.chars().count() > 80 {
         return Err(invalid_value("title", "must contain 1..=80 characters"));
     }
-    if raw.description.as_ref().is_some_and(|text| text.chars().count() > 500) {
-        return Err(invalid_value("description", "must contain at most 500 characters"));
+    if raw
+        .description
+        .as_ref()
+        .is_some_and(|text| text.chars().count() > 500)
+    {
+        return Err(invalid_value(
+            "description",
+            "must contain at most 500 characters",
+        ));
     }
     validate_license("license", &raw.license)?;
 
     if raw.schema_version != 1 {
-        return Err(invalid_value("schemaVersion", "only version 1 is supported"));
+        return Err(invalid_value(
+            "schemaVersion",
+            "only version 1 is supported",
+        ));
     }
     if raw.assets.len() > 256 {
-        return Err(invalid_value("assets", "must contain no more than 256 entries"));
+        return Err(invalid_value(
+            "assets",
+            "must contain no more than 256 entries",
+        ));
     }
     let mut asset_ids = BTreeSet::new();
     for asset in &raw.assets {
@@ -530,7 +554,10 @@ pub fn parse_scene_pack_v1(bytes: &[u8]) -> Result<ValidatedScenePack, ScenePack
         ));
     }
     if !(1..=120).contains(&raw.simulation.fixed_step_hz) {
-        return Err(invalid_value("simulation.fixedStepHz", "must be in 1..=120"));
+        return Err(invalid_value(
+            "simulation.fixedStepHz",
+            "must be in 1..=120",
+        ));
     }
     let params = &raw.simulation.parameters;
     if !(1..=8192).contains(&params.branch_limit) {
@@ -560,9 +587,7 @@ pub fn parse_scene_pack_v1(bytes: &[u8]) -> Result<ValidatedScenePack, ScenePack
             "must be finite and in (0, 3600]",
         ));
     }
-    if !params.drift_amplitude.is_finite()
-        || !(0.0..=1.0).contains(&params.drift_amplitude)
-    {
+    if !params.drift_amplitude.is_finite() || !(0.0..=1.0).contains(&params.drift_amplitude) {
         return Err(invalid_value(
             "simulation.parameters.driftAmplitude",
             "must be finite and in 0..=1",
@@ -630,21 +655,14 @@ fn validate_scene_id(value: &str) -> Result<(), ScenePackError> {
 }
 
 fn valid_segmented_id(value: &str) -> bool {
-    if !value
-        .as_bytes()
-        .first()
-        .is_some_and(u8::is_ascii_lowercase)
-    {
+    if !value.as_bytes().first().is_some_and(u8::is_ascii_lowercase) {
         return false;
     }
     let mut previous_separator = true;
     for (index, byte) in value.bytes().enumerate() {
         if byte.is_ascii_lowercase() || byte.is_ascii_digit() {
             previous_separator = false;
-        } else if (byte == b'.' || byte == b'-')
-            && index > 0
-            && !previous_separator
-        {
+        } else if (byte == b'.' || byte == b'-') && index > 0 && !previous_separator {
             previous_separator = true;
         } else {
             return false;
@@ -669,7 +687,10 @@ fn validate_semver(field: &str, value: &str) -> Result<(), ScenePackError> {
         .all(|part| part.is_some_and(valid_component))
         || parts.next().is_some()
     {
-        return Err(invalid_value(field, "must use semantic major.minor.patch versioning"));
+        return Err(invalid_value(
+            field,
+            "must use semantic major.minor.patch versioning",
+        ));
     }
     if let Some(suffix) = prerelease {
         if suffix.is_empty()
@@ -677,7 +698,10 @@ fn validate_semver(field: &str, value: &str) -> Result<(), ScenePackError> {
                 .bytes()
                 .all(|byte| byte.is_ascii_alphanumeric() || byte == b'.' || byte == b'-')
         {
-            return Err(invalid_value(field, "has an invalid semantic-version suffix"));
+            return Err(invalid_value(
+                field,
+                "has an invalid semantic-version suffix",
+            ));
         }
     }
     Ok(())
@@ -698,17 +722,13 @@ fn validate_license(field: &str, license: &SceneLicense) -> Result<(), ScenePack
 
 fn validate_asset(asset: &SceneAsset) -> Result<(), ScenePackError> {
     if !(2..=64).contains(&asset.asset_id.len())
-        || !asset
-            .asset_id
-            .bytes()
-            .enumerate()
-            .all(|(index, byte)| {
-                if index == 0 {
-                    byte.is_ascii_lowercase()
-                } else {
-                    byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-'
-                }
-            })
+        || !asset.asset_id.bytes().enumerate().all(|(index, byte)| {
+            if index == 0 {
+                byte.is_ascii_lowercase()
+            } else {
+                byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-'
+            }
+        })
     {
         return Err(invalid_value("assets.assetId", "has an invalid asset ID"));
     }
@@ -769,7 +789,10 @@ fn validate_uri(field: &str, uri: &str) -> Result<(), ScenePackError> {
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || b"+.-".contains(&byte));
     if !valid_scheme || remainder.is_empty() {
-        return Err(invalid_value(field, "has an invalid URI scheme or empty address"));
+        return Err(invalid_value(
+            field,
+            "has an invalid URI scheme or empty address",
+        ));
     }
 
     let mut index = 0;
@@ -785,9 +808,7 @@ fn validate_uri(field: &str, uri: &str) -> Result<(), ScenePackError> {
             index += 3;
             continue;
         }
-        if !(byte.is_ascii_alphanumeric()
-            || b"-._~:/?#[]@!$&'()*+,;=".contains(&byte))
-        {
+        if !(byte.is_ascii_alphanumeric() || b"-._~:/?#[]@!$&'()*+,;=".contains(&byte)) {
             return Err(invalid_value(
                 field,
                 "contains a character forbidden in a URI",
@@ -800,9 +821,7 @@ fn validate_uri(field: &str, uri: &str) -> Result<(), ScenePackError> {
 fn parse_color(field: &str, value: &str) -> Result<Rgba, ScenePackError> {
     if value.len() != 7
         || !value.starts_with('#')
-        || !value.as_bytes()[1..]
-            .iter()
-            .all(u8::is_ascii_hexdigit)
+        || !value.as_bytes()[1..].iter().all(u8::is_ascii_hexdigit)
     {
         return Err(invalid_value(field, "must be a #RRGGBB color"));
     }
@@ -818,10 +837,16 @@ fn validate_resource_budget(budget: &SceneResourceBudget) -> Result<(), ScenePac
         return Err(invalid_value("resourceBudget.maxFps", "must be in 1..=60"));
     }
     if !(1..=8192).contains(&budget.max_branches) {
-        return Err(invalid_value("resourceBudget.maxBranches", "must be in 1..=8192"));
+        return Err(invalid_value(
+            "resourceBudget.maxBranches",
+            "must be in 1..=8192",
+        ));
     }
     if !(16..=2048).contains(&budget.max_memory_mib) {
-        return Err(invalid_value("resourceBudget.maxMemoryMiB", "must be in 16..=2048"));
+        return Err(invalid_value(
+            "resourceBudget.maxMemoryMiB",
+            "must be in 16..=2048",
+        ));
     }
     Ok(())
 }
@@ -843,9 +868,7 @@ fn validate_presentations(
                 "must not exceed 60 or resourceBudget.maxFps",
             ));
         }
-        if !presentation.brightness.is_finite()
-            || !(0.0..=1.0).contains(&presentation.brightness)
-        {
+        if !presentation.brightness.is_finite() || !(0.0..=1.0).contains(&presentation.brightness) {
             return Err(invalid_value(
                 &format!("presentations.{name}.brightness"),
                 "must be finite and in 0..=1",
@@ -934,7 +957,10 @@ fn validate_capabilities(capabilities: &SceneCapabilities) -> Result<(), ScenePa
 
 fn validate_inputs(inputs: &[SceneInput]) -> Result<(), ScenePackError> {
     if inputs.len() > 3 {
-        return Err(invalid_value("inputs", "must contain no more than 3 entries"));
+        return Err(invalid_value(
+            "inputs",
+            "must contain no more than 3 entries",
+        ));
     }
     let mut seen = BTreeSet::new();
     for input in inputs {
@@ -959,7 +985,10 @@ fn validate_inputs(inputs: &[SceneInput]) -> Result<(), ScenePackError> {
 
 fn validate_accessibility(accessibility: &SceneAccessibility) -> Result<(), ScenePackError> {
     if accessibility.color_is_sole_signal {
-        return Err(invalid_value("accessibility.colorIsSoleSignal", "must be false"));
+        return Err(invalid_value(
+            "accessibility.colorIsSoleSignal",
+            "must be false",
+        ));
     }
     if !accessibility.static_fallback_available {
         return Err(invalid_value(
@@ -970,9 +999,7 @@ fn validate_accessibility(accessibility: &SceneAccessibility) -> Result<(), Scen
     Ok(())
 }
 
-fn deserialize_optional_non_null<'de, D, T>(
-    deserializer: D,
-) -> Result<Option<T>, D::Error>
+fn deserialize_optional_non_null<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
 where
     D: Deserializer<'de>,
     T: Deserialize<'de>,
@@ -996,9 +1023,7 @@ impl StrictJsonValue {
             Self::Bool(value) => Value::Bool(value),
             Self::Number(value) => Value::Number(value),
             Self::String(value) => Value::String(value),
-            Self::Array(values) => {
-                Value::Array(values.into_iter().map(Self::into_value).collect())
-            }
+            Self::Array(values) => Value::Array(values.into_iter().map(Self::into_value).collect()),
             Self::Object(fields) => {
                 let object: JsonMap<String, Value> = fields
                     .into_iter()
@@ -1119,8 +1144,7 @@ impl<'de> Visitor<'de> for StrictJsonVisitor {
 mod tests {
     use super::*;
 
-    const FIXTURE: &str =
-        include_str!("../../../tests/fixtures/first-germination.scene.json");
+    const FIXTURE: &str = include_str!("../../../tests/fixtures/first-germination.scene.json");
 
     #[test]
     fn parses_pinned_first_germination_profile() {
@@ -1199,10 +1223,7 @@ mod tests {
 
     #[test]
     fn rejects_unsupported_engine_versions() {
-        let invalid = FIXTURE.replace(
-            r#""engineVersion": "1.0.0""#,
-            r#""engineVersion": "1.1.0""#,
-        );
+        let invalid = FIXTURE.replace(r#""engineVersion": "1.0.0""#, r#""engineVersion": "1.1.0""#);
         assert!(matches!(
             parse_scene_pack_v1(invalid.as_bytes()),
             Err(ScenePackError::InvalidValue { field, .. })
@@ -1256,10 +1277,7 @@ mod tests {
     fn asset_hash_provider_is_checked_without_filesystem_access() {
         struct WrongHash;
         impl AssetHashProvider for WrongHash {
-            fn sha256_hex_for_safe_relative_path(
-                &mut self,
-                _path: &str,
-            ) -> Result<String, String> {
+            fn sha256_hex_for_safe_relative_path(&mut self, _path: &str) -> Result<String, String> {
                 Ok("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_owned())
             }
         }
@@ -1282,10 +1300,7 @@ mod tests {
 
         struct CorrectHash;
         impl AssetHashProvider for CorrectHash {
-            fn sha256_hex_for_safe_relative_path(
-                &mut self,
-                _path: &str,
-            ) -> Result<String, String> {
+            fn sha256_hex_for_safe_relative_path(&mut self, _path: &str) -> Result<String, String> {
                 Ok("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned())
             }
         }
@@ -1357,7 +1372,9 @@ mod tests {
             );
             exercised += 1;
         }
-        assert_eq!(exercised, 8, "the complete shared parser-invalid corpus must run");
+        assert_eq!(
+            exercised, 8,
+            "the complete shared parser-invalid corpus must run"
+        );
     }
-
 }

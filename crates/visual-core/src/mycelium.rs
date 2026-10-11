@@ -111,7 +111,9 @@ impl MycelialNetwork {
     ) -> Result<Self, SceneSettingsError> {
         settings.validate_for_dimensions(width, height)?;
         let seed_bytes = SceneSettings::numeric_seed_material(seed);
-        Ok(Self::from_seed_material(width, height, seed_bytes, settings))
+        Ok(Self::from_seed_material(
+            width, height, seed_bytes, settings,
+        ))
     }
 
     fn from_seed_material(
@@ -122,8 +124,7 @@ impl MycelialNetwork {
     ) -> Self {
         let rng = ChaCha12Rng::from_seed(seed_bytes);
         let center = (width as f32 / 2.0, height as f32 / 2.0);
-        let initial_count = (4 + (seed_bytes[0] % 5) as usize)
-            .min(settings.branch_limit as usize);
+        let initial_count = (4 + (seed_bytes[0] % 5) as usize).min(settings.branch_limit as usize);
         let mut net = Self {
             branches: Vec::with_capacity(initial_count),
             width,
@@ -187,11 +188,7 @@ impl MycelialNetwork {
     }
 
     /// Advance a caller-bounded batch of canonical fixed ticks.
-    pub fn advance_ticks(
-        &mut self,
-        ticks: u32,
-        activity: f32,
-    ) -> Result<(), SceneSettingsError> {
+    pub fn advance_ticks(&mut self, ticks: u32, activity: f32) -> Result<(), SceneSettingsError> {
         if !activity.is_finite() || !(0.0..=1.0).contains(&activity) {
             return Err(SceneSettingsError::InvalidActivity);
         }
@@ -249,10 +246,7 @@ impl MycelialNetwork {
 
     /// Render the non-animated static-gradient fallback at the host-selected
     /// bounded brightness. This does not mutate scene state.
-    pub fn render_static_fallback(
-        &self,
-        brightness: f32,
-    ) -> Result<Vec<u8>, SceneSettingsError> {
+    pub fn render_static_fallback(&self, brightness: f32) -> Result<Vec<u8>, SceneSettingsError> {
         render_static_gradient_rgba(self.width, self.height, self.settings.palette, brightness)
     }
 
@@ -354,9 +348,12 @@ impl MycelialNetwork {
                     break;
                 }
                 let fork_angle =
-                    (15.0_f32 + (self.rng.next_u32() as f32 / u32::MAX as f32) * 30.0)
-                        .to_radians();
-                let sign = if self.rng.next_u32() & 1 == 1 { 1.0 } else { -1.0 };
+                    (15.0_f32 + (self.rng.next_u32() as f32 / u32::MAX as f32) * 30.0).to_radians();
+                let sign = if self.rng.next_u32() & 1 == 1 {
+                    1.0
+                } else {
+                    -1.0
+                };
                 let child_angle = angle + fork_angle * sign;
                 let child_thickness = (thickness * 0.75).max(0.5);
                 new_branches.push(Branch::new(end, child_angle, child_thickness, depth + 1));
@@ -521,7 +518,6 @@ impl MycelialNetwork {
         }
         rgba
     }
-
 }
 
 /// Bresenham's line algorithm.
@@ -885,13 +881,7 @@ mod tests {
 
     #[test]
     fn configured_tick_rejects_invalid_activity_and_unbounded_batches() {
-        let mut net = MycelialNetwork::with_settings(
-            32,
-            24,
-            1,
-            SceneSettings::default(),
-        )
-        .unwrap();
+        let mut net = MycelialNetwork::with_settings(32, 24, 1, SceneSettings::default()).unwrap();
         assert_eq!(
             net.advance_tick(f32::NAN),
             Err(SceneSettingsError::InvalidActivity)
@@ -909,8 +899,7 @@ mod tests {
         // the absolute 120-tick safety ceiling.
         let mut low_rate = SceneSettings::default();
         low_rate.fixed_step_hz = 10;
-        let mut low_rate_scene =
-            MycelialNetwork::with_settings(32, 24, 2, low_rate).unwrap();
+        let mut low_rate_scene = MycelialNetwork::with_settings(32, 24, 2, low_rate).unwrap();
         assert_eq!(
             low_rate_scene.advance_ticks(11, 0.7),
             Err(SceneSettingsError::TickBatchOutOfRange)

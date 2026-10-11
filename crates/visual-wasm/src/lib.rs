@@ -11,9 +11,7 @@ mod web {
         mycelium::MycelialNetwork,
         settings::{ScenePalette, SceneSettings, SceneSettingsError},
     };
-    use sovereign_visual_pack::{
-        Composition, Motion, PresentationVariant, parse_scene_pack_v1,
-    };
+    use sovereign_visual_pack::{Composition, Motion, PresentationVariant, parse_scene_pack_v1};
     use wasm_bindgen::prelude::*;
 
     fn dimension_error(error: DimensionsError) -> JsError {
@@ -190,7 +188,8 @@ mod web {
                 ));
             }
             if selected.composition == Composition::GradientOnly {
-                if variant != PresentationVariant::StaticFallback || selected.motion != Motion::None {
+                if variant != PresentationVariant::StaticFallback || selected.motion != Motion::None
+                {
                     return Err(JsError::new(
                         "gradient-only is supported only for motion=none staticFallback",
                     ));
@@ -368,13 +367,9 @@ mod web {
 
         #[test]
         fn scene_pack_loader_uses_shared_parser_and_selected_presentation() {
-            let scene = VisualScene::create_from_scene_pack(
-                32,
-                24,
-                SCENE_PACK_FIXTURE.as_bytes(),
-                "boot",
-            )
-            .unwrap();
+            let scene =
+                VisualScene::create_from_scene_pack(32, 24, SCENE_PACK_FIXTURE.as_bytes(), "boot")
+                    .unwrap();
             assert_eq!(scene.scene_id(), "luminous.first-germination");
             assert_eq!(scene.scene_version(), "0.1.0");
             assert_eq!(scene.scene_title(), "First Germination");
@@ -409,28 +404,67 @@ mod web {
         #[test]
         fn configured_settings_are_validated_by_the_core() {
             let palette = vec![
-                10, 16, 14, 26, 46, 34, 126, 200, 160, 232, 197, 71, 90, 107, 94, 118, 217,
-                193,
+                10, 16, 14, 26, 46, 34, 126, 200, 160, 232, 197, 71, 90, 107, 94, 118, 217, 193,
             ];
             let scene = VisualScene::create_configured(
                 32, 24, 20261010, 2048, 2048, 10, 0.28, 30, 7.5, 0.12, 128, palette,
             );
             assert!(scene.is_ok());
-            assert!(VisualScene::create_configured(
-                32, 24, 20261010, 8193, 8192, 10, 0.28, 30, 7.5, 0.12, 128,
-                vec![0; 18],
-            ).is_err());
-            assert!(VisualScene::create_configured(
-                32, 24, 20261010, 2048, 1024, 10, 0.28, 30, 7.5, 0.12, 128,
-                vec![
-                     10, 16, 14, 26, 46, 34, 126, 200, 160, 232, 197, 71, 90, 107, 94, 118,
-                    217, 193,
-                ],
-            ).is_err(), "scene branch request cannot exceed host resource budget");
-            assert!(VisualScene::create_configured(
-                32, 24, 20261010, 2048, 2048, 10, 0.28, 30, 7.5, 0.12, 128,
-                vec![0; 17],
-            ).is_err());
+            assert!(
+                VisualScene::create_configured(
+                    32,
+                    24,
+                    20261010,
+                    8193,
+                    8192,
+                    10,
+                    0.28,
+                    30,
+                    7.5,
+                    0.12,
+                    128,
+                    vec![0; 18],
+                )
+                .is_err()
+            );
+            assert!(
+                VisualScene::create_configured(
+                    32,
+                    24,
+                    20261010,
+                    2048,
+                    1024,
+                    10,
+                    0.28,
+                    30,
+                    7.5,
+                    0.12,
+                    128,
+                    vec![
+                        10, 16, 14, 26, 46, 34, 126, 200, 160, 232, 197, 71, 90, 107, 94, 118, 217,
+                        193,
+                    ],
+                )
+                .is_err(),
+                "scene branch request cannot exceed host resource budget"
+            );
+            assert!(
+                VisualScene::create_configured(
+                    32,
+                    24,
+                    20261010,
+                    2048,
+                    2048,
+                    10,
+                    0.28,
+                    30,
+                    7.5,
+                    0.12,
+                    128,
+                    vec![0; 17],
+                )
+                .is_err()
+            );
         }
     }
 }

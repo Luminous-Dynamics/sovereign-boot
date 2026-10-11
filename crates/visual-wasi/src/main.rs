@@ -145,13 +145,11 @@ fn render_scene_pack_rgba(
     activity: f32,
 ) -> Result<Vec<u8>, String> {
     if !pack.assets().is_empty() {
-        return Err(
-            concat!(
-                "this WASI renderer has no safe asset resolver/hash provider; ",
-                "asset-bearing packs are unsupported",
-            )
-            .into(),
-        );
+        return Err(concat!(
+            "this WASI renderer has no safe asset resolver/hash provider; ",
+            "asset-bearing packs are unsupported",
+        )
+        .into());
     }
     if !pack.capabilities().required.is_empty() {
         return Err(
@@ -167,9 +165,7 @@ fn render_scene_pack_rgba(
 
     let presentation = pack.presentations().get(variant);
     if !presentation.safe_regions.is_empty() {
-        return Err(
-            "this CPU WASI renderer does not yet apply presentation safeRegions".into(),
-        );
+        return Err("this CPU WASI renderer does not yet apply presentation safeRegions".into());
     }
 
     let mut scene = pack
@@ -227,17 +223,15 @@ fn apply_brightness(rgba: &mut [u8], brightness: f32) {
     }
 }
 
-fn write_ppm_rgba(
-    width: u32,
-    height: u32,
-    rgba: &[u8],
-    stdout: &mut impl Write,
-) -> io::Result<()> {
+fn write_ppm_rgba(width: u32, height: u32, rgba: &[u8], stdout: &mut impl Write) -> io::Result<()> {
     let expected_bytes = (u64::from(width) * u64::from(height) * 4) as usize;
     if rgba.len() != expected_bytes {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            format!("invalid RGBA frame length: {} (expected {expected_bytes})", rgba.len()),
+            format!(
+                "invalid RGBA frame length: {} (expected {expected_bytes})",
+                rgba.len()
+            ),
         ));
     }
     write!(stdout, "P6\n{} {}\n255\n", width, height)?;
@@ -277,8 +271,7 @@ fn render_scene_pack_ppm(options: &Options, stdout: &mut impl Write) -> Result<(
 }
 
 fn render_ppm(options: &Options, stdout: &mut impl Write) -> io::Result<()> {
-    let mut network =
-        MycelialNetwork::new(options.width, options.height, &options.seed);
+    let mut network = MycelialNetwork::new(options.width, options.height, &options.seed);
     const DT: f32 = 1.0 / 30.0;
 
     for _ in 0..options.steps {
@@ -288,11 +281,7 @@ fn render_ppm(options: &Options, stdout: &mut impl Write) -> io::Result<()> {
     let pixels = (u64::from(options.width) * u64::from(options.height)) as usize;
     let mut packed = vec![0_u32; pixels];
     network.render(&mut packed);
-    write!(
-        stdout,
-        "P6\n{} {}\n255\n",
-        options.width, options.height
-    )?;
+    write!(stdout, "P6\n{} {}\n255\n", options.width, options.height)?;
 
     let mut row = Vec::with_capacity(options.width as usize * 3);
     for y in 0..options.height as usize {
@@ -359,10 +348,7 @@ mod tests {
 
     #[test]
     fn presentation_selector_defaults_to_boot_and_rejects_unknown_values() {
-        assert_eq!(
-            parse_presentation(None).unwrap(),
-            PresentationVariant::Boot
-        );
+        assert_eq!(parse_presentation(None).unwrap(), PresentationVariant::Boot);
         assert_eq!(
             parse_presentation(Some("staticFallback")).unwrap(),
             PresentationVariant::StaticFallback
@@ -400,21 +386,14 @@ mod tests {
         assert!(validate_options(&options).is_err());
     }
 
-    const PACK_FIXTURE: &str =
-        include_str!("../../../tests/fixtures/first-germination.scene.json");
+    const PACK_FIXTURE: &str = include_str!("../../../tests/fixtures/first-germination.scene.json");
 
     #[test]
     fn pinned_scene_pack_static_fallback_renders_deterministic_ppm_bytes() {
         let pack = parse_scene_pack_v1(PACK_FIXTURE.as_bytes()).unwrap();
-        let rgba = render_scene_pack_rgba(
-            &pack,
-            PresentationVariant::StaticFallback,
-            16,
-            16,
-            90,
-            1.0,
-        )
-        .unwrap();
+        let rgba =
+            render_scene_pack_rgba(&pack, PresentationVariant::StaticFallback, 16, 16, 90, 1.0)
+                .unwrap();
 
         assert_eq!(rgba.len(), 16 * 16 * 4);
         assert_eq!(&rgba[0..4], &[6, 9, 8, 255]);
@@ -429,10 +408,8 @@ mod tests {
     #[test]
     fn pinned_scene_pack_boot_profile_replays_through_fixed_ticks() {
         let pack = parse_scene_pack_v1(PACK_FIXTURE.as_bytes()).unwrap();
-        let a =
-            render_scene_pack_rgba(&pack, PresentationVariant::Boot, 32, 24, 30, 0.7).unwrap();
-        let b =
-            render_scene_pack_rgba(&pack, PresentationVariant::Boot, 32, 24, 30, 0.7).unwrap();
+        let a = render_scene_pack_rgba(&pack, PresentationVariant::Boot, 32, 24, 30, 0.7).unwrap();
+        let b = render_scene_pack_rgba(&pack, PresentationVariant::Boot, 32, 24, 30, 0.7).unwrap();
         assert_eq!(a, b);
         assert_eq!(a.len(), 32 * 24 * 4);
     }
@@ -480,9 +457,6 @@ mod tests {
         render_ppm(&options, &mut bytes).unwrap();
 
         assert!(bytes.starts_with(b"P6\n16 16\n255\n"));
-        assert_eq!(
-            bytes.len(),
-            b"P6\n16 16\n255\n".len() + 16 * 16 * 3
-        );
+        assert_eq!(bytes.len(), b"P6\n16 16\n255\n".len() + 16 * 16 * 3);
     }
 }

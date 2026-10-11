@@ -72,8 +72,13 @@ impl std::fmt::Display for DrmError {
             Self::FramebufferAdd(e) => write!(f, "framebuffer add failed: {e}"),
             Self::ModeSetting(e) => write!(f, "mode setting failed: {e}"),
             Self::CrtcQuery(e) => write!(f, "CRTC state query failed: {e}"),
-            Self::RestoreVerification(details) => write!(f, "CRTC restoration verification failed: {details}"),
-            Self::SourceBufferTooSmall { expected, actual } => write!(f, "render buffer too small: expected {expected} pixels, got {actual}"),
+            Self::RestoreVerification(details) => {
+                write!(f, "CRTC restoration verification failed: {details}")
+            }
+            Self::SourceBufferTooSmall { expected, actual } => write!(
+                f,
+                "render buffer too small: expected {expected} pixels, got {actual}"
+            ),
         }
     }
 }
@@ -352,13 +357,13 @@ impl DrmFramebuffer {
             return Ok(self.restore_receipt());
         }
 
-        let original = self
-            .original_crtc
-            .as_ref()
-            .ok_or(DrmError::CrtcQuery(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                "no original CRTC snapshot available",
-            )))?;
+        let original =
+            self.original_crtc
+                .as_ref()
+                .ok_or(DrmError::CrtcQuery(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "no original CRTC snapshot available",
+                )))?;
 
         self.card
             .set_crtc(
@@ -412,7 +417,10 @@ impl DrmFramebuffer {
         DrmRestoreReceipt {
             crtc: self.crtc,
             connector_count: self.original_connectors.len(),
-            framebuffer: self.original_crtc.as_ref().and_then(|crtc| crtc.framebuffer()),
+            framebuffer: self
+                .original_crtc
+                .as_ref()
+                .and_then(|crtc| crtc.framebuffer()),
             mode_width,
             mode_height,
             refresh_hz,
@@ -452,4 +460,3 @@ impl Drop for DrmFramebuffer {
         // DumbBuffer is dropped automatically, which calls destroy_dumb_buffer.
     }
 }
-

@@ -91,12 +91,7 @@ impl GuestVisualScene for VisualScene {
         self.network.borrow_mut().pulse();
     }
 
-    fn configure(
-        &self,
-        width: u32,
-        height: u32,
-        settings: WitSceneSettings,
-    ) -> Result<(), String> {
+    fn configure(&self, width: u32, height: u32, settings: WitSceneSettings) -> Result<(), String> {
         let (seed, settings) = settings_from_wit(settings);
         let candidate = MycelialNetwork::with_settings(width, height, seed, settings)
             .map_err(|error: SceneSettingsError| error.to_string())?;
@@ -179,7 +174,10 @@ mod tests {
         let seed = "component-parity-fixture";
         let mut native = MycelialNetwork::new(32, 24, seed);
         let guest = <VisualScene as GuestVisualScene>::new(32, 24, seed.to_owned());
-        assert_eq!(guest.contract_version(), u32::from(contract::SCENE_CONTRACT_VERSION));
+        assert_eq!(
+            guest.contract_version(),
+            u32::from(contract::SCENE_CONTRACT_VERSION)
+        );
 
         for _ in 0..20 {
             native.grow(1.0 / 30.0, 0.7);
@@ -201,12 +199,36 @@ mod tests {
             drift_amplitude: 0.12,
             max_memory_mib: 128,
             palette: WitScenePalette {
-                canvas: Rgb { r: 10, g: 16, b: 14 },
-                substrate: Rgb { r: 26, g: 46, b: 34 },
-                filament: Rgb { r: 126, g: 200, b: 160 },
-                node: Rgb { r: 232, g: 197, b: 71 },
-                lichen: Rgb { r: 90, g: 107, b: 94 },
-                glow: Rgb { r: 118, g: 217, b: 193 },
+                canvas: Rgb {
+                    r: 10,
+                    g: 16,
+                    b: 14,
+                },
+                substrate: Rgb {
+                    r: 26,
+                    g: 46,
+                    b: 34,
+                },
+                filament: Rgb {
+                    r: 126,
+                    g: 200,
+                    b: 160,
+                },
+                node: Rgb {
+                    r: 232,
+                    g: 197,
+                    b: 71,
+                },
+                lichen: Rgb {
+                    r: 90,
+                    g: 107,
+                    b: 94,
+                },
+                glow: Rgb {
+                    r: 118,
+                    g: 217,
+                    b: 193,
+                },
             },
         }
     }
@@ -215,7 +237,10 @@ mod tests {
     fn wit_settings_configure_the_same_core_and_rgba_output() {
         let guest = <VisualScene as GuestVisualScene>::new(16, 16, "legacy".to_owned());
         guest.configure(32, 24, sample_wit_settings(2048)).unwrap();
-        assert_eq!(guest.contract_version(), u32::from(contract::SCENE_CONTRACT_VERSION));
+        assert_eq!(
+            guest.contract_version(),
+            u32::from(contract::SCENE_CONTRACT_VERSION)
+        );
 
         for _ in 0..4 {
             guest.advance_ticks(30, 0.7).unwrap();
@@ -229,13 +254,15 @@ mod tests {
         let fallback = guest.render_static_fallback(1.0).unwrap();
         assert_eq!((fallback.width, fallback.height), (32, 24));
         assert_eq!(&fallback.rgba[0..4], &[10, 16, 14, 255]);
-        assert_eq!(&fallback.rgba[fallback.rgba.len() - 4..], &[26, 46, 34, 255]);
+        assert_eq!(
+            &fallback.rgba[fallback.rgba.len() - 4..],
+            &[26, 46, 34, 255]
+        );
         assert!(guest.render_static_fallback(f32::NAN).is_err());
         assert_eq!(guest.render().rgba, guest_frame.rgba);
 
         let native_settings = settings_from_wit(sample_wit_settings(2048)).1;
-        let mut native =
-            MycelialNetwork::with_settings(32, 24, 20261010, native_settings).unwrap();
+        let mut native = MycelialNetwork::with_settings(32, 24, 20261010, native_settings).unwrap();
         for _ in 0..4 {
             native.advance_ticks(30, 0.7).unwrap();
         }

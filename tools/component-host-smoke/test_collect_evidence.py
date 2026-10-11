@@ -47,10 +47,12 @@ class EvidenceCollectorTests(unittest.TestCase):
         midpoint = len(collector.REQUIRED_MARKERS) // 2
         first = " ".join(collector.REQUIRED_MARKERS[:midpoint])
         second = " ".join(collector.REQUIRED_MARKERS[midpoint:])
-        self.assertIn(
-            "exactly one component_runtime receipt line",
-            collector.missing_required_markers(first + "\n" + second),
-        )
+        missing = collector.missing_required_markers(first + "\n" + second)
+        # Only the first line is eligible as the receipt; assertions present
+        # solely on the continuation line must still be reported missing.
+        self.assertTrue(missing)
+        for marker in collector.REQUIRED_MARKERS[midpoint:]:
+            self.assertIn(marker, missing)
 
     def test_duplicate_receipt_lines_are_rejected(self) -> None:
         line = " ".join(collector.REQUIRED_MARKERS)

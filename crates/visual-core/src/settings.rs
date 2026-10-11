@@ -110,8 +110,7 @@ pub fn render_static_gradient_rgba(
     palette: ScenePalette,
     brightness: f32,
 ) -> Result<Vec<u8>, SceneSettingsError> {
-    contract::validate_dimensions(width, height)
-        .map_err(SceneSettingsError::InvalidDimensions)?;
+    contract::validate_dimensions(width, height).map_err(SceneSettingsError::InvalidDimensions)?;
     if !brightness.is_finite() || !(0.0..=1.0).contains(&brightness) {
         return Err(SceneSettingsError::InvalidFallbackBrightness);
     }
@@ -145,10 +144,9 @@ pub fn render_static_gradient_rgba(
                 ((projection * Q16_ONE + denominator / 2) / denominator).min(Q16_ONE)
             };
             let lerp = |start: u8, end: u8| -> u8 {
-                let mixed = (u64::from(start) * (Q16_ONE - t_q16)
-                    + u64::from(end) * t_q16
-                    + Q16_ONE / 2)
-                    / Q16_ONE;
+                let mixed =
+                    (u64::from(start) * (Q16_ONE - t_q16) + u64::from(end) * t_q16 + Q16_ONE / 2)
+                        / Q16_ONE;
                 ((mixed * brightness_q16 + Q16_ONE / 2) / Q16_ONE) as u8
             };
             rgba.extend_from_slice(&[
@@ -276,9 +274,7 @@ impl SceneSettings {
         {
             return Err(SceneSettingsError::PulsePeriodOutOfRange);
         }
-        if !self.drift_amplitude.is_finite()
-            || !(0.0..=1.0).contains(&self.drift_amplitude)
-        {
+        if !self.drift_amplitude.is_finite() || !(0.0..=1.0).contains(&self.drift_amplitude) {
             return Err(SceneSettingsError::DriftAmplitudeOutOfRange);
         }
         if !(MIN_MEMORY_MIB..=MAX_MEMORY_MIB).contains(&self.max_memory_mib) {

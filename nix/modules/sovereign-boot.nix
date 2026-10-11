@@ -148,13 +148,13 @@ let
     # cannot silently schedule the same destructive modeset on every reboot.
     mv -f "$request" "$inflight"
     archive_inflight() {
-      if [[ "${request_id:-}" =~ ^[0-9a-f]{32}$ ]]; then
+      if [[ "''${request_id:-}" =~ ^[0-9a-f]{32}$ ]]; then
         mkdir -p "$archive_dir"
-        if [[ -e "$archive_dir/${request_id}.request" || -e "$archive_dir/${request_id}.result" || -e "$archive_dir/${request_id}.probe" || -e "$archive_dir/${request_id}.output" || -e "$archive_dir/${request_id}.preboot-probe" ]]; then
+        if [[ -e "$archive_dir/''${request_id}.request" || -e "$archive_dir/''${request_id}.result" || -e "$archive_dir/''${request_id}.probe" || -e "$archive_dir/''${request_id}.output" || -e "$archive_dir/''${request_id}.preboot-probe" ]]; then
           echo "sovereign-boot: refusing to overwrite existing historical canary archive for request_id=$request_id" >&2
           exit 70
         fi
-        mv -f "$inflight" "$archive_dir/${request_id}.request"
+        mv -f "$inflight" "$archive_dir/''${request_id}.request"
       else
         rm -f "$inflight"
       fi

@@ -38,7 +38,9 @@ impl VirtualTerminalGuard {
             .status()
         {
             Ok(status) if status.success() => {
-                return Err("display-manager.service is still active; stop it before the canary".into());
+                return Err(
+                    "display-manager.service is still active; stop it before the canary".into(),
+                );
             }
             Ok(_) => {}
             Err(e) => {
@@ -95,13 +97,7 @@ impl VirtualTerminalGuard {
             ));
         }
 
-        let rc = unsafe {
-            nix::libc::ioctl(
-                fd,
-                KDSETMODE,
-                KD_GRAPHICS as nix::libc::c_ulong,
-            )
-        };
+        let rc = unsafe { nix::libc::ioctl(fd, KDSETMODE, KD_GRAPHICS as nix::libc::c_ulong) };
         if rc < 0 {
             return Err(format!(
                 "cannot enter VT graphics mode: {}",
@@ -122,11 +118,7 @@ impl Drop for VirtualTerminalGuard {
         // Best-effort restoration: the DRM guard is dropped before this guard,
         // so CRTC ownership is returned before fbcon is re-enabled.
         let _ = unsafe {
-            nix::libc::ioctl(
-                self.fd,
-                KDSETMODE,
-                self.original_mode as nix::libc::c_ulong,
-            )
+            nix::libc::ioctl(self.fd, KDSETMODE, self.original_mode as nix::libc::c_ulong)
         };
     }
 }

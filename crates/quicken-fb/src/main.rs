@@ -376,8 +376,14 @@ fn install_signal_handlers() {
         );
         nix::libc::signal(nix::libc::SIGINT, signal_handler as nix::libc::sighandler_t);
         nix::libc::signal(nix::libc::SIGHUP, signal_handler as nix::libc::sighandler_t);
-        nix::libc::signal(nix::libc::SIGQUIT, signal_handler as nix::libc::sighandler_t);
-        nix::libc::signal(nix::libc::SIGTSTP, signal_handler as nix::libc::sighandler_t);
+        nix::libc::signal(
+            nix::libc::SIGQUIT,
+            signal_handler as nix::libc::sighandler_t,
+        );
+        nix::libc::signal(
+            nix::libc::SIGTSTP,
+            signal_handler as nix::libc::sighandler_t,
+        );
     }
 }
 

@@ -103,12 +103,9 @@ mod tests {
 
     #[test]
     fn normalization_always_produces_a_valid_nonzero_size() {
-        for (requested_width, requested_height) in [
-            (0, 1080),
-            (1920, 1080),
-            (4096, 4096),
-            (u32::MAX, u32::MAX),
-        ] {
+        for (requested_width, requested_height) in
+            [(0, 1080), (1920, 1080), (4096, 4096), (u32::MAX, u32::MAX)]
+        {
             let (width, height) = normalize_dimensions(requested_width, requested_height);
             assert!(validate_dimensions(width, height).is_ok());
         }
@@ -122,7 +119,10 @@ mod tests {
         assert_eq!(validate_step(0.26, 0.5), Err(StepError::InvalidDelta));
         assert_eq!(validate_step(f32::NAN, 0.5), Err(StepError::InvalidDelta));
         assert_eq!(validate_step(0.1, -0.1), Err(StepError::InvalidActivity));
-        assert_eq!(validate_step(0.1, f32::INFINITY), Err(StepError::InvalidActivity));
+        assert_eq!(
+            validate_step(0.1, f32::INFINITY),
+            Err(StepError::InvalidActivity)
+        );
     }
 
     #[test]
