@@ -90,7 +90,7 @@ class EvidenceCollectorTests(unittest.TestCase):
         self.assertIn('"receipt_present": $RECEIPT_PRESENT', workflow)
         self.assertIn('if [ "$RECEIPT_OUTCOME" = "success" ] && [ "$RECEIPT_PRESENT" = true ]; then', workflow)
         self.assertIn('"runtime_log": "$(digest_if_file "$RUNNER_TEMP/component-runtime.log")"', workflow)
-        self.assertIn('"collector_stderr": "$(digest_if_file "$RUNNER_TEMP/component-evidence/collector-stderr.log)"', workflow)
+        self.assertIn('"collector_stderr": "$(digest_if_file "$RUNNER_TEMP/component-evidence/collector-stderr.log")"', workflow)
 
     def test_duplicate_receipt_lines_are_rejected(self) -> None:
         line = " ".join(collector.REQUIRED_MARKERS)
@@ -101,6 +101,7 @@ class EvidenceCollectorTests(unittest.TestCase):
 
     def test_source_inventory_binds_guest_collector_and_workflow(self) -> None:
         for relative in (
+            ".gitignore",
             ".github/workflows/component-runtime-qualification.yml",
             "crates/visual-component/src/lib.rs",
             "crates/visual-component/wit/visual.wit",

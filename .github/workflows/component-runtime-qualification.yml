@@ -3,6 +3,7 @@ name: Component Model runtime qualification
 on:
   pull_request:
     paths:
+      - ".gitignore"
       - ".github/workflows/component-runtime-qualification.yml"
       - "Cargo.toml"
       - "Cargo.lock"
@@ -15,6 +16,7 @@ on:
   push:
     branches: [main]
     paths:
+      - ".gitignore"
       - ".github/workflows/component-runtime-qualification.yml"
       - "Cargo.toml"
       - "Cargo.lock"
@@ -150,7 +152,7 @@ jobs:
               "runtime_log": "$(digest_if_file "$RUNNER_TEMP/component-runtime.log")",
               "runtime_stderr": "$(digest_if_file "$RUNNER_TEMP/component-runtime-stderr.log")",
               "qualification_receipt": "$(digest_if_file "$RUNNER_TEMP/component-evidence/qualification.json")",
-              "collector_stderr": "$(digest_if_file "$RUNNER_TEMP/component-evidence/collector-stderr.log)"
+              "collector_stderr": "$(digest_if_file "$RUNNER_TEMP/component-evidence/collector-stderr.log")"
             }
           }
           EOF

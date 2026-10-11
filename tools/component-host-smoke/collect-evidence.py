@@ -36,6 +36,7 @@ def missing_required_markers(log_text: str) -> list[str]:
 
 
 SOURCE_PATHS = (
+    ".gitignore",
     ".github/workflows/component-runtime-qualification.yml",
     "Cargo.toml",
     "Cargo.lock",
