@@ -166,7 +166,7 @@ class EvidenceCollectorTests(unittest.TestCase):
             status = json.loads((evidence / "packet-status.json").read_text(encoding="utf-8"))
             self.assertEqual("failure", status["qualification_result"])
             self.assertEqual("invalid", status["receipt_validation"])
-            self.assertFalse(status["receipt_present"] is False)
+            self.assertTrue(status["receipt_present"])
             self.assertIn("unreadable JSON", status["receipt_validation_error"])
 
     def test_packet_receipt_validation_binds_commit_context_and_artifacts(self) -> None:
