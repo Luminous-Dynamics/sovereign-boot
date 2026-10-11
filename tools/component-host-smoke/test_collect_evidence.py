@@ -82,6 +82,7 @@ class EvidenceCollectorTests(unittest.TestCase):
         self.assertIn("if: always()", workflow)
         upload = workflow.split("- name: Upload runtime evidence and lockfile", 1)[1]
         self.assertIn("path: ${{ runner.temp }}/component-evidence/", upload)
+        self.assertIn("retention-days: 30", upload)
 
     def test_failure_packet_records_stage_outcomes_and_diagnostics(self) -> None:
         workflow = (collector.ROOT / ".github/workflows/component-runtime-qualification.yml").read_text(
