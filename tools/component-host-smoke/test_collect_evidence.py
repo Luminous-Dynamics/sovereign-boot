@@ -97,6 +97,24 @@ class EvidenceCollectorTests(unittest.TestCase):
     def test_generated_host_lock_is_artifact_not_committed_source(self) -> None:
         self.assertNotIn("tools/component-host-smoke/Cargo.lock", collector.SOURCE_PATHS)
 
+    def test_checkout_cleanliness_allows_only_generated_host_lockfile(self) -> None:
+        with patch.object(
+            collector,
+            "git_output",
+            return_value="?? tools/component-host-smoke/Cargo.lock",
+        ):
+            collector.require_clean_checkout()
+
+        for status in (
+            " M crates/visual-core/src/lib.rs",
+            "?? tools/component-host-smoke/unexpected.rs",
+            " M .github/workflows/component-runtime-qualification.yml",
+        ):
+            with self.subTest(status=status):
+                with patch.object(collector, "git_output", return_value=status):
+                    with self.assertRaisesRegex(ValueError, "checkout contains changes"):
+                        collector.require_clean_checkout()
+
     def test_source_file_record_has_byte_count_and_sha256(self) -> None:
         record = collector.file_record("tests/fixtures/first-germination.scene.json")
         self.assertEqual("tests/fixtures/first-germination.scene.json", record["path"])
@@ -164,7 +182,11 @@ class EvidenceCollectorTests(unittest.TestCase):
             with (
                 patch.object(collector, "ROOT", root.resolve()),
                 patch.object(sys, "argv", argv),
-                patch.object(collector, "git_output", side_effect=[expected_commit, "tree-test"]),
+                patch.object(
+                    collector,
+                    "git_output",
+                    side_effect=[expected_commit, "?? tools/component-host-smoke/Cargo.lock", "tree-test"],
+                ),
                 patch.object(collector, "file_record", side_effect=mock_records),
                 contextlib.redirect_stdout(io.StringIO()),
             ):
@@ -229,7 +251,11 @@ class EvidenceCollectorTests(unittest.TestCase):
             with (
                 patch.object(collector, "ROOT", root.resolve()),
                 patch.object(sys, "argv", argv),
-                patch.object(collector, "git_output", side_effect=["a" * 40, "tree-test"]),
+                patch.object(
+                    collector,
+                    "git_output",
+                    side_effect=["a" * 40, "?? tools/component-host-smoke/Cargo.lock"],
+                ),
                 contextlib.redirect_stderr(io.StringIO()),
             ):
                 self.assertEqual(2, collector.main())

@@ -57,6 +57,11 @@ SOURCE_PATHS = (
     "tools/component-host-smoke/collect-evidence.py",
 )
 
+# Cargo generates this lockfile during hosted qualification; it is the only
+# permitted untracked file. Every other tracked or untracked change invalidates
+# the claim that the runtime was built from the expected commit.
+ALLOWED_UNTRACKED_PATHS = frozenset({"tools/component-host-smoke/Cargo.lock"})
+
 
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
@@ -90,6 +95,26 @@ def git_output(*args: str) -> str:
     ).stdout.strip()
 
 
+def require_clean_checkout() -> None:
+    """Fail closed if the runtime may have been built from uncommitted source."""
+    status = git_output("status", "--porcelain=v1", "--untracked-files=all")
+    unexpected: list[str] = []
+    for line in status.splitlines():
+        # Porcelain v1 has a two-character status, a space, then the path.
+        if len(line) < 4 or line[2] != " ":
+            unexpected.append(line or "<malformed git status record>")
+            continue
+        code, path = line[:2], line[3:]
+        if code == "??" and path in ALLOWED_UNTRACKED_PATHS:
+            continue
+        unexpected.append(line)
+    if unexpected:
+        raise ValueError(
+            "checkout contains changes outside the generated host lockfile: "
+            + "; ".join(unexpected)
+        )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--expected-commit", required=True, help="exact PR head SHA expected by the workflow")
@@ -117,6 +142,11 @@ def main() -> int:
             raise ValueError(
                 f"checked-out commit mismatch: expected {args.expected_commit}, received {actual_commit}"
             )
+
+        # HEAD alone is not enough: Rust can compile modified working-tree files
+        # while rev-parse still reports the expected commit. Only the generated
+        # isolated-host lockfile may be untracked at this point in the workflow.
+        require_clean_checkout()
 
         component = required_repo_file(args.component, "component artifact")
         fixture = required_repo_file(args.fixture, "Scene Pack fixture")
