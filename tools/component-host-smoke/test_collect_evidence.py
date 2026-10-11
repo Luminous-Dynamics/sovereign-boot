@@ -380,6 +380,7 @@ class EvidenceCollectorTests(unittest.TestCase):
             self.assertFalse(
                 packet.validate_receipt_document(malformed_attempt, **dict(kwargs, run_attempt="0"))[0]
             )
+            self.assertRegex(workflow_ref, r"/\.github/workflows/component-runtime-qualification\.yml@[^@\s]+$")
             malformed_workflow = dict(receipt, execution=dict(receipt["execution"], workflow_ref="arbitrary"))
             self.assertFalse(
                 packet.validate_receipt_document(malformed_workflow, **dict(kwargs, workflow_ref="arbitrary"))[0]
