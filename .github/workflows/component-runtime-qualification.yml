@@ -118,14 +118,14 @@ jobs:
           digest_if_file() {
             if [ -f "$1" ]; then sha256sum "$1" | cut -d ' ' -f 1; else printf ''; fi
           }
-          QUALIFICATION_RESULT=not_issued
-          if [ "$RECEIPT_OUTCOME" = "success" ]; then
-            QUALIFICATION_RESULT=pass
-          elif [ "$TOOLCHAIN_OUTCOME" = "failure" ] || [ "$LOCKFILE_OUTCOME" = "failure" ] || [ "$RECEIPT_TESTS_OUTCOME" = "failure" ] || [ "$FORMAT_OUTCOME" = "failure" ] || [ "$BUILD_OUTCOME" = "failure" ] || [ "$RUNTIME_OUTCOME" = "failure" ] || [ "$RECEIPT_OUTCOME" = "failure" ]; then
-            QUALIFICATION_RESULT=failure
-          fi
           RECEIPT_PRESENT=false
           if [ -s "$RUNNER_TEMP/component-evidence/qualification.json" ]; then RECEIPT_PRESENT=true; fi
+          QUALIFICATION_RESULT=not_issued
+          if [ "$RECEIPT_OUTCOME" = "success" ] && [ "$RECEIPT_PRESENT" = true ]; then
+            QUALIFICATION_RESULT=pass
+          elif [ "$RECEIPT_OUTCOME" = "success" ] || [ "$TOOLCHAIN_OUTCOME" = "failure" ] || [ "$LOCKFILE_OUTCOME" = "failure" ] || [ "$RECEIPT_TESTS_OUTCOME" = "failure" ] || [ "$FORMAT_OUTCOME" = "failure" ] || [ "$BUILD_OUTCOME" = "failure" ] || [ "$RUNTIME_OUTCOME" = "failure" ] || [ "$RECEIPT_OUTCOME" = "failure" ]; then
+            QUALIFICATION_RESULT=failure
+          fi
           cat > "$RUNNER_TEMP/component-evidence/packet-status.json" <<EOF
           {
             "schema": "luminous-sovereign-visual-component-runtime-packet-status-v1",

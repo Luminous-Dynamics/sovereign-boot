@@ -88,6 +88,7 @@ class EvidenceCollectorTests(unittest.TestCase):
         self.assertIn('collector-stderr.log', workflow)
         self.assertIn('"qualification_result": "$QUALIFICATION_RESULT"', workflow)
         self.assertIn('"receipt_present": $RECEIPT_PRESENT', workflow)
+        self.assertIn('if [ "$RECEIPT_OUTCOME" = "success" ] && [ "$RECEIPT_PRESENT" = true ]; then', workflow)
         self.assertIn('"runtime_log": "$(digest_if_file "$RUNNER_TEMP/component-runtime.log")"', workflow)
 
     def test_duplicate_receipt_lines_are_rejected(self) -> None:
