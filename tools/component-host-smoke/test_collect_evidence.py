@@ -228,6 +228,8 @@ class EvidenceCollectorTests(unittest.TestCase):
                 "sizes": sizes,
                 "source_root": source_root,
                 "runtime_log_text": runtime_log,
+                "checkout_commit": expected_commit,
+                "checkout_tree": "f" * 40,
             }
             valid, reason = packet.validate_receipt_document(receipt, **kwargs)
             self.assertTrue(valid, reason)
@@ -242,6 +244,8 @@ class EvidenceCollectorTests(unittest.TestCase):
             )
             wrong_context = dict(receipt, execution=dict(receipt["execution"], run_id="99999"))
             self.assertFalse(packet.validate_receipt_document(wrong_context, **kwargs)[0])
+            self.assertFalse(packet.validate_receipt_document(receipt, **dict(kwargs, checkout_commit="f" * 40))[0])
+            self.assertFalse(packet.validate_receipt_document(receipt, **dict(kwargs, checkout_tree="0" * 40))[0])
             self.assertFalse(
                 packet.validate_receipt_document(receipt, **dict(kwargs, runtime_log_text="component_runtime=wasmtime-49.0.2"))[0]
             )

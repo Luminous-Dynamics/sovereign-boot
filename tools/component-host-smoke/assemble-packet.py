@@ -7,6 +7,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 from pathlib import Path, PurePosixPath
@@ -168,6 +169,8 @@ def validate_receipt_document(
     sizes: dict[str, int],
     source_root: Path,
     runtime_log_text: str,
+    checkout_commit: str,
+    checkout_tree: str,
 ) -> tuple[bool, str]:
     """Validate the pass receipt against the actual packet inputs and run context."""
     if not isinstance(receipt, dict):
@@ -184,6 +187,10 @@ def validate_receipt_document(
         return False, "receipt source section is missing"
     if source.get("commit") != expected_commit or source.get("expected_commit") != expected_commit:
         return False, "receipt source commit does not match the packet commit"
+    if checkout_commit != expected_commit:
+        return False, "actual checkout commit does not match the packet commit"
+    if not re.fullmatch(r"[0-9a-f]{40}", checkout_tree) or source.get("tree") != checkout_tree:
+        return False, "receipt source tree does not match the checked-out Git tree"
     source_files = source.get("files")
     inventory_valid, inventory_error = validate_source_inventory(source_files, source_root)
     if not inventory_valid:
@@ -301,6 +308,8 @@ def main() -> int:
     receipt: Any = None
     receipt_valid = False
     validation_error = "qualification receipt is missing"
+    checkout_commit = ""
+    checkout_tree = ""
     if receipt_present:
         try:
             with receipt_path.open("r", encoding="utf-8") as stream:
@@ -308,19 +317,34 @@ def main() -> int:
         except (OSError, UnicodeError, json.JSONDecodeError) as exc:
             validation_error = f"qualification receipt is unreadable JSON: {exc}"
         else:
-            valid, validation_error = validate_receipt_document(
-                receipt,
-                expected_commit=expected_commit,
-                run_id=run_id,
-                run_attempt=run_attempt,
-                workflow_ref=workflow_ref,
-                runner_os=runner_os,
-                hashes=hashes,
-                sizes=sizes,
-                source_root=ROOT,
-                runtime_log_text=packet_paths["runtime_log"].read_text(encoding="utf-8"),
-            )
-            receipt_valid = valid
+            try:
+                checkout_commit = subprocess.run(
+                    ["git", "rev-parse", "HEAD"], cwd=ROOT, check=True,
+                    capture_output=True, text=True,
+                ).stdout.strip()
+                checkout_tree = subprocess.run(
+                    ["git", "rev-parse", "HEAD^{tree}"], cwd=ROOT, check=True,
+                    capture_output=True, text=True,
+                ).stdout.strip()
+                runtime_log_text = packet_paths["runtime_log"].read_text(encoding="utf-8")
+                valid, validation_error = validate_receipt_document(
+                    receipt,
+                    expected_commit=expected_commit,
+                    run_id=run_id,
+                    run_attempt=run_attempt,
+                    workflow_ref=workflow_ref,
+                    runner_os=runner_os,
+                    hashes=hashes,
+                    sizes=sizes,
+                    source_root=ROOT,
+                    runtime_log_text=runtime_log_text,
+                    checkout_commit=checkout_commit,
+                    checkout_tree=checkout_tree,
+                )
+                receipt_valid = valid
+            except (OSError, UnicodeError, subprocess.CalledProcessError) as exc:
+                validation_error = f"cannot independently verify checkout/runtime context: {exc}"
+                receipt_valid = False
     else:
         receipt_valid = False
 
@@ -338,6 +362,8 @@ def main() -> int:
     status = {
         "schema": SCHEMA,
         "source_commit": expected_commit,
+        "checkout_commit": checkout_commit,
+        "checkout_tree": checkout_tree,
         "run_id": run_id,
         "run_attempt": run_attempt,
         "workflow_ref": workflow_ref,
