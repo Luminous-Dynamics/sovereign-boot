@@ -496,6 +496,21 @@ class EvidenceCollectorTests(unittest.TestCase):
         ):
             self.assertIn(relative, collector.SOURCE_PATHS)
 
+    def test_qualification_triggers_for_compile_time_included_contract_fixture(self) -> None:
+        workflow = (
+            collector.ROOT / ".github/workflows/component-runtime-qualification.yml"
+        ).read_text(encoding="utf-8")
+        required_path = '      - "contracts/tests/scene-pack-v1-negative-fixtures.json"'
+        trigger_sections = (
+            ("  pull_request:\n", "  push:\n"),
+            ("  push:\n", "  workflow_dispatch:\n"),
+        )
+        for start_marker, end_marker in trigger_sections:
+            with self.subTest(event=start_marker.strip()):
+                start = workflow.index(start_marker)
+                end = workflow.index(end_marker, start + len(start_marker))
+                self.assertIn(required_path, workflow[start:end])
+
     def test_generated_host_lock_is_artifact_not_committed_source(self) -> None:
         self.assertNotIn("tools/component-host-smoke/Cargo.lock", collector.SOURCE_PATHS)
 
