@@ -74,6 +74,7 @@ jobs:
       - name: Create source-bound qualification receipt
         run: |
           python3 tools/component-host-smoke/collect-evidence.py \
+            --expected-commit "${{ github.event.pull_request.head.sha || github.sha }}" \
             --component target/wasm32-wasip2/release/sovereign_visual_component.wasm \
             --fixture tests/fixtures/first-germination.scene.json \
             --lockfile tools/component-host-smoke/Cargo.lock \

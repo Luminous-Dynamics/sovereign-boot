@@ -31,7 +31,6 @@ def _strict_absolute_uri(value: Any) -> bool:
         or re.search(r"%(?![0-9A-Fa-f]{2})", value)
     ):
         return False
-        return False
     from urllib.parse import urlsplit
 
     try:

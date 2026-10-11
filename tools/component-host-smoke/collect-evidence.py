@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -35,14 +36,25 @@ def missing_required_markers(log_text: str) -> list[str]:
 
 
 SOURCE_PATHS = (
+    ".github/workflows/component-runtime-qualification.yml",
     "Cargo.toml",
     "Cargo.lock",
     "rust-toolchain.toml",
+    "crates/visual-core/Cargo.toml",
+    "crates/visual-core/src/color.rs",
+    "crates/visual-core/src/contract.rs",
+    "crates/visual-core/src/lib.rs",
+    "crates/visual-core/src/mycelium.rs",
     "crates/visual-core/src/settings.rs",
+    "crates/visual-pack/Cargo.toml",
     "crates/visual-pack/src/lib.rs",
+    "crates/visual-component/Cargo.toml",
+    "crates/visual-component/src/lib.rs",
     "crates/visual-component/wit/visual.wit",
+    "tests/fixtures/first-germination.scene.json",
     "tools/component-host-smoke/Cargo.toml",
     "tools/component-host-smoke/src/main.rs",
+    "tools/component-host-smoke/collect-evidence.py",
 )
 
 
@@ -52,6 +64,17 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def required_repo_file(raw_path: Path, label: str) -> Path:
+    """Resolve an artifact and require it to stay inside the exact checked-out repository."""
+    candidate = raw_path if raw_path.is_absolute() else ROOT / raw_path
+    resolved = candidate.resolve()
+    if not resolved.is_relative_to(ROOT):
+        raise ValueError(f"{label} resolves outside the checked-out repository: {raw_path}")
+    if not resolved.is_file():
+        raise ValueError(f"{label} is missing or not a file: {raw_path}")
+    return resolved
 
 
 def file_record(relative: str) -> dict[str, object]:
@@ -69,6 +92,7 @@ def git_output(*args: str) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--expected-commit", required=True, help="exact PR head SHA expected by the workflow")
     parser.add_argument("--component", required=True, type=Path)
     parser.add_argument("--fixture", required=True, type=Path)
     parser.add_argument("--lockfile", required=True, type=Path)
@@ -86,12 +110,20 @@ def main() -> int:
         if missing:
             raise ValueError("runtime receipt missing required success markers: " + ", ".join(missing))
 
-        component = args.component.resolve()
-        fixture = args.fixture.resolve()
-        lockfile = args.lockfile.resolve()
-        for path in (component, fixture, lockfile):
-            if not path.is_file():
-                raise ValueError(f"required evidence file does not exist: {path}")
+        if re.fullmatch(r"[0-9a-f]{40}", args.expected_commit) is None:
+            raise ValueError("expected commit must be a full lowercase 40-character Git SHA")
+        actual_commit = git_output("rev-parse", "HEAD")
+        if actual_commit != args.expected_commit:
+            raise ValueError(
+                f"checked-out commit mismatch: expected {args.expected_commit}, received {actual_commit}"
+            )
+
+        component = required_repo_file(args.component, "component artifact")
+        fixture = required_repo_file(args.fixture, "Scene Pack fixture")
+        lockfile = required_repo_file(args.lockfile, "host lockfile")
+        expected_fixture = (ROOT / "tests/fixtures/first-germination.scene.json").resolve()
+        if fixture != expected_fixture:
+            raise ValueError("runtime evidence must use the committed first-germination Scene Pack fixture")
         if component.stat().st_size == 0 or lockfile.stat().st_size == 0:
             raise ValueError("component and host lockfile must be non-empty")
 
@@ -99,7 +131,8 @@ def main() -> int:
             "schema": "luminous-sovereign-visual-component-runtime-evidence-v1",
             "result": "pass",
             "source": {
-                "commit": git_output("rev-parse", "HEAD"),
+                "commit": actual_commit,
+                "expected_commit": args.expected_commit,
                 "tree": git_output("rev-parse", "HEAD^{tree}"),
                 "files": [file_record(path) for path in SOURCE_PATHS],
             },
