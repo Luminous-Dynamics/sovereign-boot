@@ -199,6 +199,17 @@ def validate_receipt_document(
     execution = receipt.get("execution")
     if not isinstance(execution, dict):
         return False, "receipt execution section is missing"
+    if re.fullmatch(r"[0-9]+", run_id) is None:
+        return False, "packet run ID must be numeric"
+    if re.fullmatch(r"[1-9][0-9]*", run_attempt) is None:
+        return False, "packet run attempt must be a positive integer"
+    if runner_os != "Linux":
+        return False, "packet runner OS must be Linux"
+    if re.search(
+        r"/\.github/workflows/component-runtime-qualification\.yml@[^@\s]+$",
+        workflow_ref,
+    ) is None:
+        return False, "packet workflow reference is not the runtime qualification workflow"
     for field, expected in (
         ("run_id", run_id),
         ("run_attempt", run_attempt),
@@ -310,6 +321,19 @@ def main() -> int:
     validation_error = "qualification receipt is missing"
     checkout_commit = ""
     checkout_tree = ""
+    checkout_identity_error = ""
+    try:
+        checkout_commit = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=ROOT, check=True,
+            capture_output=True, text=True,
+        ).stdout.strip()
+        checkout_tree = subprocess.run(
+            ["git", "rev-parse", "HEAD^{tree}"], cwd=ROOT, check=True,
+            capture_output=True, text=True,
+        ).stdout.strip()
+    except (OSError, subprocess.CalledProcessError) as exc:
+        checkout_identity_error = str(exc)
+
     if receipt_present:
         try:
             with receipt_path.open("r", encoding="utf-8") as stream:
@@ -318,14 +342,6 @@ def main() -> int:
             validation_error = f"qualification receipt is unreadable JSON: {exc}"
         else:
             try:
-                checkout_commit = subprocess.run(
-                    ["git", "rev-parse", "HEAD"], cwd=ROOT, check=True,
-                    capture_output=True, text=True,
-                ).stdout.strip()
-                checkout_tree = subprocess.run(
-                    ["git", "rev-parse", "HEAD^{tree}"], cwd=ROOT, check=True,
-                    capture_output=True, text=True,
-                ).stdout.strip()
                 runtime_log_text = packet_paths["runtime_log"].read_text(encoding="utf-8")
                 valid, validation_error = validate_receipt_document(
                     receipt,
@@ -364,6 +380,7 @@ def main() -> int:
         "source_commit": expected_commit,
         "checkout_commit": checkout_commit,
         "checkout_tree": checkout_tree,
+        "checkout_identity_error": checkout_identity_error,
         "run_id": run_id,
         "run_attempt": run_attempt,
         "workflow_ref": workflow_ref,

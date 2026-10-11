@@ -372,6 +372,22 @@ class EvidenceCollectorTests(unittest.TestCase):
             )
             wrong_context = dict(receipt, execution=dict(receipt["execution"], run_id="99999"))
             self.assertFalse(packet.validate_receipt_document(wrong_context, **kwargs)[0])
+            malformed_run = dict(receipt, execution=dict(receipt["execution"], run_id="not-numeric"))
+            self.assertFalse(
+                packet.validate_receipt_document(malformed_run, **dict(kwargs, run_id="not-numeric"))[0]
+            )
+            malformed_attempt = dict(receipt, execution=dict(receipt["execution"], run_attempt="0"))
+            self.assertFalse(
+                packet.validate_receipt_document(malformed_attempt, **dict(kwargs, run_attempt="0"))[0]
+            )
+            malformed_workflow = dict(receipt, execution=dict(receipt["execution"], workflow_ref="arbitrary"))
+            self.assertFalse(
+                packet.validate_receipt_document(malformed_workflow, **dict(kwargs, workflow_ref="arbitrary"))[0]
+            )
+            windows_runner = dict(receipt, execution=dict(receipt["execution"], runner_os="Windows"))
+            self.assertFalse(
+                packet.validate_receipt_document(windows_runner, **dict(kwargs, runner_os="Windows"))[0]
+            )
             self.assertFalse(packet.validate_receipt_document(receipt, **dict(kwargs, checkout_commit="f" * 40))[0])
             self.assertFalse(packet.validate_receipt_document(receipt, **dict(kwargs, checkout_tree="0" * 40))[0])
             self.assertFalse(
