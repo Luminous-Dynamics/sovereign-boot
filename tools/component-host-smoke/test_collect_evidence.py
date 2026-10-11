@@ -116,7 +116,7 @@ class EvidenceCollectorTests(unittest.TestCase):
                 })
             rust_source = root / "crates/visual-pack/src/lib.rs"
             rust_source.write_text(
-                'const UNBOUND: &str = include_str!("../../../contracts/tests/unbound-runtime-fixture.json");\\n',
+                'const UNBOUND: &str = include_str!("../../../contracts/tests/unbound-runtime-fixture.json");\n',
                 encoding="utf-8",
             )
             contents = rust_source.read_bytes()
