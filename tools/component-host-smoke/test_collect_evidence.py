@@ -383,9 +383,11 @@ class EvidenceCollectorTests(unittest.TestCase):
                 receipt,
                 source=dict(receipt["source"], files=inventory_with_omission),
             )
-            self.assertFalse(
-                packet.validate_receipt_document(receipt_with_omitted_module, **kwargs)[0]
+            valid_module_inventory, module_inventory_error = packet.validate_receipt_document(
+                receipt_with_omitted_module, **kwargs
             )
+            self.assertFalse(valid_module_inventory)
+            self.assertIn("Rust module declared by", module_inventory_error)
             module_root.write_bytes(original_module_root)
             (module_root.parent / "omitted_from_evidence.rs").unlink()
 
