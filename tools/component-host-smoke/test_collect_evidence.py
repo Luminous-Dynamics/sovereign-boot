@@ -173,7 +173,7 @@ class EvidenceCollectorTests(unittest.TestCase):
         expected_commit = "e" * 40
         expected_tree = "f" * 40
         workflow_ref = "Luminous-Dynamics/sovereign-boot/.github/workflows/component-runtime-qualification.yml@refs/pull/1/merge"
-        runtime_log = " ".join(packet.REQUIRED_RUNTIME_MARKERS) + "\\n"
+        runtime_log = " ".join(packet.REQUIRED_RUNTIME_MARKERS) + "\n"
         component_bytes = b"synthetic wasm component"
         lockfile_bytes = b"synthetic host lockfile"
         fixture_bytes = b"synthetic pinned fixture"
@@ -266,9 +266,9 @@ class EvidenceCollectorTests(unittest.TestCase):
             def fake_git(args, **kwargs):
                 revision = args[-1]
                 if revision == "HEAD":
-                    return type("ProcessResult", (), {"stdout": expected_commit + "\\n"})()
+                    return type("ProcessResult", (), {"stdout": expected_commit + "\n"})()
                 if revision == "HEAD^{tree}":
-                    return type("ProcessResult", (), {"stdout": expected_tree + "\\n"})()
+                    return type("ProcessResult", (), {"stdout": expected_tree + "\n"})()
                 raise AssertionError("unexpected git command: " + repr(args))
 
             with (
