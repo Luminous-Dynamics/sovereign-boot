@@ -114,6 +114,37 @@ def require_clean_checkout() -> None:
             + "; ".join(unexpected)
         )
 
+def require_github_actions_context() -> dict[str, str]:
+    """Require auditable GitHub Actions metadata for the hosted-only receipt."""
+    if os.environ.get("GITHUB_ACTIONS") != "true":
+        raise ValueError("runtime pass receipt may only be issued inside GitHub Actions")
+
+    workflow = os.environ.get("GITHUB_WORKFLOW", "").strip()
+    run_id = os.environ.get("GITHUB_RUN_ID", "").strip()
+    run_attempt = os.environ.get("GITHUB_RUN_ATTEMPT", "").strip()
+    workflow_ref = os.environ.get("GITHUB_WORKFLOW_REF", "").strip()
+    runner_os = os.environ.get("RUNNER_OS", "").strip()
+    if not workflow:
+        raise ValueError("GitHub Actions workflow name is missing")
+    if re.fullmatch(r"[0-9]+", run_id) is None:
+        raise ValueError("GitHub Actions run ID must be numeric")
+    if re.fullmatch(r"[0-9]+", run_attempt) is None:
+        raise ValueError("GitHub Actions run attempt must be numeric")
+    if re.search(
+        r"/\.github/workflows/component-runtime-qualification\.yml@[^@\s]+$",
+        workflow_ref,
+    ) is None:
+        raise ValueError("workflow reference must identify the component runtime qualification workflow")
+    if runner_os != "Linux":
+        raise ValueError("component runtime qualification requires the Linux hosted runner")
+    return {
+        "workflow": workflow,
+        "run_id": run_id,
+        "run_attempt": run_attempt,
+        "workflow_ref": workflow_ref,
+        "runner_os": runner_os,
+    }
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -148,6 +179,8 @@ def main() -> int:
         # isolated-host lockfile may be untracked at this point in the workflow.
         require_clean_checkout()
 
+        execution_context = require_github_actions_context()
+
         component = required_repo_file(args.component, "component artifact")
         fixture = required_repo_file(args.fixture, "Scene Pack fixture")
         lockfile = required_repo_file(args.lockfile, "host lockfile")
@@ -167,11 +200,11 @@ def main() -> int:
                 "files": [file_record(path) for path in SOURCE_PATHS],
             },
             "execution": {
-                "workflow": os.environ.get("GITHUB_WORKFLOW", ""),
-                "run_id": os.environ.get("GITHUB_RUN_ID", ""),
-                "run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT", ""),
-                "workflow_ref": os.environ.get("GITHUB_WORKFLOW_REF", ""),
-                "runner_os": os.environ.get("RUNNER_OS", ""),
+                "workflow": execution_context["workflow"],
+                "run_id": execution_context["run_id"],
+                "run_attempt": execution_context["run_attempt"],
+                "workflow_ref": execution_context["workflow_ref"],
+                "runner_os": execution_context["runner_os"],
                 "rustc_version": args.rustc_version.strip(),
                 "required_runtime_markers": list(REQUIRED_MARKERS),
                 "runtime_log_sha256": hashlib.sha256(log_bytes).hexdigest(),

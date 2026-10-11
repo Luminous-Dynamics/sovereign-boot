@@ -7,6 +7,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -97,6 +98,32 @@ class EvidenceCollectorTests(unittest.TestCase):
     def test_generated_host_lock_is_artifact_not_committed_source(self) -> None:
         self.assertNotIn("tools/component-host-smoke/Cargo.lock", collector.SOURCE_PATHS)
 
+    def test_github_actions_context_requires_workflow_receipt_provenance(self) -> None:
+        valid = {
+            "GITHUB_ACTIONS": "true",
+            "GITHUB_WORKFLOW": "Component Model runtime qualification",
+            "GITHUB_RUN_ID": "38126517666",
+            "GITHUB_RUN_ATTEMPT": "1",
+            "GITHUB_WORKFLOW_REF": "Luminous-Dynamics/sovereign-boot/.github/workflows/component-runtime-qualification.yml@refs/pull/1/merge",
+            "RUNNER_OS": "Linux",
+        }
+        with patch.dict(os.environ, valid, clear=True):
+            context = collector.require_github_actions_context()
+        self.assertEqual("38126517666", context["run_id"])
+        self.assertEqual("Linux", context["runner_os"])
+
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaisesRegex(ValueError, "only be issued inside GitHub Actions"):
+                collector.require_github_actions_context()
+        invalid = dict(valid, GITHUB_WORKFLOW_REF="refs/pull/1/merge")
+        with patch.dict(os.environ, invalid, clear=True):
+            with self.assertRaisesRegex(ValueError, "workflow reference"):
+                collector.require_github_actions_context()
+        invalid = dict(valid, RUNNER_OS="Windows")
+        with patch.dict(os.environ, invalid, clear=True):
+            with self.assertRaisesRegex(ValueError, "Linux hosted runner"):
+                collector.require_github_actions_context()
+
     def test_checkout_cleanliness_allows_only_generated_host_lockfile(self) -> None:
         with patch.object(
             collector,
@@ -181,6 +208,14 @@ class EvidenceCollectorTests(unittest.TestCase):
             mock_records = lambda relative: {"path": relative, "bytes": 1, "sha256": "a" * 64}
             with (
                 patch.object(collector, "ROOT", root.resolve()),
+                patch.dict(os.environ, {
+                    "GITHUB_ACTIONS": "true",
+                    "GITHUB_WORKFLOW": "Component Model runtime qualification",
+                    "GITHUB_RUN_ID": "38126517666",
+                    "GITHUB_RUN_ATTEMPT": "1",
+                    "GITHUB_WORKFLOW_REF": "Luminous-Dynamics/sovereign-boot/.github/workflows/component-runtime-qualification.yml@refs/pull/1/merge",
+                    "RUNNER_OS": "Linux",
+                }, clear=True),
                 patch.object(sys, "argv", argv),
                 patch.object(
                     collector,
@@ -250,6 +285,14 @@ class EvidenceCollectorTests(unittest.TestCase):
             ]
             with (
                 patch.object(collector, "ROOT", root.resolve()),
+                patch.dict(os.environ, {
+                    "GITHUB_ACTIONS": "true",
+                    "GITHUB_WORKFLOW": "Component Model runtime qualification",
+                    "GITHUB_RUN_ID": "38126517666",
+                    "GITHUB_RUN_ATTEMPT": "1",
+                    "GITHUB_WORKFLOW_REF": "Luminous-Dynamics/sovereign-boot/.github/workflows/component-runtime-qualification.yml@refs/pull/1/merge",
+                    "RUNNER_OS": "Linux",
+                }, clear=True),
                 patch.object(sys, "argv", argv),
                 patch.object(
                     collector,
