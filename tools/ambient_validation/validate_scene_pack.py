@@ -38,7 +38,29 @@ def _strict_absolute_uri(value: Any) -> bool:
         parsed = urlsplit(value)
     except ValueError:
         return False
-    return bool(re.fullmatch(r"[A-Za-z][A-Za-z0-9+.-]*", parsed.scheme))
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9+.-]*", parsed.scheme):
+        return False
+
+    # Brackets are legal only for a host IP-literal, not path/query/fragment
+    # data. Validate the port grammar without imposing an implementation-
+    # specific numeric port range: RFC 3986 defines port as zero or more digits.
+    if any(character in parsed.path + parsed.query + parsed.fragment for character in "[]"):
+        return False
+    authority = parsed.netloc.rsplit("@", 1)[-1]
+    if authority.startswith("["):
+        closing = authority.find("]")
+        if closing < 0:
+            return False
+        suffix = authority[closing + 1:]
+        if suffix and not (suffix.startswith(":") and suffix[1:].isdigit()):
+            return False
+    elif ":" in authority:
+        if authority.count(":") > 1:
+            return False  # IPv6 literals must be bracketed.
+        port = authority.rsplit(":", 1)[1]
+        if port and not port.isdigit():
+            return False
+    return True
 
 
 class DuplicateKeyError(ValueError):

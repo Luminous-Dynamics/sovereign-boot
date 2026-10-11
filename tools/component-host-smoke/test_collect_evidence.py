@@ -54,6 +54,27 @@ class EvidenceCollectorTests(unittest.TestCase):
         for marker in collector.REQUIRED_MARKERS[midpoint:]:
             self.assertIn(marker, missing)
 
+    def test_marker_substring_cannot_satisfy_required_assertion(self) -> None:
+        line = " ".join(collector.REQUIRED_MARKERS).replace(
+            "branch_budget=pass", "branch_budget=pass-extra"
+        )
+        self.assertIn(
+            "branch_budget=pass",
+            collector.missing_required_markers(line),
+        )
+
+    def test_lockfile_is_resolved_before_receipt_tests(self) -> None:
+        workflow = (collector.ROOT / ".github/workflows/component-runtime-qualification.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertLess(
+            workflow.index("- name: Resolve isolated host dependency graph"),
+            workflow.index("- name: Test evidence receipt validation"),
+        )
+        self.assertIn("if: always()", workflow)
+        upload = workflow.split("- name: Upload runtime evidence and lockfile", 1)[1]
+        self.assertIn("path: ${{ runner.temp }}/component-evidence/", upload)
+
     def test_duplicate_receipt_lines_are_rejected(self) -> None:
         line = " ".join(collector.REQUIRED_MARKERS)
         self.assertIn(

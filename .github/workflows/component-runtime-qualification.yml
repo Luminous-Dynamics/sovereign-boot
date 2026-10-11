@@ -46,9 +46,6 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
-      - name: Test evidence receipt validation
-        run: python3 tools/component-host-smoke/test_collect_evidence.py
-
       - name: Install Rust toolchain and WASI target
         run: |
           rustup toolchain install 1.96.0 --profile minimal --component rustfmt
@@ -58,6 +55,9 @@ jobs:
       # Resolve first so the lockfile can be preserved even when the guest build fails.
       - name: Resolve isolated host dependency graph
         run: cargo +1.96.0 generate-lockfile --manifest-path tools/component-host-smoke/Cargo.toml
+
+      - name: Test evidence receipt validation
+        run: python3 tools/component-host-smoke/test_collect_evidence.py
 
       - name: Check host formatting
         run: cargo +1.96.0 fmt --manifest-path tools/component-host-smoke/Cargo.toml -- --check

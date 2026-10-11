@@ -28,7 +28,10 @@ def missing_required_markers(log_text: str) -> list[str]:
     ]
     if len(receipt_lines) != 1:
         return ["exactly one component_runtime receipt line"]
-    return [marker for marker in REQUIRED_MARKERS if marker not in receipt_lines[0]]
+    # Treat assertions as exact whitespace-delimited fields, not substrings.
+    # A decorated or malformed field must never satisfy a pass assertion.
+    tokens = set(receipt_lines[0].split())
+    return [marker for marker in REQUIRED_MARKERS if marker not in tokens]
 
 
 SOURCE_PATHS = (

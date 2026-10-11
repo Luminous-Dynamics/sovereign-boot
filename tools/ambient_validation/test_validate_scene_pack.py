@@ -113,6 +113,24 @@ class ScenePackValidationTests(unittest.TestCase):
         issues = validate_manifest(self.schema, candidate, package_root=EXAMPLE_PATH.parent)
         self.assertEqual([], issues, "\n".join(map(str, issues)))
 
+    def test_non_numeric_uri_port_is_rejected(self):
+        candidate = copy.deepcopy(self.example)
+        candidate["license"]["sourceUrl"] = "https://example.invalid:service/path"
+        issues = validate_manifest(self.schema, candidate, package_root=EXAMPLE_PATH.parent)
+        self.assertIn("schema.invalid", {issue.code for issue in issues})
+
+    def test_brackets_outside_uri_authority_are_rejected(self):
+        candidate = copy.deepcopy(self.example)
+        candidate["license"]["sourceUrl"] = "https://example.invalid/path[fragment]"
+        issues = validate_manifest(self.schema, candidate, package_root=EXAMPLE_PATH.parent)
+        self.assertIn("schema.invalid", {issue.code for issue in issues})
+
+    def test_bracketed_ipv6_uri_is_accepted(self):
+        candidate = copy.deepcopy(self.example)
+        candidate["license"]["sourceUrl"] = "https://[2001:db8::1]:443/path"
+        issues = validate_manifest(self.schema, candidate, package_root=EXAMPLE_PATH.parent)
+        self.assertEqual([], issues, "\n".join(map(str, issues)))
+
     def test_invalid_schema_meta_schema_is_rejected(self):
         candidate_schema = copy.deepcopy(self.schema)
         candidate_schema["properties"]["schemaVersion"]["type"] = "not-a-json-schema-type"
