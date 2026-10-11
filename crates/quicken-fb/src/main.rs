@@ -14,12 +14,14 @@
 /// Signal handling:
 ///   SIGTERM — clean exit (restore CRTC, unmap, fade to black)
 ///   SIGINT  — same as SIGTERM
+use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use symthaea_quicken_fb::framebuffer::DrmFramebuffer;
 use symthaea_quicken_fb::mycelium::MycelialNetwork;
 use symthaea_quicken_fb::progress::{ProgressEvent, ProgressMonitor};
+use symthaea_quicken_fb::vt::VirtualTerminalGuard;
 
 /// Target frame rate for the animation.
 const TARGET_FPS: u32 = 30;
@@ -36,8 +38,46 @@ const FADE_DURATION: f32 = 1.5;
 /// Global flag set by signal handler.
 static SHUTDOWN: AtomicBool = AtomicBool::new(false);
 
-fn main() {
+fn main() -> ExitCode {
     let args = parse_args();
+
+    if args.probe {
+        match DrmFramebuffer::probe(&args.device) {
+            Ok(probe) => {
+                println!(
+                    "drm-ok device={} connector={}-{} crtc={:?} selection={} mode={}x{} refresh={}Hz",
+                    args.device,
+                    probe.connector_interface,
+                    probe.connector_interface_id,
+                    probe.crtc,
+                    probe.selection_source,
+                    probe.width,
+                    probe.height,
+                    probe.refresh_hz
+                );
+                return ExitCode::SUCCESS;
+            }
+            Err(e) => {
+                eprintln!("quicken-fb: DRM probe failed: {e}");
+                std::process::exit(1);
+            }
+        }
+    }
+
+    // The bounded physical canary must own a real active VT. This prevents
+    // accidental modesetting from a graphical terminal emulator and puts the
+    // VT in graphics mode while DRM directly owns scanout.
+    let _vt_guard = if args.canary_seconds.is_some() {
+        match VirtualTerminalGuard::enter() {
+            Ok(guard) => Some(guard),
+            Err(e) => {
+                eprintln!("quicken-fb: refusing bounded canary: {e}");
+                std::process::exit(1);
+            }
+        }
+    } else {
+        None
+    };
 
     // Install signal handlers
     install_signal_handlers();
@@ -71,11 +111,16 @@ fn main() {
 
     let frame_duration = Duration::from_nanos(1_000_000_000 / TARGET_FPS as u64);
     let start_time = Instant::now();
+    let canary_deadline = args
+        .canary_seconds
+        .map(|seconds| start_time + Duration::from_secs(seconds));
     let mut last_frame = Instant::now();
 
     // Animation state
     let mut completing = false;
     let mut contraction_start: Option<Instant> = None;
+
+    let mut exit_code = ExitCode::SUCCESS;
 
     // Main animation loop
     loop {
@@ -150,17 +195,51 @@ fn main() {
         // Render
         network.render(&mut render_buf);
 
-        // Blit to framebuffer
-        fb.blit_from(&render_buf);
+        // Blit to framebuffer. A mapping failure is a renderer failure, not
+        // something we silently continue through during a boot canary.
+        if let Err(e) = fb.blit_from(&render_buf) {
+            eprintln!("quicken-fb: framebuffer blit failed: {e}");
+            exit_code = ExitCode::from(2);
+            break;
+        }
+
+        if let Some(deadline) = canary_deadline {
+            if now >= deadline {
+                eprintln!("quicken-fb: bounded canary duration elapsed");
+                break;
+            }
+        }
     }
 
     // Clean exit — clear to black
     for pixel in render_buf.iter_mut() {
         *pixel = 0;
     }
-    fb.blit_from(&render_buf);
+    if let Err(e) = fb.blit_from(&render_buf) {
+        eprintln!("quicken-fb: final framebuffer clear failed: {e}");
+        exit_code = ExitCode::from(2);
+    }
 
-    eprintln!("quicken-fb: clean exit");
+    match fb.restore() {
+        Ok(receipt) => {
+            eprintln!(
+                "drm-restore-ok crtc={:?} connectors={} framebuffer={:?} mode={}x{} refresh={}Hz",
+                receipt.crtc,
+                receipt.connector_count,
+                receipt.framebuffer,
+                receipt.mode_width,
+                receipt.mode_height,
+                receipt.refresh_hz
+            );
+        }
+        Err(e) => {
+            eprintln!("quicken-fb: DRM restoration verification failed: {e}");
+            exit_code = ExitCode::from(3);
+        }
+    }
+
+    eprintln!("quicken-fb: clean exit status={:?}", exit_code);
+    exit_code
 }
 
 /// Parsed command-line arguments.
@@ -168,6 +247,8 @@ struct Args {
     genesis_phrase: String,
     progress_pipe: Option<String>,
     device: String,
+    probe: bool,
+    canary_seconds: Option<u64>,
 }
 
 /// Minimal argument parser (no clap dependency to keep binary small).
@@ -175,7 +256,9 @@ fn parse_args() -> Args {
     let args: Vec<String> = std::env::args().collect();
     let mut genesis_phrase = None;
     let mut progress_pipe = None;
-    let mut device = "/dev/dri/card0".to_string();
+    let mut device = None;
+    let mut probe = false;
+    let mut canary_seconds = None;
 
     let mut i = 1;
     while i < args.len() {
@@ -195,8 +278,32 @@ fn parse_args() -> Args {
             "--device" => {
                 i += 1;
                 if i < args.len() {
-                    device = args[i].clone();
+                    device = Some(args[i].clone());
+                } else {
+                    eprintln!("quicken-fb: --device requires a path");
+                    print_usage();
+                    std::process::exit(1);
                 }
+            }
+            "--canary-seconds" => {
+                i += 1;
+                if i >= args.len() {
+                    eprintln!("quicken-fb: --canary-seconds requires a value");
+                    print_usage();
+                    std::process::exit(1);
+                }
+                let value = match args[i].parse::<u64>() {
+                    Ok(value) if (1..=30).contains(&value) => value,
+                    _ => {
+                        eprintln!("quicken-fb: --canary-seconds must be an integer from 1 to 30");
+                        print_usage();
+                        std::process::exit(1);
+                    }
+                };
+                canary_seconds = Some(value);
+            }
+            "--probe" => {
+                probe = true;
             }
             "--help" | "-h" => {
                 print_usage();
@@ -211,10 +318,26 @@ fn parse_args() -> Args {
         i += 1;
     }
 
+    let device = match device {
+        Some(device) => device,
+        None => {
+            eprintln!("quicken-fb: --device is required");
+            print_usage();
+            std::process::exit(1);
+        }
+    };
+
+    if canary_seconds.is_some() && probe {
+        eprintln!("quicken-fb: --canary-seconds cannot be combined with --probe");
+        print_usage();
+        std::process::exit(1);
+    }
+
     let genesis_phrase = match genesis_phrase {
         Some(p) => p,
+        None if probe => String::new(),
         None => {
-            eprintln!("quicken-fb: --genesis-phrase is required");
+            eprintln!("quicken-fb: --genesis-phrase is required unless --probe is used");
             print_usage();
             std::process::exit(1);
         }
@@ -224,6 +347,8 @@ fn parse_args() -> Args {
         genesis_phrase,
         progress_pipe,
         device,
+        probe,
+        canary_seconds,
     }
 }
 
@@ -234,7 +359,9 @@ fn print_usage() {
          Options:\n\
          \x20 --genesis-phrase <PHRASE>   Genesis phrase for deterministic pattern seeding\n\
          \x20 --progress-pipe <PATH>      Named pipe for installer progress events\n\
-         \x20 --device <PATH>             DRM device path (default: /dev/dri/card0)\n\
+         \x20 --device <PATH>             DRM card device path (required)\n\
+         \x20 --canary-seconds <1-30>     Bounded modeset canary duration\n\
+         \x20 --probe                     Probe DRM/display capability without modesetting\n\
          \x20 --help                      Show this help"
     );
 }
@@ -248,6 +375,15 @@ fn install_signal_handlers() {
             signal_handler as nix::libc::sighandler_t,
         );
         nix::libc::signal(nix::libc::SIGINT, signal_handler as nix::libc::sighandler_t);
+        nix::libc::signal(nix::libc::SIGHUP, signal_handler as nix::libc::sighandler_t);
+        nix::libc::signal(
+            nix::libc::SIGQUIT,
+            signal_handler as nix::libc::sighandler_t,
+        );
+        nix::libc::signal(
+            nix::libc::SIGTSTP,
+            signal_handler as nix::libc::sighandler_t,
+        );
     }
 }
 

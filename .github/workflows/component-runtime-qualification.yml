@@ -1,0 +1,104 @@
+name: Component Model runtime qualification
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/component-runtime-qualification.yml"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - "crates/visual-core/**"
+      - "crates/visual-pack/**"
+      - "crates/visual-component/**"
+      - "tools/component-host-smoke/**"
+      - "tests/fixtures/first-germination.scene.json"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/component-runtime-qualification.yml"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - "crates/visual-core/**"
+      - "crates/visual-pack/**"
+      - "crates/visual-component/**"
+      - "tools/component-host-smoke/**"
+      - "tests/fixtures/first-germination.scene.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Runtime qualification has a separate lifecycle from the full Cargo/Nix lane.
+concurrency:
+  group: component-runtime-qualification-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qualify-component:
+    name: Instantiate and exercise the actual WIT component
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact source revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Install Rust toolchain and WASI target
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --component rustfmt
+          rustup +1.96.0 target add wasm32-wasip2
+          rustc +1.96.0 --version > "$RUNNER_TEMP/rustc-version.txt"
+
+      # Resolve first so the lockfile can be preserved even when the guest build fails.
+      - name: Resolve isolated host dependency graph
+        run: cargo +1.96.0 generate-lockfile --manifest-path tools/component-host-smoke/Cargo.toml
+
+      - name: Test evidence receipt validation
+        run: python3 tools/component-host-smoke/test_collect_evidence.py
+
+      - name: Check host formatting
+        run: cargo +1.96.0 fmt --manifest-path tools/component-host-smoke/Cargo.toml -- --check
+
+      - name: Build the production Component Model guest
+        run: cargo +1.96.0 build --locked --release -p sovereign-visual-component --target wasm32-wasip2
+
+      - name: Execute guest through the no-import Wasmtime host
+        run: |
+          set -euo pipefail
+          cargo +1.96.0 run --release --locked --manifest-path tools/component-host-smoke/Cargo.toml -- target/wasm32-wasip2/release/sovereign_visual_component.wasm > "$RUNNER_TEMP/component-runtime.log"
+          cat "$RUNNER_TEMP/component-runtime.log"
+
+      - name: Create source-bound qualification receipt
+        run: |
+          python3 tools/component-host-smoke/collect-evidence.py \
+            --expected-commit "${{ github.event.pull_request.head.sha || github.sha }}" \
+            --component target/wasm32-wasip2/release/sovereign_visual_component.wasm \
+            --fixture tests/fixtures/first-germination.scene.json \
+            --lockfile tools/component-host-smoke/Cargo.lock \
+            --runtime-log "$RUNNER_TEMP/component-runtime.log" \
+            --rustc-version "$(cat "$RUNNER_TEMP/rustc-version.txt")" \
+            --output "$RUNNER_TEMP/component-evidence/qualification.json"
+
+      - name: Assemble reviewable evidence packet
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/component-evidence"
+          if [ -f tools/component-host-smoke/Cargo.lock ]; then
+            cp tools/component-host-smoke/Cargo.lock "$RUNNER_TEMP/component-evidence/component-host-Cargo.lock"
+          fi
+          if [ -f "$RUNNER_TEMP/component-runtime.log" ]; then
+            cp "$RUNNER_TEMP/component-runtime.log" "$RUNNER_TEMP/component-evidence/runtime.log"
+          fi
+
+      - name: Upload runtime evidence and lockfile
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: component-runtime-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/component-evidence/
+          if-no-files-found: warn
+          retention-days: 7

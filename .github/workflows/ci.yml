@@ -1,0 +1,232 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+# Keep the exact current branch/PR head at the front of the queue; older
+# queued runs cannot qualify a newer source revision.
+concurrency:
+  group: sovereign-boot-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  cargo:
+    name: Cargo checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Install Rust 1.96
+        run: rustup toolchain install 1.96.0 --profile minimal --component rustfmt --component clippy
+
+      - name: Install WebAssembly targets
+        run: rustup +1.96.0 target add wasm32-unknown-unknown wasm32-wasip2
+
+      - name: Standalone contract
+        run: bash tests/standalone-contract.sh
+
+      - name: Format
+        run: cargo +1.96.0 fmt --all -- --check
+
+      - name: Check
+        run: cargo +1.96.0 check --workspace --locked
+
+      - name: Test
+        run: cargo +1.96.0 test --workspace --locked
+
+      - name: Build browser WASM adapter
+        run: cargo +1.96.0 build -p sovereign-visual-wasm --target wasm32-unknown-unknown --features web --release --locked
+
+      - name: Install matching wasm-bindgen CLI
+        run: cargo +1.96.0 install wasm-bindgen-cli --version 0.2.108 --locked
+
+      - name: Generate browser JavaScript bindings
+        shell: bash
+        run: |
+          set -euo pipefail
+          package_dir="$RUNNER_TEMP/visual-wasm-pkg"
+          mkdir -p "$package_dir"
+          wasm-bindgen --target web --out-dir "$package_dir" target/wasm32-unknown-unknown/release/sovereign_visual_wasm.wasm
+          printf '{"type":"module"}\n' > "$package_dir/package.json"
+          cp tests/fixtures/first-germination.scene.json "$package_dir/first-germination.scene.json"
+
+      - name: Render native legacy RGBA reference
+        run: cargo +1.96.0 run --locked -p sovereign-visual-core --example rgba-fixture > "$RUNNER_TEMP/native.rgba"
+
+      - name: Render native configured Scene Pack RGBA reference
+        run: cargo +1.96.0 run --locked -p sovereign-visual-pack --example configured-rgba-fixture > "$RUNNER_TEMP/native-configured.rgba"
+
+      - name: Smoke-test browser WASM runtime and native parity
+        run: node tests/visual-wasm-smoke.mjs "$RUNNER_TEMP/visual-wasm-pkg" "$RUNNER_TEMP/native.rgba" "$RUNNER_TEMP/native-configured.rgba"
+
+      - name: Set up Python for independent Scene Pack validation
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Verify vendored Scene Pack source identities
+        run: python tools/ambient_validation/verify_vendor_snapshot.py
+
+      - name: Install pinned Scene Pack validator dependencies
+        run: python -m pip install --disable-pip-version-check -r tools/ambient_validation/requirements.txt
+
+      - name: Validate Scene Pack v1 against Draft 2020-12
+        run: |
+          python tools/ambient_validation/validate_scene_pack.py tests/fixtures/first-germination.scene.json
+          python -m unittest discover -s tools/ambient_validation -p 'test_*.py' -v
+
+      - name: Check browser host JavaScript syntax
+        run: node --input-type=module --check < crates/visual-wasm/www/app.js
+
+      - name: Build WASI component
+        run: cargo +1.96.0 build -p sovereign-visual-wasi --target wasm32-wasip2 --release --locked
+
+      - name: Build WIT Component Model adapter
+        run: cargo +1.96.0 build -p sovereign-visual-component --target wasm32-wasip2 --release --locked
+
+      - name: Check component host formatting
+        run: cargo +1.96.0 fmt --manifest-path tools/component-host-smoke/Cargo.toml -- --check
+
+      - name: Resolve isolated Wasmtime host lockfile
+        run: cargo +1.96.0 generate-lockfile --manifest-path tools/component-host-smoke/Cargo.toml
+
+      - name: Execute component through capability-denied Wasmtime host
+        run: cargo +1.96.0 run --release --locked --manifest-path tools/component-host-smoke/Cargo.toml -- target/wasm32-wasip2/release/sovereign_visual_component.wasm
+
+      - name: Upload generated host lockfile for source pinning
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: component-host-lockfile
+          path: tools/component-host-smoke/Cargo.lock
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Clippy
+        run: cargo +1.96.0 clippy --workspace --all-targets --locked -- -D warnings
+
+  nix:
+    name: Nix build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      - name: Standalone contract
+        run: bash tests/standalone-contract.sh
+
+      - name: Flake check
+        run: nix flake check --no-update-lock-file --no-write-lock-file
+
+      - name: Format Nix
+        run: nix fmt -- --check
+
+      - name: Build physical canary app
+        run: nix build .#physical-canary --no-link --no-update-lock-file --no-write-lock-file
+
+      - name: Build boot canary helper
+        run: nix build .#arm-physical-canary --no-link --no-update-lock-file --no-write-lock-file
+
+      - name: Build renderer
+        run: nix build .#quicken-fb --no-link --no-update-lock-file --no-write-lock-file
+
+  provenance:
+    name: Signed renderer provenance
+    needs: [cargo, nix]
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.nix.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      - name: Build exact renderer
+        run: nix build .#quicken-fb --no-update-lock-file --no-write-lock-file
+
+      - name: Generate signed SLSA provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: ${{ github.workspace }}/result/bin/quicken-fb
+          show-summary: true
+
+      - name: Emit renderer CI qualification predicate
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > renderer-qualification-predicate.json <<JSON
+          {
+            "schema": "luminous-sovereign-boot-renderer-ci-qualification-v1",
+            "qualified_commit": "${GITHUB_SHA}",
+            "workflow_run_id": "${GITHUB_RUN_ID}",
+            "scope": {
+              "component": "quicken-fb",
+              "hosted_ci": true,
+              "physical_boot": false,
+              "lifecycle_state_recovery": false
+            },
+            "gates": {
+              "standalone_contract": "pass",
+              "cargo_format": "pass",
+              "cargo_check": "pass",
+              "cargo_test": "pass",
+              "cargo_clippy": "pass",
+              "browser_wasm_build": "pass",
+              "browser_wasm_bindings_generated": "pass",
+              "browser_wasm_runtime_smoke": "pass",
+              "wasi_cli_build": "pass",
+              "wasi_component_build": "pass",
+              "nix_flake_check": "pass",
+              "nix_format": "pass",
+              "physical_canary_app_build": "pass",
+              "boot_canary_helper_build": "pass",
+              "renderer_build": "pass"
+            },
+            "non_claims": [
+              "physical renderer execution qualification",
+              "verified DRM restoration on target hardware or VM",
+              "lifecycle/state/LKG integration qualification"
+            ],
+            "source": {
+              "git_tree": "$(git rev-parse HEAD^{tree})",
+              "cargo_lock_sha256": "$(sha256sum Cargo.lock | cut -d' ' -f1)",
+              "flake_lock_sha256": "$(sha256sum flake.lock | cut -d' ' -f1)"
+            }
+          }
+          JSON
+
+      - name: Generate signed renderer CI qualification attestation
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: ${{ github.workspace }}/result/bin/quicken-fb
+          predicate-type: https://github.com/Luminous-Dynamics/sovereign-boot/attestations/renderer-ci-qualification/v1
+          predicate-path: renderer-qualification-predicate.json
+          show-summary: true

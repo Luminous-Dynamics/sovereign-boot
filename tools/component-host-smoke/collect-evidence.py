@@ -1,0 +1,187 @@
+#!/usr/bin/env python3
+"""Create a small, source-bound receipt for successful Component Model execution."""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+REQUIRED_MARKERS = (
+    "component_runtime=wasmtime-49.0.2",
+    "configured_replay=byte-identical",
+    "branch_budget=pass",
+    "invalid_config_atomic=pass",
+    "tick_batch_bound=pass",
+    "wasi_imports=none",
+    "resources=dropped",
+)
+def missing_required_markers(log_text: str) -> list[str]:
+    """Require one explicit host receipt line containing every assertion marker."""
+    receipt_lines = [
+        line for line in log_text.splitlines()
+        if line.startswith("component_runtime=")
+    ]
+    if len(receipt_lines) != 1:
+        return ["exactly one component_runtime receipt line"]
+    # Treat assertions as exact whitespace-delimited fields, not substrings.
+    # A decorated or malformed field must never satisfy a pass assertion.
+    tokens = set(receipt_lines[0].split())
+    return [marker for marker in REQUIRED_MARKERS if marker not in tokens]
+
+
+SOURCE_PATHS = (
+    ".github/workflows/component-runtime-qualification.yml",
+    "Cargo.toml",
+    "Cargo.lock",
+    "rust-toolchain.toml",
+    "crates/visual-core/Cargo.toml",
+    "crates/visual-core/src/color.rs",
+    "crates/visual-core/src/contract.rs",
+    "crates/visual-core/src/lib.rs",
+    "crates/visual-core/src/mycelium.rs",
+    "crates/visual-core/src/settings.rs",
+    "crates/visual-pack/Cargo.toml",
+    "crates/visual-pack/src/lib.rs",
+    "crates/visual-component/Cargo.toml",
+    "crates/visual-component/src/lib.rs",
+    "crates/visual-component/wit/visual.wit",
+    "tests/fixtures/first-germination.scene.json",
+    "tools/component-host-smoke/Cargo.toml",
+    "tools/component-host-smoke/src/main.rs",
+    "tools/component-host-smoke/collect-evidence.py",
+)
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def required_repo_file(raw_path: Path, label: str) -> Path:
+    """Resolve an artifact and require it to stay inside the exact checked-out repository."""
+    candidate = raw_path if raw_path.is_absolute() else ROOT / raw_path
+    resolved = candidate.resolve()
+    if not resolved.is_relative_to(ROOT):
+        raise ValueError(f"{label} resolves outside the checked-out repository: {raw_path}")
+    if not resolved.is_file():
+        raise ValueError(f"{label} is missing or not a file: {raw_path}")
+    return resolved
+
+
+def file_record(relative: str) -> dict[str, object]:
+    path = (ROOT / relative).resolve()
+    if not path.is_relative_to(ROOT) or not path.is_file():
+        raise ValueError(f"required evidence input is missing or outside repository: {relative}")
+    return {"path": relative, "bytes": path.stat().st_size, "sha256": sha256_file(path)}
+
+
+def git_output(*args: str) -> str:
+    return subprocess.run(
+        ["git", *args], cwd=ROOT, check=True, capture_output=True, text=True
+    ).stdout.strip()
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--expected-commit", required=True, help="exact PR head SHA expected by the workflow")
+    parser.add_argument("--component", required=True, type=Path)
+    parser.add_argument("--fixture", required=True, type=Path)
+    parser.add_argument("--lockfile", required=True, type=Path)
+    parser.add_argument("--runtime-log", required=True, type=Path)
+    parser.add_argument("--rustc-version", required=True)
+    parser.add_argument("--output", required=True, type=Path)
+    args = parser.parse_args()
+
+    try:
+        # Do not issue a pass receipt just because the process exited 0:
+        # verify the host's explicit assertions are present in the log.
+        log_bytes = args.runtime_log.read_bytes()
+        log_text = log_bytes.decode("utf-8", errors="strict")
+        missing = missing_required_markers(log_text)
+        if missing:
+            raise ValueError("runtime receipt missing required success markers: " + ", ".join(missing))
+
+        if re.fullmatch(r"[0-9a-f]{40}", args.expected_commit) is None:
+            raise ValueError("expected commit must be a full lowercase 40-character Git SHA")
+        actual_commit = git_output("rev-parse", "HEAD")
+        if actual_commit != args.expected_commit:
+            raise ValueError(
+                f"checked-out commit mismatch: expected {args.expected_commit}, received {actual_commit}"
+            )
+
+        component = required_repo_file(args.component, "component artifact")
+        fixture = required_repo_file(args.fixture, "Scene Pack fixture")
+        lockfile = required_repo_file(args.lockfile, "host lockfile")
+        expected_fixture = (ROOT / "tests/fixtures/first-germination.scene.json").resolve()
+        if fixture != expected_fixture:
+            raise ValueError("runtime evidence must use the committed first-germination Scene Pack fixture")
+        if component.stat().st_size == 0 or lockfile.stat().st_size == 0:
+            raise ValueError("component and host lockfile must be non-empty")
+
+        evidence = {
+            "schema": "luminous-sovereign-visual-component-runtime-evidence-v1",
+            "result": "pass",
+            "source": {
+                "commit": actual_commit,
+                "expected_commit": args.expected_commit,
+                "tree": git_output("rev-parse", "HEAD^{tree}"),
+                "files": [file_record(path) for path in SOURCE_PATHS],
+            },
+            "execution": {
+                "workflow": os.environ.get("GITHUB_WORKFLOW", ""),
+                "run_id": os.environ.get("GITHUB_RUN_ID", ""),
+                "run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT", ""),
+                "workflow_ref": os.environ.get("GITHUB_WORKFLOW_REF", ""),
+                "runner_os": os.environ.get("RUNNER_OS", ""),
+                "rustc_version": args.rustc_version.strip(),
+                "required_runtime_markers": list(REQUIRED_MARKERS),
+                "runtime_log_sha256": hashlib.sha256(log_bytes).hexdigest(),
+            },
+            "artifacts": {
+                "component": {
+                    "path": str(args.component),
+                    "bytes": component.stat().st_size,
+                    "sha256": sha256_file(component),
+                },
+                "scene_pack_fixture": {
+                    "path": str(args.fixture),
+                    "bytes": fixture.stat().st_size,
+                    "sha256": sha256_file(fixture),
+                },
+                "host_lockfile": {
+                    "path": str(args.lockfile),
+                    "bytes": lockfile.stat().st_size,
+                    "sha256": sha256_file(lockfile),
+                },
+            },
+            "scope": {
+                "component_instantiated": True,
+                "host_imports_registered": False,
+                "configured_replay_byte_identical": True,
+                "hosted_ci_only": True,
+                "browser_presentation": False,
+                "physical_boot": False,
+                "whole_process_memory_limit": False,
+            },
+        }
+        output = args.output.resolve()
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        print(f"PASS: wrote source-bound runtime evidence to {output}")
+        return 0
+    except (OSError, UnicodeError, subprocess.CalledProcessError, ValueError, TypeError) as exc:
+        print(f"ERROR: cannot create runtime evidence: {exc}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

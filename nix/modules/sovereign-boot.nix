@@ -1,460 +1,460 @@
-# Spore Boot Ecology host integration.
+# Sovereign Boot renderer host integration.
 #
-# Safety rule: Spore may observe boot; Spore must never be required for boot.
-# This module is deliberately disabled by default until the VM gates are green.
+# Safety rule: Sovereign Boot is decorative. It may observe and render during
+# boot, but it must never become a boot dependency or authority boundary.
+#
+# The state/recovery/LKG helpers from the original monorepo extraction are not
+# wired here until their standalone binaries and evidence gates are present.
 {
   config,
-  pkgs,
   lib,
-  inputs ? null,
+  pkgs,
   ...
 }:
 
 let
-  cfg = config.luminous.services.sporeBoot;
-  types = lib.types;
+  cfg = config.luminous.services.sovereignBoot;
+  runtimeDir = "/run/sovereign-boot";
 
-  # Prefer explicit package overrides (useful for tests and canaries). On the
-  # real host, build the two boot binaries hermetically from the pinned Symthaea
-  # flake source instead of falling back to /usr/local or another mutable path.
-  inputSporeTools =
-    if inputs != null && inputs ? symthaea then
-      import (inputs.symthaea.outPath + "/nix/packages/spore-boot-tools.nix") {
-        inherit pkgs;
-        src = inputs.symthaea.outPath;
-      }
-    else
-      null;
-  renderer = if cfg.package != null then cfg.package else inputSporeTools;
-  stateTool = if cfg.statePackage != null then cfg.statePackage else inputSporeTools;
-
-  missingPackage = pkgs.runCommand "spore-boot-missing-package" { } ''
-    mkdir -p $out/bin
-  '';
-  # Keep interpolation evaluable so the explicit assertions below produce the
-  # useful error if somebody enables the module without declarative packages.
-  rendererPkg = if renderer == null then missingPackage else renderer;
-  statePkg = if stateTool == null then missingPackage else stateTool;
-  stateDir = cfg.stateDirectory;
-  runtimeDir = cfg.runtimeDirectory;
-  rootsDir = "/nix/var/nix/gcroots/spore-boot";
-
-  # Semantic rollback state must describe the generation that actually booted,
-  # not merely a userspace generation activated later with nixos-rebuild
-  # test/switch. /run/booted-system is created by stage 2 and remains stable
-  # until reboot; /run/current-system may legitimately change during activation.
-  bootedGeneration = pkgs.writeShellScript "spore-booted-generation" ''
-    set -eu
-    generation="$(${pkgs.coreutils}/bin/readlink -f /run/booted-system 2>/dev/null || true)"
-    case "$generation" in
-      /nix/store/*) printf '%s\n' "$generation" ;;
-      *) exit 1 ;;
-    esac
-  '';
-
-  # Replace a GC-root symlink with rename semantics instead of unlink/create.
-  # A crash can therefore leave the old root or the new root, but not an
-  # intentionally missing interval. `sync -f` makes the filesystem containing
-  # the root durable before the caller proceeds. This is intentionally heavier
-  # than a best-effort metadata flush: these writes happen only at lifecycle
-  # boundaries and protect recovery provenance.
-  atomicGcRoot = pkgs.writeShellScript "spore-atomic-gc-root" ''
-    set -eu
-    link="$1"
-    target="$2"
-    dir="$(${pkgs.coreutils}/bin/dirname "$link")"
-    base="$(${pkgs.coreutils}/bin/basename "$link")"
-    tmp="$dir/.''${base}.tmp.$$"
-    cleanup() { ${pkgs.coreutils}/bin/rm -f "$tmp"; }
-    trap cleanup EXIT INT TERM
-    ${pkgs.coreutils}/bin/mkdir -p "$dir"
-    ${pkgs.coreutils}/bin/ln -s "$target" "$tmp"
-    ${pkgs.coreutils}/bin/mv -Tf "$tmp" "$link"
-    ${pkgs.coreutils}/bin/sync -f "$dir"
-    trap - EXIT INT TERM
-  '';
-
-  # Power loss can strand scratch symlinks created immediately before an
-  # atomic rename. They are never semantic recovery roots, so remove only our
-  # narrowly named scratch links before rotating Current/Previous.
-  cleanupStaleRootScratch = pkgs.writeShellScript "spore-clean-stale-root-scratch" ''
-    set -eu
-    root=${lib.escapeShellArg rootsDir}
-    ${pkgs.coreutils}/bin/mkdir -p "$root"
-    ${pkgs.findutils}/bin/find "$root" -maxdepth 1 -type l \
-      \( -name '.current.tmp.*' -o -name '.previous.tmp.*' -o -name '.last-known-good.pending.*' \) \
-      -delete
-  '';
-
-  hardwareFingerprint = pkgs.writeShellScript "spore-hardware-fingerprint" ''
-    set -eu
-    {
-      cat /sys/class/dmi/id/product_name 2>/dev/null || true
-      printf 'cpus=%s\n' "$(${pkgs.coreutils}/bin/nproc 2>/dev/null || echo unknown)"
-      for dev in /sys/bus/pci/devices/*; do
-        [ -r "$dev/vendor" ] || continue
-        [ -r "$dev/device" ] || continue
-        printf '%s:%s\n' "$(cat "$dev/vendor")" "$(cat "$dev/device")"
-      done | ${pkgs.coreutils}/bin/sort
-    } | ${pkgs.coreutils}/bin/sha256sum | ${pkgs.coreutils}/bin/cut -d' ' -f1
-  '';
-
-  updateCurrentPreviousRoots = pkgs.writeShellScript "spore-update-current-previous-roots" ''
-    set -eu
-    root=${lib.escapeShellArg rootsDir}
-    current="$(${bootedGeneration})"
-    ${pkgs.coreutils}/bin/mkdir -p "$root"
-
-    if [ -L "$root/current" ]; then
-      old="$(${pkgs.coreutils}/bin/readlink -f "$root/current" 2>/dev/null || true)"
-      # "Previous" means previous distinct *booted* build, not merely the
-      # previous reboot or a live nixos-rebuild test/switch activation.
-      if [ -n "$old" ] && [ "$old" != "$current" ]; then
-        ${atomicGcRoot} "$root/previous" "$old"
-      fi
-    fi
-    ${atomicGcRoot} "$root/current" "$current"
-  '';
-
-  prepareState = pkgs.writeShellScript "spore-prepare-boot-state" ''
-    set -eu
-    receipt=${lib.escapeShellArg (runtimeDir + "/boot-state.json")}
-    lineage=${lib.escapeShellArg (runtimeDir + "/lineage.json")}
-
-    ${cleanupStaleRootScratch}
-
-    # A failed/restarted preparation must never leave an older or partial
-    # receipt eligible for ConditionPathExists. The renderer is decorative: no
-    # valid fresh receipt means it is skipped rather than fed ambiguous state.
-    ${pkgs.coreutils}/bin/rm -f \
-      "$receipt" \
-      "$lineage" \
-      ${lib.escapeShellArg (runtimeDir + "/compositor-handoff")} \
-      ${lib.escapeShellArg (runtimeDir + "/bless-skipped-live-activation")} \
-      ${lib.escapeShellArg (runtimeDir + "/lkg-promoted-generation")} \
-      ${lib.escapeShellArg (runtimeDir + "/lkg-decision-v1.json")} \
-      ${lib.escapeShellArg (runtimeDir + "/state-blessed")}
-
-    boot_id="$(${pkgs.coreutils}/bin/cat /proc/sys/kernel/random/boot_id 2>/dev/null || echo "unknown")"
-    generation="$(${bootedGeneration})"
-    hardware="$(${hardwareFingerprint})"
-    rc=0
-    ${statePkg}/bin/spore-recovery-linux prepare \
-      --roots-dir ${lib.escapeShellArg rootsDir} \
-      --state-dir ${lib.escapeShellArg stateDir} \
-      --runtime-dir ${lib.escapeShellArg runtimeDir} \
-      --generation "$generation" \
-      --boot-id "$boot_id" \
-      --hardware-fingerprint "$hardware" \
-      --storage-state unknown || rc=$?
-
-    if [ "$rc" -ne 0 ] || [ ! -s "$receipt" ] || [ ! -s "$lineage" ]; then
-      ${pkgs.coreutils}/bin/rm -f "$receipt" "$lineage"
-      if [ "$rc" -ne 0 ]; then
-        exit "$rc"
-      fi
-      exit 20
-    fi
-  '';
-
-  # Last Known Good is promoted asynchronously and idempotently. Each invocation
-  # samples systemd's current monotonic state exactly once: if graphical/display
-  # health has not converged yet, the service exits successfully and the timer
-  # retries later. The decorative renderer is never part of this predicate.
-  promoteLkg = pkgs.writeShellScript "spore-promote-last-known-good" ''
-    set -eu
-    decision_path=${lib.escapeShellArg (runtimeDir + "/lkg-decision-v1.json")}
-    receipt=${lib.escapeShellArg (runtimeDir + "/boot-state.json")}
-    lineage=${lib.escapeShellArg (runtimeDir + "/lineage.json")}
-
-    stop_timer() {
-      ${pkgs.systemd}/bin/systemctl stop spore-boot-lkg-promote.timer >/dev/null 2>&1 || true
-    }
-
-    write_decision() {
-      local decision="$1"
-      local reason_code="$2"
-      boot_id="$(${pkgs.coreutils}/bin/cat /proc/sys/kernel/random/boot_id 2>/dev/null || echo "unknown")"
-      booted="$(${bootedGeneration} 2>/dev/null || true)"
-      current="$(${pkgs.coreutils}/bin/readlink -f /run/current-system 2>/dev/null || true)"
-      local json
-      json="$(${pkgs.jq}/bin/jq -n \
-        --arg schema "lkg-decision-v1" \
-        --arg boot_id "$boot_id" \
-        --arg booted "$booted" \
-        --arg current "$current" \
-        --arg decision "$decision" \
-        --arg reason_code "$reason_code" \
-        '{
-          schema: $schema,
-          boot_id: $boot_id,
-          booted_generation: $booted,
-          current_userspace_generation: $current,
-          graphical_state: "inactive",
-          display_manager_state: "inactive",
-          display_manager_main_pid: 0,
-          display_manager_active_enter_monotonic_usec: 0,
-          required_stability_usec: 0,
-          observed_stability_usec: 0,
-          decision: $decision,
-          reason_code: $reason_code,
-          state_bless_result: 0,
-          resulting_lkg_target: ""
-        }')"
-      ${pkgs.coreutils}/bin/mkdir -p ${lib.escapeShellArg runtimeDir}
-      printf '%s\n' "$json" > "$decision_path" || true
-    }
-
-    if ${pkgs.systemd}/bin/systemctl is-failed --quiet spore-boot-state-prepare.service 2>/dev/null; then
-      write_decision "skipped" "state-preparation-failed"
-      stop_timer
-      exit 0
-    fi
-
-    if [ ! -s "$receipt" ] || [ ! -s "$lineage" ]; then
-      write_decision "skipped" "missing-runtime-state"
-      stop_timer
-      exit 0
-    fi
-
-    boot_id="$(${pkgs.coreutils}/bin/cat /proc/sys/kernel/random/boot_id 2>/dev/null || echo "unknown")"
-    booted="$(${bootedGeneration} 2>/dev/null || true)"
-    current="$(${pkgs.coreutils}/bin/readlink -f /run/current-system 2>/dev/null || true)"
-    graphical_state="$(${pkgs.systemd}/bin/systemctl is-active graphical.target 2>/dev/null || true)"
-    [ -z "$graphical_state" ] && graphical_state="inactive"
-    display_state="$(${pkgs.systemd}/bin/systemctl is-active display-manager.service 2>/dev/null || true)"
-    [ -z "$display_state" ] && display_state="inactive"
-    display_pid="$(${pkgs.systemd}/bin/systemctl show -p MainPID --value display-manager.service 2>/dev/null || echo 0)"
-    active_enter_usec="$(${pkgs.systemd}/bin/systemctl show -p ActiveEnterTimestampMonotonic --value display-manager.service 2>/dev/null || echo 0)"
-
-    now_monotonic_usec() {
-      ${pkgs.python3Minimal}/bin/python3 -c 'import time; print(int(time.clock_gettime(time.CLOCK_MONOTONIC) * 1000000))' 2>/dev/null || echo 0
-    }
-    now_usec="$(now_monotonic_usec)"
-    observed_usec=$(( now_usec - active_enter_usec ))
-    required_usec=$(( ${toString cfg.healthStabilitySeconds} * 1000000 ))
-
-    timer_started="$(${pkgs.systemd}/bin/systemctl show -p ActiveEnterTimestampMonotonic --value spore-boot-lkg-promote.timer 2>/dev/null || echo 0)"
-    expired_flag=""
-    if [ -n "$timer_started" ] && [ "$timer_started" -ne 0 ]; then
-      max_usec=$(( ${toString cfg.healthQualificationMaxSeconds} * 1000000 ))
-      if [ "$(( now_usec - timer_started ))" -ge "$max_usec" ]; then
-        expired_flag="--qualification-deadline-expired"
-      fi
-    fi
-
-    rc=0
-    ${statePkg}/bin/spore-recovery-linux qualify \
-      --roots-dir ${lib.escapeShellArg rootsDir} \
-      --state-dir ${lib.escapeShellArg stateDir} \
-      --runtime-dir ${lib.escapeShellArg runtimeDir} \
-      --boot-id "$boot_id" \
-      --booted-generation "$booted" \
-      --current-generation "$current" \
-      --graphical-state "$graphical_state" \
-      --display-state "$display_state" \
-      --display-pid "$display_pid" \
-      --active-enter-usec "$active_enter_usec" \
-      --observed-usec "$observed_usec" \
-      --required-stability-usec "$required_usec" \
-      $expired_flag \
-      --report-path "$decision_path" || rc=$?
-
-    if [ "$rc" -eq 75 ]; then
-      # Not ready yet, try again on next timer tick
-      exit 0
-    fi
-
-    if [ "$rc" -eq 0 ] && [ -s "$decision_path" ]; then
-      disp="$(${pkgs.jq}/bin/jq -r '.disposition // .decision // empty' "$decision_path" 2>/dev/null || true)"
-      reason="$(${pkgs.jq}/bin/jq -r '.terminal_reason // .reason_code // empty' "$decision_path" 2>/dev/null || true)"
-      if [ "$disp" = "promoted" ] || [ "$disp" = "already-promoted" ] || [ "$disp" = "already-known-good" ]; then
-        ${pkgs.coreutils}/bin/mkdir -p ${lib.escapeShellArg runtimeDir}
-        ${pkgs.coreutils}/bin/touch ${lib.escapeShellArg (runtimeDir + "/lkg-promoted-generation")}
-        if [ "$reason" != "already-promoted" ] && [ "$reason" != "already-known-good" ]; then
-          ${pkgs.coreutils}/bin/touch ${lib.escapeShellArg (runtimeDir + "/state-blessed")}
-        fi
-      fi
-    fi
-
-    # Terminal, Promoted, AlreadyKnownGood, or Failed -> stop timer
-    stop_timer
-    if [ "$rc" -ne 0 ]; then
-      exit "$rc"
-    fi
-  '';
-
-  markLifecycle =
-    kind:
-    pkgs.writeShellScript "spore-mark-${kind}" ''
-      set -eu
-      generation="$(${bootedGeneration} 2>/dev/null || true)"
-      uptime="$(${pkgs.gawk}/bin/awk '{ print int($1) }' /proc/uptime 2>/dev/null || echo 0)"
-      hardware="$(${hardwareFingerprint} 2>/dev/null || true)"
-      args=(
-        shutdown
-        --state-dir ${lib.escapeShellArg stateDir}
-        --runtime-dir ${lib.escapeShellArg runtimeDir}
-        --kind ${lib.escapeShellArg kind}
-        --uptime-secs "$uptime"
-      )
-      [ -n "$generation" ] && args+=(--generation "$generation")
-      [ -n "$hardware" ] && args+=(--hardware-fingerprint "$hardware")
-      exec ${statePkg}/bin/spore-boot-state "''${args[@]}"
-    '';
-
-  # This runs immediately before the real display manager starts. The marker is
-  # the graceful path: quicken-fb sees it and leaves DRM. `systemctl stop` is the
-  # enforcement path; TimeoutStopSec on the renderer bounds even a broken or
-  # maliciously stubborn process. The command is fail-open for the desktop.
-  compositorHandoff = pkgs.writeShellScript "spore-compositor-handoff" ''
+  compositorHandoff = pkgs.writeShellScript "sovereign-boot-compositor-handoff" ''
     set -u
-    ${pkgs.coreutils}/bin/mkdir -p ${lib.escapeShellArg runtimeDir}
-    ${pkgs.coreutils}/bin/touch ${lib.escapeShellArg (runtimeDir + "/compositor-handoff")}
-    ${pkgs.systemd}/bin/systemctl stop spore-boot-animation.service >/dev/null 2>&1 || true
+    \${pkgs.coreutils}/bin/mkdir -p \${lib.escapeShellArg runtimeDir}
+    \${pkgs.coreutils}/bin/touch \${lib.escapeShellArg (runtimeDir + "/compositor-handoff")}
+    \${pkgs.systemd}/bin/systemctl stop sovereign-boot-animation.service >/dev/null 2>&1 || true
     exit 0
   '';
 
-  # Avoid DRM acquisition during a live `nixos-rebuild test`/`switch` where the
-  # display manager is already running. Exit 1 from ExecCondition means systemd
-  # cleanly skips the decorative unit rather than treating it as a failure.
-  rendererMayStart = pkgs.writeShellScript "spore-renderer-may-start" ''
-    if ${pkgs.systemd}/bin/systemctl is-active --quiet display-manager.service; then
+  rendererMayStart = pkgs.writeShellScript "sovereign-boot-renderer-may-start" ''
+    # A live nixos-rebuild test/switch must never steal DRM from an active
+    # desktop session. systemd treats exit 1 from ExecCondition as a clean skip.
+    if \${pkgs.systemd}/bin/systemctl is-active --quiet display-manager.service; then
       exit 1
     fi
     exit 0
   '';
 
+
+  canaryRequestDir = "/var/lib/sovereign-boot";
+  canaryRequest = "${canaryRequestDir}/physical-canary.request";
+  canaryResult = "${canaryRequestDir}/physical-canary.result";
+  canaryArchiveDir = "${canaryRequestDir}/requests";
+  canaryProbeReceipt = "${canaryRequestDir}/physical-canary.probe";
+  canaryOutput = "${canaryRequestDir}/physical-canary.output";
+  canaryPrebootProbe = "${canaryRequestDir}/physical-canary.preboot-probe";
+
+  physicalCanaryPostStop = pkgs.writeShellScript "sovereign-boot-physical-canary-post-stop" ''
+    set -u
+
+    request=${lib.escapeShellArg canaryRequest}
+    inflight="$request.inflight"
+    result=${lib.escapeShellArg canaryResult}
+    canaryProbeReceipt=${lib.escapeShellArg canaryProbeReceipt}
+    canaryOutput=${lib.escapeShellArg canaryOutput}
+    canaryPrebootProbe=${lib.escapeShellArg canaryPrebootProbe}
+    archive_dir=${lib.escapeShellArg canaryArchiveDir}
+
+    write_atomic() {
+      local target="$1"
+      local tmp
+      tmp="$(mktemp "$target.tmp.XXXXXX")"
+      chmod 0600 "$tmp"
+      cat >"$tmp"
+      mv -f "$tmp" "$target"
+    }
+
+    copy_atomic() {
+      local source="$1"
+      local target="$2"
+      local tmp
+      tmp="$(mktemp "$target.tmp.XXXXXX")"
+      chmod 0600 "$tmp"
+      cat "$source" >"$tmp"
+      mv -f "$tmp" "$target"
+    }
+
+    [[ -e "$inflight" ]] || exit 0
+    request_id="$(${pkgs.gnused}/bin/sed -n 's/^request_id=//p' "$inflight")"
+    device="$(${pkgs.gnused}/bin/sed -n 's/^device=//p' "$inflight")"
+    armed_at_unix_s="$(${pkgs.gnused}/bin/sed -n 's/^armed_at_unix_s=//p' "$inflight")"
+    result_request_id=""
+    if [[ -e "$result" ]]; then
+      result_request_id="$(${pkgs.gnused}/bin/sed -n 's/^request_id=//p' "$result")"
+    fi
+    if [[ "$result_request_id" == "$request_id" ]] && [[ "\${SERVICE_RESULT:-unknown}" == "success" ]]; then
+      if [[ "$request_id" =~ ^[0-9a-f]{32}$ ]]; then
+        mkdir -p "$archive_dir"
+        if [[ -e "$archive_dir/$request_id.request" || -e "$archive_dir/$request_id.result" || -e "$archive_dir/$request_id.probe" || -e "$archive_dir/$request_id.output" || -e "$archive_dir/$request_id.preboot-probe" ]]; then
+          echo "sovereign-boot: refusing to overwrite existing historical canary archive for request_id=$request_id" >&2
+          exit 70
+        fi
+        if [[ -e "$result" ]]; then copy_atomic "$result" "$archive_dir/$request_id.result"; fi
+        if [[ -e "$canaryProbeReceipt" ]]; then copy_atomic "$canaryProbeReceipt" "$archive_dir/$request_id.probe"; fi
+        if [[ -e "$canaryOutput" ]]; then copy_atomic "$canaryOutput" "$archive_dir/$request_id.output"; fi
+        if [[ -e "$canaryPrebootProbe" ]]; then copy_atomic "$canaryPrebootProbe" "$archive_dir/$request_id.preboot-probe"; fi
+        mv -f "$inflight" "$archive_dir/$request_id.request"
+      else
+        rm -f "$inflight"
+      fi
+      exit 0
+    fi
+
+    case "\${SERVICE_RESULT:-unknown}" in
+      timeout) status="FAIL_SERVICE_TIMEOUT" ;;
+      *) status="FAIL_SERVICE_ABORTED" ;;
+    esac
+
+    printf 'status=%s\nboot_id=%s\nrequest_id=%s\narmed_at_unix_s=%s\ndevice=%s\nservice_result=%s\nexit_code=%s\nexit_status=%s\n' \
+      "$status" "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$armed_at_unix_s" "$device" "\${SERVICE_RESULT:-unknown}" "\${EXIT_CODE:-unknown}" "\${EXIT_STATUS:-unknown}" | write_atomic "$result"
+
+    if [[ "$request_id" =~ ^[0-9a-f]{32}$ ]]; then
+      mkdir -p "$archive_dir"
+      if [[ -e "$result" ]]; then copy_atomic "$result" "$archive_dir/$request_id.result"; fi
+      if [[ -e "$canaryProbeReceipt" ]]; then copy_atomic "$canaryProbeReceipt" "$archive_dir/$request_id.probe"; fi
+      if [[ -e "$canaryOutput" ]]; then copy_atomic "$canaryOutput" "$archive_dir/$request_id.output"; fi
+      if [[ -e "$canaryPrebootProbe" ]]; then copy_atomic "$canaryPrebootProbe" "$archive_dir/$request_id.preboot-probe"; fi
+      mv -f "$inflight" "$archive_dir/$request_id.request"
+    else
+      rm -f "$inflight"
+    fi
+  '';
+
+  physicalCanaryRunner = pkgs.writeShellScript "sovereign-boot-physical-canary-runner" ''
+    set -euo pipefail
+
+    request=${lib.escapeShellArg canaryRequest}
+    inflight="$request.inflight"
+    result=${lib.escapeShellArg canaryResult}
+    canaryProbeReceipt=${lib.escapeShellArg canaryProbeReceipt}
+    canaryOutput=${lib.escapeShellArg canaryOutput}
+    canaryPrebootProbe=${lib.escapeShellArg canaryPrebootProbe}
+    archive_dir=${lib.escapeShellArg canaryArchiveDir}
+    artifact="${cfg.package}/bin/quicken-fb"
+
+    write_atomic() {
+      local target="$1"
+      local tmp
+      tmp="$(mktemp "$target.tmp.XXXXXX")"
+      chmod 0600 "$tmp"
+      cat >"$tmp"
+      mv -f "$tmp" "$target"
+    }
+
+    if [[ ! -f "$request" ]]; then
+      echo "sovereign-boot: no physical canary request; skipping"
+      exit 0
+    fi
+
+    # Consume the request before renderer execution so an interrupted boot
+    # cannot silently schedule the same destructive modeset on every reboot.
+    mv -f "$request" "$inflight"
+    archive_inflight() {
+      if [[ "''${request_id:-}" =~ ^[0-9a-f]{32}$ ]]; then
+        mkdir -p "$archive_dir"
+        if [[ -e "$archive_dir/''${request_id}.request" || -e "$archive_dir/''${request_id}.result" || -e "$archive_dir/''${request_id}.probe" || -e "$archive_dir/''${request_id}.output" || -e "$archive_dir/''${request_id}.preboot-probe" ]]; then
+          echo "sovereign-boot: refusing to overwrite existing historical canary archive for request_id=$request_id" >&2
+          exit 70
+        fi
+        mv -f "$inflight" "$archive_dir/''${request_id}.request"
+      else
+        rm -f "$inflight"
+      fi
+    }
+
+    request_id="$(${pkgs.gnused}/bin/sed -n 's/^request_id=//p' "$inflight")"
+    device="$(${pkgs.gnused}/bin/sed -n 's/^device=//p' "$inflight")"
+    seconds="$(${pkgs.gnused}/bin/sed -n 's/^seconds=//p' "$inflight")"
+    requested_sha="$(${pkgs.gnused}/bin/sed -n 's/^artifact_sha256=//p' "$inflight")"
+    preboot_probe_sha="$(${pkgs.gnused}/bin/sed -n 's/^preboot_probe_sha256=//p' "$inflight")"
+    preboot_probe_actual_sha=""
+    if [[ -e "$canaryPrebootProbe" ]]; then
+      preboot_probe_actual_sha="$(${pkgs.coreutils}/bin/sha256sum "$canaryPrebootProbe" | ${pkgs.coreutils}/bin/cut -d' ' -f1)"
+    fi
+    armed_at_unix_s="$(${pkgs.gnused}/bin/sed -n 's/^armed_at_unix_s=//p' "$inflight")"
+    expires_at_unix_s="$(${pkgs.gnused}/bin/sed -n 's/^expires_at_unix_s=//p' "$inflight")"
+    if [[ ! "$request_id" =~ ^[0-9a-f]{32}$ ]]; then
+      echo "sovereign-boot: invalid physical canary request identity" >&2
+      printf 'status=FAIL_INVALID_REQUEST\nboot_id=%s\nrequest_id=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$request_id" | write_atomic "$result"
+      archive_inflight
+      exit 2
+    fi
+
+    actual_sha="$(${pkgs.coreutils}/bin/sha256sum "$artifact" | ${pkgs.coreutils}/bin/cut -d' ' -f1)"
+
+    if [[ "$device" != "${cfg.drmDevice}" ]]; then
+      echo "sovereign-boot: request device does not match configured DRM device: $device" >&2
+      printf 'status=FAIL_DEVICE_MISMATCH\nboot_id=%s\nrequest_id=%s\narmed_at_unix_s=%s\ndevice=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$armed_at_unix_s" "$device" | write_atomic "$result"
+      archive_inflight
+      exit 2
+    fi
+
+    if [[ ! "$requested_sha" =~ ^[0-9a-f]{64}$ ]] || [[ "$requested_sha" != "$actual_sha" ]]; then
+      echo "sovereign-boot: renderer artifact digest mismatch" >&2
+      printf 'status=FAIL_ARTIFACT_MISMATCH\nboot_id=%s\nrequest_id=%s\narmed_at_unix_s=%s\nexpected_sha=%s\nactual_sha=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$armed_at_unix_s" "$requested_sha" "$actual_sha" | write_atomic "$result"
+      archive_inflight
+      exit 3
+    fi
+
+    if [[ ! "$preboot_probe_sha" =~ ^[0-9a-f]{64}$ ]] || [[ "$preboot_probe_sha" != "$preboot_probe_actual_sha" ]]; then
+      echo "sovereign-boot: preboot probe evidence missing or mismatched" >&2
+      printf 'status=FAIL_PREBOOT_PROBE_MISMATCH\nboot_id=%s\nrequest_id=%s\nexpected_sha=%s\nactual_sha=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$preboot_probe_sha" "$preboot_probe_actual_sha" | write_atomic "$result"
+      archive_inflight
+      exit 9
+    fi
+
+    if [[ ! "$preboot_probe_sha" =~ ^[0-9a-f]{64}$ ]] || [[ ! "$armed_at_unix_s" =~ ^[0-9]+$ ]] || [[ ! "$expires_at_unix_s" =~ ^[0-9]+$ ]] || (( expires_at_unix_s < armed_at_unix_s )) || (( expires_at_unix_s - armed_at_unix_s > 900 )); then
+      echo "sovereign-boot: invalid canary request expiry" >&2
+      printf 'status=FAIL_INVALID_REQUEST\nboot_id=%s\nrequest_id=%s\narmed_at_unix_s=%s\nexpires_at_unix_s=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$armed_at_unix_s" "$expires_at_unix_s" | write_atomic "$result"
+      archive_inflight
+      exit 2
+    fi
+
+    now_unix_s="$(${pkgs.coreutils}/bin/date +%s)"
+    if (( armed_at_unix_s > now_unix_s + 300 )); then
+      echo "sovereign-boot: physical canary request is too far in the future" >&2
+      printf 'status=FAIL_INVALID_REQUEST\nboot_id=%s\nrequest_id=%s\ndevice=%s\nseconds=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$device" "$seconds" | write_atomic "$result"
+      archive_inflight
+      exit 2
+    fi
+    if (( now_unix_s > expires_at_unix_s )); then
+      echo "sovereign-boot: physical canary request has expired; refusing execution" >&2
+      printf 'status=FAIL_EXPIRED_REQUEST\nboot_id=%s\nrequest_id=%s\narmed_at_unix_s=%s\nexpires_at_unix_s=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$armed_at_unix_s" "$expires_at_unix_s" | write_atomic "$result"
+      archive_inflight
+      exit 8
+    fi
+
+    if [[ "$device" != /dev/dri/card[0-9]* ]] || [[ ! -e "$device" ]]; then
+      echo "sovereign-boot: invalid physical canary device request: $device" >&2
+      printf 'status=FAIL_INVALID_REQUEST\nboot_id=%s\nrequest_id=%s\narmed_at_unix_s=%s\nexpires_at_unix_s=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$armed_at_unix_s" "$expires_at_unix_s" | write_atomic "$result"
+      archive_inflight
+      exit 2
+    fi
+
+    if [[ ! "$seconds" =~ ^[0-9]+$ ]] || (( seconds < 1 || seconds > 30 )); then
+      echo "sovereign-boot: invalid physical canary duration: $seconds" >&2
+      printf 'status=FAIL_INVALID_REQUEST\nboot_id=%s\n' "$(< /proc/sys/kernel/random/boot_id)" | write_atomic "$result"
+      archive_inflight
+      exit 2
+    fi
+
+    if ${pkgs.systemd}/bin/systemctl is-active --quiet display-manager.service; then
+      echo "sovereign-boot: display manager active; refusing canary" >&2
+      printf 'status=FAIL_DISPLAY_MANAGER\nboot_id=%s\nrequest_id=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$request_id" | write_atomic "$result"
+      archive_inflight
+      exit 4
+    fi
+
+    probe_output="$("$artifact" --probe --device "$device" 2>&1)" || {
+      echo "sovereign-boot: boot-time non-mutating DRM probe failed" >&2
+      printf 'status=FAIL_PROBE\nboot_id=%s\nrequest_id=%s\ndevice=%s\npreboot_probe_sha256=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$device" "$preboot_probe_sha" | write_atomic "$result"
+      archive_inflight
+      exit 5
+    }
+    case "$probe_output" in
+      drm-ok\ *) ;;
+      *)
+        echo "sovereign-boot: boot-time DRM probe returned no valid receipt" >&2
+        printf "%s\n" "$probe_output" | write_atomic "$canaryProbeReceipt"
+        probe_sha="$(sha256sum "$canaryProbeReceipt" | cut -d' ' -f1)"
+        printf 'status=FAIL_PROBE_RECEIPT\nboot_id=%s\nrequest_id=%s\ndevice=%s\npreboot_probe_sha256=%s\npreboot_probe_actual_sha256=%s\nboot_probe_sha256=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$device" "$preboot_probe_sha" "$preboot_probe_actual_sha" "$probe_sha" | write_atomic "$result"
+        archive_inflight
+        exit 6
+        ;;
+    esac
+    printf "%s\n" "$probe_output" | write_atomic "$canaryProbeReceipt"
+    probe_sha="$(sha256sum "$canaryProbeReceipt" | cut -d' ' -f1)"
+    echo "Sovereign Boot: boot-time probe: $probe_output"
+
+    active_vt="$(${pkgs.coreutils}/bin/cat /sys/class/tty/tty0/active 2>/dev/null || true)"
+    if [[ "$active_vt" != "tty1" ]]; then
+      echo "sovereign-boot: refusing physical canary because tty1 is not active (active=$active_vt)" >&2
+      printf 'status=FAIL_WRONG_VT\nboot_id=%s\nrequest_id=%s\nactive_vt=%s\n' "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$active_vt" | write_atomic "$result"
+      archive_inflight
+      exit 3
+    fi
+
+    echo "Sovereign Boot: boot-scoped physical canary armed for this boot."
+    echo "Sovereign Boot: device=$device seconds=$seconds"
+    echo "Sovereign Boot: display-manager.service is intentionally not started yet."
+
+    set +e
+    canary_output="$("$artifact" --genesis-phrase "${lib.escapeShellArg cfg.genesisPhrase}" \
+      --device "$device" --canary-seconds "$seconds" 2>&1)"
+    rc=$?
+    set -e
+    printf "%s\n" "$canary_output" | write_atomic "$canaryOutput"
+    printf "%s\n" "$canary_output"
+
+    output_sha="$(sha256sum "$canaryOutput" | cut -d' ' -f1)"
+    restore_receipt="$(${pkgs.gnugrep}/bin/grep -m1 "^drm-restore-ok " <<<"$canary_output" || true)"
+    if (( rc == 0 )) && [[ -n "$restore_receipt" ]]; then
+      status="PASS"
+    elif (( rc == 0 )); then
+      status="FAIL_RESTORE_RECEIPT"
+      rc=7
+    else
+      status="FAIL_RENDERER"
+    fi
+
+    restore_sha=""
+    if [[ -n "$restore_receipt" ]]; then
+      restore_sha="$(printf '%s\n' "$restore_receipt" | sha256sum | cut -d' ' -f1)"
+    fi
+    printf 'status=%s\nboot_id=%s\nrequest_id=%s\narmed_at_unix_s=%s\nexpires_at_unix_s=%s\ndevice=%s\nseconds=%s\nexit_code=%s\nartifact_sha256=%s\npreboot_probe_sha256=%s\nboot_probe_sha256=%s\nrenderer_output_sha256=%s\nrestore_receipt_sha256=%s\n' \
+      "$status" "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$armed_at_unix_s" "$expires_at_unix_s" "$device" "$seconds" "$rc" "$actual_sha" "$preboot_probe_sha" "$preboot_probe_actual_sha" "$probe_sha" "$output_sha" "$restore_sha" | write_atomic "$result"
+    mkdir -p "$archive_dir"
+    if [[ -e "$archive_dir/$request_id.request" || -e "$archive_dir/$request_id.result" || -e "$archive_dir/$request_id.probe" || -e "$archive_dir/$request_id.output" || -e "$archive_dir/$request_id.preboot-probe" ]]; then
+      echo "sovereign-boot: refusing to overwrite existing historical canary archive for request_id=$request_id" >&2
+      exit 70
+    fi
+    if [[ -e "$result" ]]; then
+      copy_atomic "$result" "$archive_dir/$request_id.result"
+    fi
+    if [[ -e "$canaryProbeReceipt" ]]; then
+      copy_atomic "$canaryProbeReceipt" "$archive_dir/$request_id.probe"
+    fi
+    if [[ -e "$canaryOutput" ]]; then
+      copy_atomic "$canaryOutput" "$archive_dir/$request_id.output"
+    fi
+    if [[ -e "$canaryPrebootProbe" ]]; then
+      copy_atomic "$canaryPrebootProbe" "$archive_dir/$request_id.preboot-probe"
+    fi
+    mv -f "$inflight" "$archive_dir/$request_id.request"
+
+    if (( rc == 0 )); then
+      echo "Sovereign Boot: boot-scoped physical canary PASS"
+    else
+      echo "Sovereign Boot: boot-scoped physical canary FAIL (exit=$rc)" >&2
+    fi
+
+    exit "$rc"
+  '';
+
+  progressArg =
+    lib.optionalString (cfg.progressPipe != null)
+      " --progress-pipe \${lib.escapeShellArg cfg.progressPipe}";
 in
 {
-  options.luminous.services.sporeBoot = {
-    enable = lib.mkEnableOption "state-aware Spore Boot Ecology";
+  options.luminous.services.sovereignBoot = {
+    enable = lib.mkEnableOption "fail-open Sovereign Boot DRM/KMS renderer";
 
     package = lib.mkOption {
-      type = types.nullOr types.package;
-      default = null;
-      description = "Optional override package containing bin/quicken-fb; otherwise the pinned Symthaea input is built.";
+      type = lib.types.package;
+      description = ''
+        The sovereign-boot package containing bin/quicken-fb. Bind this to the
+        exact flake input revision used by the host configuration.
+      '';
     };
 
-    statePackage = lib.mkOption {
-      type = types.nullOr types.package;
-      default = null;
-      description = "Optional override package containing bin/spore-boot-state; otherwise the pinned Symthaea input is built.";
-    };
-
-    stateDirectory = lib.mkOption {
-      type = types.str;
-      default = "/var/lib/spore-boot";
-      description = "Persistent bounded Spore boot lineage/state directory.";
-    };
-
-    runtimeDirectory = lib.mkOption {
-      type = types.str;
-      default = "/run/spore-boot";
-      description = "Ephemeral directory containing the current boot receipt.";
+    genesisPhrase = lib.mkOption {
+      type = lib.types.str;
+      default = "Sovereign Boot";
+      description = "Deterministic visual seed for the boot animation.";
     };
 
     drmDevice = lib.mkOption {
-      type = types.str;
-      default = "auto";
-      description = "DRM/KMS device path or auto discovery.";
-    };
-
-    healthStabilitySeconds = lib.mkOption {
-      type = types.ints.between 0 120;
-      default = 10;
+      type = lib.types.str;
       description = ''
-        Seconds the display-manager process must remain continuously active after
-        graphical.target before the actually booted generation may become Last
-        Known Good. This promotion is asynchronous and never delays the desktop.
+        Explicit DRM/KMS card device used for the boot canary. No implicit
+        card0 default is provided because multi-GPU systems may expose the
+        connected display on another DRM card.
       '';
     };
 
-    healthQualificationMaxSeconds = lib.mkOption {
-      type = types.ints.between 1 86400;
-      default = 120;
-      description = ''
-        Maximum monotonic retry window for asynchronous Last Known Good
-        qualification during one boot. Once this window expires, Spore stops
-        retrying and leaves the previous LKG untouched.
-      '';
+    progressPipe = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Optional named pipe receiving installer progress events.";
     };
   };
 
   config = lib.mkIf cfg.enable {
     assertions = [
       {
-        assertion = renderer != null;
-        message = "Spore Boot requires luminous.services.sporeBoot.package or the Symthaea flake input";
-      }
-      {
-        assertion = stateTool != null;
-        message = "Spore Boot requires luminous.services.sporeBoot.statePackage or the Symthaea flake input";
-      }
-      {
-        assertion = cfg.healthQualificationMaxSeconds >= cfg.healthStabilitySeconds;
-        message = "Spore Boot healthQualificationMaxSeconds must be >= healthStabilitySeconds";
+        assertion = builtins.match "^/dev/dri/card[0-9]+$" cfg.drmDevice != null;
+        message = "Sovereign Boot drmDevice must be an explicit /dev/dri/cardN path";
       }
     ];
 
-    # Keep broad generation history in systemd-boot while the three semantic
-    # roots below protect exact store closures from GC.
-    boot.loader.systemd-boot.configurationLimit = lib.mkDefault 15;
 
     systemd.tmpfiles.rules = [
-      "d ${runtimeDir} 0755 root root -"
-      "d ${stateDir} 0700 root root -"
-      "d ${rootsDir} 0755 root root -"
+      "d ${runtimeDir} 0755 root root -",
+      "d ${canaryRequestDir} 0700 root root -",
+      "d ${canaryArchiveDir} 0700 root root -"
     ];
 
-    # Capture previous-state facts and rotate Current/Previous semantic roots.
-    # Failure is non-fatal to boot and merely causes the animation to skip.
-    systemd.services.spore-boot-state-prepare = {
-      description = "Prepare factual Spore boot-state receipt";
+    systemd.services.sovereign-boot-physical-canary = {
+      description = "Sovereign Boot one-shot physical DRM/KMS canary";
       wantedBy = [ "multi-user.target" ];
-      after = [
-        "local-fs.target"
-        "systemd-tmpfiles-setup.service"
+      before = [
+        "display-manager.service"
+        "getty@tty1.service"
+        "sovereign-boot-animation.service"
       ];
-      before = [ "spore-boot-animation.service" ];
+      unitConfig = {
+        ConditionPathExists = canaryRequest;
+      };
       serviceConfig = {
         Type = "oneshot";
-        ExecStart = prepareState;
-        # cfg.stateDirectory/cfg.runtimeDirectory are created by tmpfiles above.
-        # Do not also create hard-coded /var/lib/spore-boot or /run/spore-boot
-        # here, otherwise custom paths silently diverge from the service sandbox.
+        ExecStart = physicalCanaryRunner;
+        ExecStopPost = physicalCanaryPostStop;
+        StandardInput = "tty-fail";
+        StandardOutput = "journal";
+        StandardError = "journal";
+        TTYPath = "/dev/tty1";
+        TTYReset = true;
+        TTYVHangup = true;
+        TTYVTDisallocate = false;
+        User = "root";
+        SupplementaryGroups = [ "video" "render" ];
+        TimeoutStartSec = "35s";
         NoNewPrivileges = true;
-        PrivateTmp = true;
         ProtectHome = true;
         ProtectKernelTunables = true;
         ProtectKernelModules = true;
         ProtectControlGroups = true;
+        RestrictNamespaces = true;
+        LockPersonality = true;
+        PrivateTmp = true;
+        ProtectSystem = "strict";
+        RestrictSUIDSGID = true;
+        RestrictRealtime = true;
+        CapabilityBoundingSet = "";
+        UMask = "0077";
+        DevicePolicy = "strict";
+        DeviceAllow = [
+          "${cfg.drmDevice} rw"
+          "/dev/tty1 rw"
+          "/dev/null rw"
+          "/dev/zero r"
+          "/dev/full r"
+          "/dev/random r"
+          "/dev/urandom r"
+        ];
+        ReadWritePaths = [ canaryRequestDir canaryArchiveDir ];
       };
     };
 
-    # Decorative renderer. It only attempts DRM before the display manager is
-    # already active (important for `nixos-rebuild test/switch` on a live
-    # desktop). At normal boot it runs until the display manager's explicit
-    # ExecStartPre handoff below or its own hard deadline.
-    systemd.services.spore-boot-animation = {
-      description = "Spore state-aware procedural boot animation";
+
+    systemd.services.sovereign-boot-animation = {
+      description = "Sovereign Boot procedural DRM/KMS animation";
       wantedBy = [ "multi-user.target" ];
-      wants = [ "spore-boot-state-prepare.service" ];
-      after = [ "spore-boot-state-prepare.service" ];
       before = [ "display-manager.service" ];
       unitConfig = {
-        ConditionPathExists = runtimeDir + "/boot-state.json";
+        ConditionPathExists = "/dev/dri";
+        Conflicts = [ "display-manager.service" ];
       };
       serviceConfig = {
         Type = "simple";
         ExecCondition = rendererMayStart;
-        ExecStart = "${rendererPkg}/bin/quicken-fb --receipt ${runtimeDir}/boot-state.json --lineage ${runtimeDir}/lineage.json --handoff-path ${runtimeDir}/compositor-handoff --device ${lib.escapeShellArg cfg.drmDevice}";
+        ExecStart =
+          "\${cfg.package}/bin/quicken-fb"
+          + " --genesis-phrase \${lib.escapeShellArg cfg.genesisPhrase}"
+          + " --device \${lib.escapeShellArg cfg.drmDevice}"
+          + progressArg;
         User = "root";
-        SupplementaryGroups = [
-          "video"
-          "render"
-        ];
+        SupplementaryGroups = [ "video" "render" ];
         KillSignal = "SIGTERM";
+        TimeoutStartSec = "3s";
         TimeoutStopSec = "750ms";
         Restart = "no";
         NoNewPrivileges = true;
@@ -465,94 +465,18 @@ in
         RestrictNamespaces = true;
         LockPersonality = true;
         PrivateTmp = true;
+        ProtectSystem = "strict";
+        RestrictSUIDSGID = true;
+        RestrictRealtime = true;
+        CapabilityBoundingSet = "";
+        DeviceAllow = "\${cfg.drmDevice} rw";
+        ReadWritePaths = [ runtimeDir ];
       };
     };
 
-    # Make DRM ownership transfer explicit instead of relying on a mutual
-    # Conflicts transaction. Existing display-manager ExecStartPre entries are
-    # preserved and this hook is prepended.
-    systemd.services.display-manager.serviceConfig.ExecStartPre = lib.mkBefore [ compositorHandoff ];
-
-    # LKG promotion is deliberately *not* ordered before graphical.target. A
-    # broken health/promote helper cannot delay graphical availability, and a
-    # display manager that only survives startup momentarily is not considered
-    # stable enough to bless the generation.
-    systemd.services.spore-boot-lkg-promote = {
-      description = "Promote stable booted generation to Spore Last Known Good";
-      serviceConfig = {
-        Type = "oneshot";
-        ExecStart = promoteLkg;
-        NoNewPrivileges = true;
-        PrivateTmp = true;
-        ProtectHome = true;
-        ProtectKernelTunables = true;
-        ProtectKernelModules = true;
-        ProtectControlGroups = true;
-      };
-    };
-
-    systemd.timers.spore-boot-lkg-promote = {
-      description = "Schedule non-blocking Spore Last Known Good qualification";
-      wantedBy = [ "multi-user.target" ];
-      wants = [ "spore-boot-state-prepare.service" ];
-      after = [ "spore-boot-state-prepare.service" ];
-      timerConfig = {
-        OnActiveSec = "1s";
-        OnUnitInactiveSec = "2s";
-        AccuracySec = "1s";
-        Unit = "spore-boot-lkg-promote.service";
-      };
-    };
-
-    # Separate shutdown targets preserve the difference between reboot and
-    # poweroff without guessing in the state model.
-    systemd.services.spore-boot-mark-reboot = {
-      description = "Record clean reboot for next Spore boot";
-      wantedBy = [ "reboot.target" ];
-      before = [ "reboot.target" ];
-      unitConfig.DefaultDependencies = false;
-      serviceConfig = {
-        Type = "oneshot";
-        ExecStart = markLifecycle "reboot";
-      };
-    };
-
-    systemd.services.spore-boot-mark-poweroff = {
-      description = "Record clean poweroff for next Spore boot";
-      wantedBy = [
-        "poweroff.target"
-        "halt.target"
-      ];
-      before = [
-        "poweroff.target"
-        "halt.target"
-      ];
-      unitConfig.DefaultDependencies = false;
-      serviceConfig = {
-        Type = "oneshot";
-        ExecStart = markLifecycle "poweroff";
-      };
-    };
-
-    # Sleep/hibernate state is factual too. A post-resume hook removes the
-    # marker so a later unexpected loss is not misreported as a clean resume.
-    environment.etc."systemd/system-sleep/spore-boot-state" = {
-      mode = "0755";
-      text = ''
-        #!${pkgs.runtimeShell}
-        set -eu
-        case "$1:$2" in
-          pre:suspend|pre:suspend-then-hibernate)
-            ${markLifecycle "suspend"} || true
-            ;;
-          pre:hibernate|pre:hybrid-sleep)
-            ${markLifecycle "hibernate"} || true
-            ;;
-          post:*)
-            ${pkgs.coreutils}/bin/rm -f ${lib.escapeShellArg (stateDir + "/clean-shutdown.json")}
-            ;;
-        esac
-      '';
-    };
+    # The display manager is the explicit DRM owner handoff point. Existing
+    # ExecStartPre hooks are preserved because mkBefore composes the list.
+    systemd.services.display-manager.serviceConfig.ExecStartPre =
+      lib.mkBefore [ compositorHandoff ];
   };
 }

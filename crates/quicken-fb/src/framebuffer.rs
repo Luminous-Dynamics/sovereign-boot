@@ -43,6 +43,7 @@ impl Card {
 pub enum DrmError {
     DeviceOpen(String, std::io::Error),
     NoConnector,
+    NoConnectedDisplay(String),
     NoMode,
     NoEncoder,
     NoCrtc,
@@ -51,13 +52,17 @@ pub enum DrmError {
     BufferMap(std::io::Error),
     FramebufferAdd(std::io::Error),
     ModeSetting(std::io::Error),
+    CrtcQuery(std::io::Error),
+    RestoreVerification(String),
+    SourceBufferTooSmall { expected: usize, actual: usize },
 }
 
 impl std::fmt::Display for DrmError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::DeviceOpen(path, e) => write!(f, "cannot open DRM device {path}: {e}"),
-            Self::NoConnector => write!(f, "no connected display found"),
+            Self::NoConnector => write!(f, "no connector available"),
+            Self::NoConnectedDisplay(details) => write!(f, "no connected display found; {details}"),
             Self::NoMode => write!(f, "no display mode available"),
             Self::NoEncoder => write!(f, "no encoder for connector"),
             Self::NoCrtc => write!(f, "no CRTC available"),
@@ -66,6 +71,14 @@ impl std::fmt::Display for DrmError {
             Self::BufferMap(e) => write!(f, "dumb buffer map failed: {e}"),
             Self::FramebufferAdd(e) => write!(f, "framebuffer add failed: {e}"),
             Self::ModeSetting(e) => write!(f, "mode setting failed: {e}"),
+            Self::CrtcQuery(e) => write!(f, "CRTC state query failed: {e}"),
+            Self::RestoreVerification(details) => {
+                write!(f, "CRTC restoration verification failed: {details}")
+            }
+            Self::SourceBufferTooSmall { expected, actual } => write!(
+                f,
+                "render buffer too small: expected {expected} pixels, got {actual}"
+            ),
         }
     }
 }
@@ -89,6 +102,105 @@ pub struct DrmFramebuffer {
     dumb_buffer: control::dumbbuffer::DumbBuffer,
     /// Original CRTC state for restore on drop.
     original_crtc: Option<control::crtc::Info>,
+    /// Connectors originally driven by the selected CRTC.
+    original_connectors: Vec<control::connector::Handle>,
+    restored: bool,
+}
+
+fn select_crtc(
+    card: &Card,
+    res: &ResourceHandles,
+    connector: &ConnectorInfo,
+) -> Result<(CrtcHandle, &'static str), DrmError> {
+    if let Some(encoder_handle) = connector.current_encoder() {
+        let encoder = card
+            .get_encoder(encoder_handle)
+            .map_err(DrmError::ResourceQuery)?;
+        if let Some(crtc) = encoder.crtc() {
+            return Ok((crtc, "current"));
+        }
+    }
+
+    for &encoder_handle in connector.encoders() {
+        let encoder = card
+            .get_encoder(encoder_handle)
+            .map_err(DrmError::ResourceQuery)?;
+        for crtc in res.filter_crtcs(encoder.possible_crtcs()) {
+            if connected_connectors_for_crtc(card, res, crtc)?.is_empty() {
+                return Ok((crtc, "free-compatible"));
+            }
+        }
+    }
+
+    Err(DrmError::NoCrtc)
+}
+
+fn connected_connectors_for_crtc(
+    card: &Card,
+    res: &ResourceHandles,
+    crtc: CrtcHandle,
+) -> Result<Vec<control::connector::Handle>, DrmError> {
+    let mut connectors = Vec::new();
+    for &connector_handle in res.connectors() {
+        let connector = card
+            .get_connector(connector_handle, false)
+            .map_err(DrmError::ResourceQuery)?;
+        if let Some(encoder_handle) = connector.current_encoder() {
+            let encoder = card
+                .get_encoder(encoder_handle)
+                .map_err(DrmError::ResourceQuery)?;
+            if encoder.crtc() == Some(crtc) {
+                connectors.push(connector_handle);
+            }
+        }
+    }
+    Ok(connectors)
+}
+
+/// Describe connector state without forcing a probe or changing modeset state.
+fn connector_diagnostics(card: &Card, res: &ResourceHandles) -> String {
+    let mut entries = Vec::new();
+    for &conn_handle in res.connectors() {
+        let conn = match card.get_connector(conn_handle, false) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        entries.push(format!(
+            "{}-{}:{:?}:modes={}",
+            conn.interface().as_str(),
+            conn.interface_id(),
+            conn.state(),
+            conn.modes().len()
+        ));
+    }
+    if entries.is_empty() {
+        "card exposes no readable connectors".to_string()
+    } else {
+        format!("connectors=[{}]", entries.join(","))
+    }
+}
+
+/// Evidence emitted after the original scanout state is independently verified.
+#[derive(Debug, Clone, Copy)]
+pub struct DrmRestoreReceipt {
+    pub crtc: CrtcHandle,
+    pub connector_count: usize,
+    pub framebuffer: Option<FbHandle>,
+    pub mode_width: u32,
+    pub mode_height: u32,
+    pub refresh_hz: u32,
+}
+
+/// Non-mutating DRM hardware qualification result.
+#[derive(Debug, Clone, Copy)]
+pub struct DrmProbe {
+    pub width: u32,
+    pub height: u32,
+    pub refresh_hz: u32,
+    pub connector_interface: &'static str,
+    pub connector_interface_id: u32,
+    pub crtc: CrtcHandle,
+    pub selection_source: &'static str,
 }
 
 impl DrmFramebuffer {
@@ -103,16 +215,19 @@ impl DrmFramebuffer {
         // Find first connected connector with a valid mode
         let (connector, mode) = Self::find_connected_display(&card, &res)?;
 
-        // Find encoder + CRTC
-        let encoder_handle = connector.current_encoder().ok_or(DrmError::NoEncoder)?;
-        let encoder = card
-            .get_encoder(encoder_handle)
-            .map_err(DrmError::ResourceQuery)?;
-        let crtc = encoder.crtc().ok_or(DrmError::NoCrtc)?;
+        // Prefer the connector's currently active CRTC, but when the
+        // compositor has released KMS there may be no current encoder. In that
+        // early-boot state select a compatible CRTC that is presently free.
+        let (crtc, _selection_source) = select_crtc(&card, &res, &connector)?;
 
-        // Save original CRTC for restoration
-        let original_crtc = card.get_crtc(crtc).ok();
+        // Capture the original state before any modeset. Failing closed here
+        // guarantees that every successful modeset has a restoration snapshot.
+        let original_crtc = Some(card.get_crtc(crtc).map_err(DrmError::CrtcQuery)?);
 
+        // Capture every connector currently attached to this CRTC. The legacy
+        // SETCRTC restore must include connector attachment as well as
+        // framebuffer/mode state.
+        let original_connectors = connected_connectors_for_crtc(&card, &res, crtc)?;
         let width = mode.size().0 as u32;
         let height = mode.size().1 as u32;
 
@@ -141,6 +256,8 @@ impl DrmFramebuffer {
             mode,
             dumb_buffer: db,
             original_crtc,
+            original_connectors,
+            restored: false,
         })
     }
 
@@ -169,7 +286,8 @@ impl DrmFramebuffer {
                 .clone();
             return Ok((conn, mode));
         }
-        Err(DrmError::NoConnector)
+        let details = connector_diagnostics(card, res);
+        Err(DrmError::NoConnectedDisplay(details))
     }
 
     /// Stride in bytes.
@@ -179,69 +297,166 @@ impl DrmFramebuffer {
 
     /// Copy from a row-major u32 buffer (width*height) into the DRM dumb buffer.
     /// Maps the buffer, writes, and unmaps each frame.
-    pub fn blit_from(&mut self, src: &[u32]) {
-        let Ok(mut mapping) = self.card.map_dumb_buffer(&mut self.dumb_buffer) else {
-            return;
-        };
+    pub fn blit_from(&mut self, src: &[u32]) -> Result<(), DrmError> {
+        let expected = (self.width as usize)
+            .checked_mul(self.height as usize)
+            .ok_or(DrmError::SourceBufferTooSmall {
+                expected: usize::MAX,
+                actual: src.len(),
+            })?;
+        if src.len() != expected {
+            return Err(DrmError::SourceBufferTooSmall {
+                expected,
+                actual: src.len(),
+            });
+        }
+
+        let mut mapping = self
+            .card
+            .map_dumb_buffer(&mut self.dumb_buffer)
+            .map_err(DrmError::BufferMap)?;
 
         let stride_pixels = self.stride as usize / 4;
         let w = self.width as usize;
         let h = self.height as usize;
 
-        // Reinterpret the u8 mapping as u32 slice
+        // XRGB8888 is a 4-byte pixel format. bytemuck performs the typed-view
+        // alignment/length checks for us.
         let dst_bytes: &mut [u8] = &mut mapping;
-        // SAFETY: XRGB8888 is 4-byte aligned, DRM guarantees alignment.
-        let dst: &mut [u32] = unsafe {
-            std::slice::from_raw_parts_mut(dst_bytes.as_mut_ptr() as *mut u32, dst_bytes.len() / 4)
-        };
+        let dst: &mut [u32] = bytemuck::cast_slice_mut(dst_bytes);
+
+        if stride_pixels < w || dst.len() < stride_pixels.saturating_mul(h) {
+            return Err(DrmError::BufferMap(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "DRM dumb buffer mapping is smaller than its declared stride/height",
+            )));
+        }
 
         if stride_pixels == w {
             // Fast path: no padding
-            let copy_len = (w * h).min(dst.len()).min(src.len());
-            dst[..copy_len].copy_from_slice(&src[..copy_len]);
+            dst[..expected].copy_from_slice(src);
         } else {
             // Stride-aware copy
             for y in 0..h {
                 let src_start = y * w;
                 let dst_start = y * stride_pixels;
-                let row_end = src_start + w;
-                if row_end > src.len() || dst_start + w > dst.len() {
-                    break;
-                }
-                dst[dst_start..dst_start + w].copy_from_slice(&src[src_start..row_end]);
+                dst[dst_start..dst_start + w].copy_from_slice(&src[src_start..src_start + w]);
             }
         }
         // mapping is dropped here, which flushes/unmaps
+        Ok(())
     }
 
-    /// Request a page flip (non-blocking). Returns immediately.
-    pub fn page_flip(&self) -> Result<(), DrmError> {
-        // For dumb buffers with a single FB, we just do a set_crtc.
-        // True page-flipping with double-buffering would require two FBs.
-        // For a boot animation at ~30fps, direct writes are fine.
-        Ok(())
+    /// Restore the CRTC and connector topology captured before our modeset.
+    ///
+    /// This is the authoritative restoration path. It performs the legacy SETCRTC,
+    /// re-queries the CRTC, and independently reconstructs the connector set before
+    /// reporting success. Drop calls the same method as a final best-effort fallback.
+    pub fn restore(&mut self) -> Result<DrmRestoreReceipt, DrmError> {
+        if self.restored {
+            return Ok(self.restore_receipt());
+        }
+
+        let original =
+            self.original_crtc
+                .as_ref()
+                .ok_or(DrmError::CrtcQuery(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "no original CRTC snapshot available",
+                )))?;
+
+        self.card
+            .set_crtc(
+                self.crtc,
+                original.framebuffer(),
+                original.position(),
+                &self.original_connectors,
+                original.mode(),
+            )
+            .map_err(DrmError::ModeSetting)?;
+
+        let observed = self.card.get_crtc(self.crtc).map_err(DrmError::CrtcQuery)?;
+        if observed.framebuffer() != original.framebuffer()
+            || observed.position() != original.position()
+            || observed.mode() != original.mode()
+        {
+            return Err(DrmError::RestoreVerification(format!(
+                "CRTC state mismatch: expected fb={:?} pos={:?} mode={:?}, observed fb={:?} pos={:?} mode={:?}",
+                original.framebuffer(),
+                original.position(),
+                original.mode(),
+                observed.framebuffer(),
+                observed.position(),
+                observed.mode(),
+            )));
+        }
+
+        let resources = self
+            .card
+            .resource_handles()
+            .map_err(DrmError::ResourceQuery)?;
+        let observed_connectors = connected_connectors_for_crtc(&self.card, &resources, self.crtc)?;
+        if observed_connectors != self.original_connectors {
+            return Err(DrmError::RestoreVerification(format!(
+                "connector topology mismatch: expected {:?}, observed {:?}",
+                self.original_connectors, observed_connectors
+            )));
+        }
+
+        self.restored = true;
+        Ok(self.restore_receipt())
+    }
+
+    fn restore_receipt(&self) -> DrmRestoreReceipt {
+        let (mode_width, mode_height, refresh_hz) = self
+            .original_crtc
+            .as_ref()
+            .and_then(|crtc| crtc.mode())
+            .map(|mode| (mode.size().0 as u32, mode.size().1 as u32, mode.vrefresh()))
+            .unwrap_or((0, 0, 0));
+        DrmRestoreReceipt {
+            crtc: self.crtc,
+            connector_count: self.original_connectors.len(),
+            framebuffer: self
+                .original_crtc
+                .as_ref()
+                .and_then(|crtc| crtc.framebuffer()),
+            mode_width,
+            mode_height,
+            refresh_hz,
+        }
+    }
+
+    /// Probe a DRM device without creating a framebuffer or changing CRTC state.
+    ///
+    /// This is the recommended first physical-system test: it verifies that the
+    /// device can be opened and that a connected display, usable mode, encoder,
+    /// and CRTC are discoverable without modesetting the display.
+    pub fn probe(device_path: &str) -> Result<DrmProbe, DrmError> {
+        let card = Card::open(device_path)?;
+        let res = card.resource_handles().map_err(DrmError::ResourceQuery)?;
+        let (connector, mode) = Self::find_connected_display(&card, &res)?;
+        let (crtc, selection_source) = select_crtc(&card, &res, &connector)?;
+        Ok(DrmProbe {
+            width: mode.size().0 as u32,
+            height: mode.size().1 as u32,
+            refresh_hz: mode.vrefresh(),
+            connector_interface: connector.interface().as_str(),
+            connector_interface_id: connector.interface_id(),
+            crtc,
+            selection_source,
+        })
     }
 }
 
 impl Drop for DrmFramebuffer {
     fn drop(&mut self) {
-        // Restore original CRTC if we saved it
-        if let Some(ref orig) = self.original_crtc {
-            let _ = self.card.set_crtc(
-                self.crtc,
-                orig.framebuffer(),
-                orig.position(),
-                &[],
-                orig.mode(),
-            );
+        if !self.restored {
+            let _ = self.restore();
         }
 
-        // Destroy framebuffer
+        // Destroy framebuffer only after restoration has been attempted.
         let _ = self.card.destroy_framebuffer(self.fb);
-        // DumbBuffer is dropped automatically, which calls destroy_dumb_buffer
+        // DumbBuffer is dropped automatically, which calls destroy_dumb_buffer.
     }
 }
-
-// SAFETY: The dumb buffer is tied to the Card file descriptor lifetime.
-// Access is single-threaded (animation loop).
-unsafe impl Send for DrmFramebuffer {}
