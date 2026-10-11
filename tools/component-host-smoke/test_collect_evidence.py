@@ -169,6 +169,134 @@ class EvidenceCollectorTests(unittest.TestCase):
             self.assertTrue(status["receipt_present"])
             self.assertIn("unreadable JSON", status["receipt_validation_error"])
 
+    def test_complete_pass_packet_copies_and_validates_all_runtime_artifacts(self) -> None:
+        expected_commit = "e" * 40
+        expected_tree = "f" * 40
+        workflow_ref = "Luminous-Dynamics/sovereign-boot/.github/workflows/component-runtime-qualification.yml@refs/pull/1/merge"
+        runtime_log = " ".join(packet.REQUIRED_RUNTIME_MARKERS) + "\\n"
+        component_bytes = b"synthetic wasm component"
+        lockfile_bytes = b"synthetic host lockfile"
+        fixture_bytes = b"synthetic pinned fixture"
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            root = base / "repo"
+            runner_temp = base / "runner-temp"
+            evidence = runner_temp / "component-evidence"
+            for relative in packet.REQUIRED_SOURCE_PATHS:
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(("source:" + relative).encode("utf-8"))
+            (root / "tools/component-host-smoke").mkdir(parents=True, exist_ok=True)
+            (root / "target/wasm32-wasip2/release").mkdir(parents=True)
+            (root / "tests/fixtures").mkdir(parents=True, exist_ok=True)
+            (root / "tools/component-host-smoke/Cargo.lock").write_bytes(lockfile_bytes)
+            (root / "target/wasm32-wasip2/release/sovereign_visual_component.wasm").write_bytes(component_bytes)
+            (root / "tests/fixtures/first-germination.scene.json").write_bytes(fixture_bytes)
+            runner_temp.mkdir(parents=True, exist_ok=True)
+            (runner_temp / "component-runtime.log").write_text(runtime_log, encoding="utf-8")
+            (runner_temp / "component-runtime-stderr.log").write_text("", encoding="utf-8")
+            evidence.mkdir(parents=True, exist_ok=True)
+            (evidence / "collector-stderr.log").write_text("", encoding="utf-8")
+
+            source_records = []
+            for relative in sorted(packet.REQUIRED_SOURCE_PATHS):
+                path = root / relative
+                content = path.read_bytes()
+                source_records.append({
+                    "path": relative,
+                    "bytes": len(content),
+                    "sha256": hashlib.sha256(content).hexdigest(),
+                })
+            receipt = {
+                "schema": "luminous-sovereign-visual-component-runtime-evidence-v1",
+                "result": "pass",
+                "source": {
+                    "commit": expected_commit,
+                    "expected_commit": expected_commit,
+                    "tree": expected_tree,
+                    "files": source_records,
+                },
+                "execution": {
+                    "workflow": "Component Model runtime qualification",
+                    "run_id": "12345",
+                    "run_attempt": "1",
+                    "workflow_ref": workflow_ref,
+                    "runner_os": "Linux",
+                    "runtime_log_sha256": hashlib.sha256(runtime_log.encode("utf-8")).hexdigest(),
+                    "required_runtime_markers": list(packet.REQUIRED_RUNTIME_MARKERS),
+                },
+                "artifacts": {
+                    "component": {
+                        "path": "target/wasm32-wasip2/release/sovereign_visual_component.wasm",
+                        "bytes": len(component_bytes),
+                        "sha256": hashlib.sha256(component_bytes).hexdigest(),
+                    },
+                    "host_lockfile": {
+                        "path": "tools/component-host-smoke/Cargo.lock",
+                        "bytes": len(lockfile_bytes),
+                        "sha256": hashlib.sha256(lockfile_bytes).hexdigest(),
+                    },
+                    "scene_pack_fixture": {
+                        "path": "tests/fixtures/first-germination.scene.json",
+                        "bytes": len(fixture_bytes),
+                        "sha256": hashlib.sha256(fixture_bytes).hexdigest(),
+                    },
+                },
+                "scope": dict(packet.REQUIRED_SCOPE),
+            }
+            (evidence / "qualification.json").write_text(
+                json.dumps(receipt), encoding="utf-8"
+            )
+            variables = {
+                "RUNNER_TEMP": str(runner_temp),
+                "EXPECTED_COMMIT": expected_commit,
+                "GITHUB_RUN_ID": "12345",
+                "GITHUB_RUN_ATTEMPT": "1",
+                "GITHUB_WORKFLOW_REF": workflow_ref,
+                "RUNNER_OS": "Linux",
+                "TOOLCHAIN_OUTCOME": "success",
+                "LOCKFILE_OUTCOME": "success",
+                "RECEIPT_TESTS_OUTCOME": "success",
+                "FORMAT_OUTCOME": "success",
+                "BUILD_OUTCOME": "success",
+                "RUNTIME_OUTCOME": "success",
+                "RECEIPT_OUTCOME": "success",
+            }
+
+            def fake_git(args, **kwargs):
+                revision = args[-1]
+                if revision == "HEAD":
+                    return type("ProcessResult", (), {"stdout": expected_commit + "\\n"})()
+                if revision == "HEAD^{tree}":
+                    return type("ProcessResult", (), {"stdout": expected_tree + "\\n"})()
+                raise AssertionError("unexpected git command: " + repr(args))
+
+            with (
+                patch.object(packet, "ROOT", root),
+                patch.dict(os.environ, variables, clear=True),
+                patch.object(packet.subprocess, "run", side_effect=fake_git),
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                self.assertEqual(0, packet.main())
+
+            status = json.loads((evidence / "packet-status.json").read_text(encoding="utf-8"))
+            self.assertEqual("pass", status["qualification_result"])
+            self.assertEqual("valid", status["receipt_validation"])
+            self.assertEqual(expected_commit, status["checkout_commit"])
+            self.assertEqual(expected_tree, status["checkout_tree"])
+            self.assertEqual(
+                hashlib.sha256(component_bytes).hexdigest(),
+                status["sha256"]["component"],
+            )
+            self.assertEqual(
+                component_bytes,
+                (evidence / "sovereign_visual_component.wasm").read_bytes(),
+            )
+            self.assertEqual(
+                lockfile_bytes,
+                (evidence / "component-host-Cargo.lock").read_bytes(),
+            )
+
     def test_packet_receipt_validation_binds_source_context_runtime_and_artifacts(self) -> None:
         expected_commit = "e" * 40
         workflow_ref = "Luminous-Dynamics/sovereign-boot/.github/workflows/component-runtime-qualification.yml@refs/pull/1/merge"
