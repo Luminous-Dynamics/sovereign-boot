@@ -90,6 +90,7 @@ class EvidenceCollectorTests(unittest.TestCase):
         self.assertIn('"receipt_present": $RECEIPT_PRESENT', workflow)
         self.assertIn('if [ "$RECEIPT_OUTCOME" = "success" ] && [ "$RECEIPT_PRESENT" = true ]; then', workflow)
         self.assertIn('"runtime_log": "$(digest_if_file "$RUNNER_TEMP/component-runtime.log")"', workflow)
+        self.assertIn('"collector_stderr": "$(digest_if_file "$RUNNER_TEMP/component-evidence/collector-stderr.log)"', workflow)
 
     def test_duplicate_receipt_lines_are_rejected(self) -> None:
         line = " ".join(collector.REQUIRED_MARKERS)
@@ -107,6 +108,7 @@ class EvidenceCollectorTests(unittest.TestCase):
             "crates/visual-pack/src/lib.rs",
             "tests/fixtures/first-germination.scene.json",
             "tools/component-host-smoke/collect-evidence.py",
+            "tools/component-host-smoke/test_collect_evidence.py",
         ):
             self.assertIn(relative, collector.SOURCE_PATHS)
 
