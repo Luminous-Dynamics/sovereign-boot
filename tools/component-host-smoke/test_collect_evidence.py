@@ -363,6 +363,32 @@ class EvidenceCollectorTests(unittest.TestCase):
             valid, reason = packet.validate_receipt_document(receipt, **kwargs)
             self.assertTrue(valid, reason)
 
+            module_root = source_root / "crates/visual-core/src/lib.rs"
+            original_module_root = module_root.read_bytes()
+            added_module = "pub mod omitted_from_evidence;\\n".encode("utf-8")
+            module_root.write_bytes(original_module_root + b"\\n" + added_module)
+            (module_root.parent / "omitted_from_evidence.rs").write_bytes(b"pub fn omitted() {}\\n")
+            inventory_with_omission = []
+            for record in source_records:
+                if record["path"] == "crates/visual-core/src/lib.rs":
+                    content = module_root.read_bytes()
+                    inventory_with_omission.append({
+                        "path": record["path"],
+                        "bytes": len(content),
+                        "sha256": hashlib.sha256(content).hexdigest(),
+                    })
+                else:
+                    inventory_with_omission.append(record)
+            receipt_with_omitted_module = dict(
+                receipt,
+                source=dict(receipt["source"], files=inventory_with_omission),
+            )
+            self.assertFalse(
+                packet.validate_receipt_document(receipt_with_omitted_module, **kwargs)[0]
+            )
+            module_root.write_bytes(original_module_root)
+            (module_root.parent / "omitted_from_evidence.rs").unlink()
+
             changed_path = source_root / ".gitignore"
             changed_path.write_bytes(b"post-receipt modification")
             self.assertFalse(packet.validate_receipt_document(receipt, **kwargs)[0])

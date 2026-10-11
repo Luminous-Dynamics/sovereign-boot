@@ -139,6 +139,26 @@ def validate_source_inventory(source_files: Any, source_root: Path) -> tuple[boo
             return False, f"receipt source byte count mismatch: {relative}"
         if sha256_file(candidate) != record["sha256"]:
             return False, f"receipt source SHA-256 mismatch: {relative}"
+        if candidate.suffix == ".rs":
+            try:
+                source_text = candidate.read_text(encoding="utf-8")
+            except (OSError, UnicodeError) as exc:
+                return False, f"cannot inspect Rust module declarations in {relative}: {exc}"
+            module_names = re.findall(
+                r"(?m)^\s*(?:pub(?:\([^)]*\))?\s+)?mod\s+([A-Za-z_][A-Za-z0-9_]*)\s*;",
+                source_text,
+            )
+            parent = PurePosixPath(relative).parent
+            for module_name in module_names:
+                candidates = {
+                    (parent / f"{module_name}.rs").as_posix(),
+                    (parent / module_name / "mod.rs").as_posix(),
+                }
+                if not candidates.intersection(records):
+                    return False, (
+                        f"Rust module declared by {relative} is not source-bound: "
+                        f"{module_name}"
+                    )
     return True, ""
 
 
