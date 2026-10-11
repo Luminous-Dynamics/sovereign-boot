@@ -110,6 +110,10 @@ class EvidenceCollectorTests(unittest.TestCase):
         )
         self.assertEqual(
             "failure",
+            packet.qualification_result(passed, receipt_present=True, receipt_valid=False),
+        )
+        self.assertEqual(
+            "failure",
             packet.qualification_result(dict(passed, build="failure"), receipt_present=True, receipt_valid=True),
         )
         self.assertEqual(
@@ -120,6 +124,50 @@ class EvidenceCollectorTests(unittest.TestCase):
             "not_issued",
             packet.qualification_result(dict(passed, receipt="skipped"), receipt_present=False, receipt_valid=False),
         )
+
+    def test_corrupt_receipt_writes_failure_packet_instead_of_crashing(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            root = base / "repo"
+            runner_temp = base / "runner-temp"
+            evidence = runner_temp / "component-evidence"
+            (root / "tools/component-host-smoke").mkdir(parents=True)
+            (root / "target/wasm32-wasip2/release").mkdir(parents=True)
+            (root / "tests/fixtures").mkdir(parents=True)
+            evidence.mkdir(parents=True)
+            (root / "tools/component-host-smoke/Cargo.lock").write_bytes(b"host lockfile")
+            (root / "target/wasm32-wasip2/release/sovereign_visual_component.wasm").write_bytes(b"component")
+            (root / "tests/fixtures/first-germination.scene.json").write_bytes(b"fixture")
+            (runner_temp / "component-runtime.log").write_text("runtime log", encoding="utf-8")
+            (runner_temp / "component-runtime-stderr.log").write_text("", encoding="utf-8")
+            (evidence / "qualification.json").write_text("{not-json", encoding="utf-8")
+            (evidence / "collector-stderr.log").write_text("bad receipt", encoding="utf-8")
+            variables = {
+                "RUNNER_TEMP": str(runner_temp),
+                "EXPECTED_COMMIT": "a" * 40,
+                "GITHUB_RUN_ID": "12345",
+                "GITHUB_RUN_ATTEMPT": "1",
+                "GITHUB_WORKFLOW_REF": "Luminous-Dynamics/sovereign-boot/.github/workflows/component-runtime-qualification.yml@refs/pull/1/merge",
+                "RUNNER_OS": "Linux",
+                "TOOLCHAIN_OUTCOME": "success",
+                "LOCKFILE_OUTCOME": "success",
+                "RECEIPT_TESTS_OUTCOME": "success",
+                "FORMAT_OUTCOME": "success",
+                "BUILD_OUTCOME": "success",
+                "RUNTIME_OUTCOME": "success",
+                "RECEIPT_OUTCOME": "success",
+            }
+            with (
+                patch.object(packet, "ROOT", root),
+                patch.dict(os.environ, variables, clear=True),
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                self.assertEqual(1, packet.main())
+            status = json.loads((evidence / "packet-status.json").read_text(encoding="utf-8"))
+            self.assertEqual("failure", status["qualification_result"])
+            self.assertEqual("invalid", status["receipt_validation"])
+            self.assertFalse(status["receipt_present"] is False)
+            self.assertIn("unreadable JSON", status["receipt_validation_error"])
 
     def test_packet_receipt_validation_binds_commit_context_and_artifacts(self) -> None:
         digest = "a" * 64

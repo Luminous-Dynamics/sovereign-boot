@@ -192,6 +192,7 @@ def main() -> int:
     receipt_present = receipt_path.is_file() and receipt_path.stat().st_size > 0
 
     receipt: Any = None
+    receipt_valid = False
     validation_error = "qualification receipt is missing"
     if receipt_present:
         try:
