@@ -131,6 +131,30 @@ class ScenePackValidationTests(unittest.TestCase):
         issues = validate_manifest(self.schema, candidate, package_root=EXAMPLE_PATH.parent)
         self.assertEqual([], issues, "\n".join(map(str, issues)))
 
+    def test_invalid_ipv6_literal_is_rejected(self):
+        candidate = copy.deepcopy(self.example)
+        candidate["license"]["sourceUrl"] = "https://[not-an-ip]/path"
+        issues = validate_manifest(self.schema, candidate, package_root=EXAMPLE_PATH.parent)
+        self.assertIn("schema.invalid", {issue.code for issue in issues})
+
+    def test_brackets_embedded_in_registered_name_are_rejected(self):
+        candidate = copy.deepcopy(self.example)
+        candidate["license"]["sourceUrl"] = "https://example[evil].invalid/path"
+        issues = validate_manifest(self.schema, candidate, package_root=EXAMPLE_PATH.parent)
+        self.assertIn("schema.invalid", {issue.code for issue in issues})
+
+    def test_ipvfuture_literal_is_accepted(self):
+        candidate = copy.deepcopy(self.example)
+        candidate["license"]["sourceUrl"] = "https://[v1.fe]/path"
+        issues = validate_manifest(self.schema, candidate, package_root=EXAMPLE_PATH.parent)
+        self.assertEqual([], issues, "\n".join(map(str, issues)))
+
+    def test_multiple_raw_at_delimiters_are_rejected(self):
+        candidate = copy.deepcopy(self.example)
+        candidate["license"]["sourceUrl"] = "https://user@extra@example.invalid/path"
+        issues = validate_manifest(self.schema, candidate, package_root=EXAMPLE_PATH.parent)
+        self.assertIn("schema.invalid", {issue.code for issue in issues})
+
     def test_invalid_schema_meta_schema_is_rejected(self):
         candidate_schema = copy.deepcopy(self.schema)
         candidate_schema["properties"]["schemaVersion"]["type"] = "not-a-json-schema-type"

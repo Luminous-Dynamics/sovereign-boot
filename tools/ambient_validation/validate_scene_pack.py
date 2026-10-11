@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Validate Scene Pack v1 schema, cross-field invariants, and packaged assets."""
 from __future__ import annotations
-import argparse, hashlib, json, re, sys
+import argparse, hashlib, ipaddress, json, re, sys
 from dataclasses import dataclass
 from hmac import compare_digest
 from pathlib import Path, PurePosixPath
@@ -45,14 +45,32 @@ def _strict_absolute_uri(value: Any) -> bool:
     # specific numeric port range: RFC 3986 defines port as zero or more digits.
     if any(character in parsed.path + parsed.query + parsed.fragment for character in "[]"):
         return False
+    if parsed.netloc.count("@") > 1:
+        return False  # Raw @ delimiters cannot occur inside userinfo.
     authority = parsed.netloc.rsplit("@", 1)[-1]
     if authority.startswith("["):
         closing = authority.find("]")
-        if closing < 0:
+        if closing < 0 or "]" in authority[closing + 1:] or "[" in authority[1:closing]:
             return False
+        literal = authority[1:closing]
+        if "%" in literal:
+            return False  # RFC 3986 IP-literals do not include zone identifiers.
+        if literal.lower().startswith("v"):
+            if not re.fullmatch(
+                r"[vV][0-9A-Fa-f]+\.[A-Za-z0-9._~!$&'()*+,;=:-]+",
+                literal,
+            ):
+                return False
+        else:
+            try:
+                ipaddress.IPv6Address(literal)
+            except ValueError:
+                return False
         suffix = authority[closing + 1:]
-        if suffix and not (suffix.startswith(":") and suffix[1:].isdigit()):
+        if suffix and not (suffix.startswith(":") and (not suffix[1:] or suffix[1:].isdigit())):
             return False
+    elif "[" in authority or "]" in authority:
+        return False  # Brackets are reserved for an IP-literal host.
     elif ":" in authority:
         if authority.count(":") > 1:
             return False  # IPv6 literals must be bracketed.
