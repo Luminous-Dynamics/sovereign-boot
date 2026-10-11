@@ -76,6 +76,20 @@ class EvidenceCollectorTests(unittest.TestCase):
         upload = workflow.split("- name: Upload runtime evidence and lockfile", 1)[1]
         self.assertIn("path: ${{ runner.temp }}/component-evidence/", upload)
 
+    def test_failure_packet_records_stage_outcomes_and_diagnostics(self) -> None:
+        workflow = (collector.ROOT / ".github/workflows/component-runtime-qualification.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('id: runtime', workflow)
+        self.assertIn('id: receipt', workflow)
+        self.assertIn('if: always()', workflow)
+        self.assertIn('packet-status.json', workflow)
+        self.assertIn('runtime.stderr.log', workflow)
+        self.assertIn('collector-stderr.log', workflow)
+        self.assertIn('"qualification_result": "$QUALIFICATION_RESULT"', workflow)
+        self.assertIn('"receipt_present": $RECEIPT_PRESENT', workflow)
+        self.assertIn('"runtime_log": "$(digest_if_file "$RUNNER_TEMP/component-runtime.log)")', workflow)
+
     def test_duplicate_receipt_lines_are_rejected(self) -> None:
         line = " ".join(collector.REQUIRED_MARKERS)
         self.assertIn(
