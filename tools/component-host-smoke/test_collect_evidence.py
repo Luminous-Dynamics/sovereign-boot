@@ -169,65 +169,87 @@ class EvidenceCollectorTests(unittest.TestCase):
             self.assertTrue(status["receipt_present"])
             self.assertIn("unreadable JSON", status["receipt_validation_error"])
 
-    def test_packet_receipt_validation_binds_commit_context_and_artifacts(self) -> None:
-        digest = "a" * 64
-        hashes = {
-            "component": digest,
-            "host_lockfile": "b" * 64,
-            "scene_pack_fixture": "c" * 64,
-            "runtime_log": "d" * 64,
-        }
-        sizes = {"component": 10, "host_lockfile": 20, "scene_pack_fixture": 30}
+    def test_packet_receipt_validation_binds_source_context_runtime_and_artifacts(self) -> None:
         expected_commit = "e" * 40
         workflow_ref = "Luminous-Dynamics/sovereign-boot/.github/workflows/component-runtime-qualification.yml@refs/pull/1/merge"
-        source_paths = [
-            ".gitignore",
-            ".github/workflows/component-runtime-qualification.yml",
-            "tools/component-host-smoke/assemble-packet.py",
-            "tools/component-host-smoke/collect-evidence.py",
-            "tools/component-host-smoke/test_collect_evidence.py",
-            "tools/component-host-smoke/src/main.rs",
-        ]
-        receipt = {
-            "schema": "luminous-sovereign-visual-component-runtime-evidence-v1",
-            "result": "pass",
-            "source": {
-                "commit": expected_commit,
+        runtime_log = " ".join(packet.REQUIRED_RUNTIME_MARKERS)
+        hashes = {
+            "component": "a" * 64,
+            "host_lockfile": "b" * 64,
+            "scene_pack_fixture": "c" * 64,
+            "runtime_log": hashlib.sha256(runtime_log.encode("utf-8")).hexdigest(),
+        }
+        sizes = {"component": 10, "host_lockfile": 20, "scene_pack_fixture": 30}
+        with tempfile.TemporaryDirectory() as directory:
+            source_root = Path(directory)
+            source_records = []
+            for relative in sorted(packet.REQUIRED_SOURCE_PATHS):
+                path = source_root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                content = ("source:" + relative).encode("utf-8")
+                path.write_bytes(content)
+                source_records.append({
+                    "path": relative,
+                    "bytes": len(content),
+                    "sha256": hashlib.sha256(content).hexdigest(),
+                })
+            receipt = {
+                "schema": "luminous-sovereign-visual-component-runtime-evidence-v1",
+                "result": "pass",
+                "source": {
+                    "commit": expected_commit,
+                    "expected_commit": expected_commit,
+                    "tree": "f" * 40,
+                    "files": source_records,
+                },
+                "execution": {
+                    "workflow": "Component Model runtime qualification",
+                    "run_id": "12345",
+                    "run_attempt": "1",
+                    "workflow_ref": workflow_ref,
+                    "runner_os": "Linux",
+                    "runtime_log_sha256": hashes["runtime_log"],
+                    "required_runtime_markers": list(packet.REQUIRED_RUNTIME_MARKERS),
+                },
+                "artifacts": {
+                    "component": {"sha256": hashes["component"], "bytes": sizes["component"]},
+                    "host_lockfile": {"sha256": hashes["host_lockfile"], "bytes": sizes["host_lockfile"]},
+                    "scene_pack_fixture": {"sha256": hashes["scene_pack_fixture"], "bytes": sizes["scene_pack_fixture"]},
+                },
+                "scope": dict(packet.REQUIRED_SCOPE),
+            }
+            kwargs = {
                 "expected_commit": expected_commit,
-                "files": [{"path": name, "sha256": digest} for name in source_paths],
-            },
-            "execution": {
                 "run_id": "12345",
                 "run_attempt": "1",
                 "workflow_ref": workflow_ref,
                 "runner_os": "Linux",
-                "runtime_log_sha256": hashes["runtime_log"],
-            },
-            "artifacts": {
-                "component": {"sha256": hashes["component"], "bytes": sizes["component"]},
-                "host_lockfile": {"sha256": hashes["host_lockfile"], "bytes": sizes["host_lockfile"]},
-                "scene_pack_fixture": {"sha256": hashes["scene_pack_fixture"], "bytes": sizes["scene_pack_fixture"]},
-            },
-        }
-        kwargs = {
-            "expected_commit": expected_commit,
-            "run_id": "12345",
-            "run_attempt": "1",
-            "workflow_ref": workflow_ref,
-            "runner_os": "Linux",
-            "hashes": hashes,
-            "sizes": sizes,
-        }
-        valid, reason = packet.validate_receipt_document(receipt, **kwargs)
-        self.assertTrue(valid, reason)
-        wrong_commit = dict(receipt, source=dict(receipt["source"], commit="f" * 40))
-        self.assertFalse(packet.validate_receipt_document(wrong_commit, **kwargs)[0])
-        wrong_hashes = dict(hashes, component="0" * 64)
-        self.assertFalse(
-            packet.validate_receipt_document(receipt, **dict(kwargs, hashes=wrong_hashes))[0]
-        )
-        wrong_context = dict(receipt, execution=dict(receipt["execution"], run_id="99999"))
-        self.assertFalse(packet.validate_receipt_document(wrong_context, **kwargs)[0])
+                "hashes": hashes,
+                "sizes": sizes,
+                "source_root": source_root,
+                "runtime_log_text": runtime_log,
+            }
+            valid, reason = packet.validate_receipt_document(receipt, **kwargs)
+            self.assertTrue(valid, reason)
+
+            changed_path = source_root / ".gitignore"
+            changed_path.write_bytes(b"post-receipt modification")
+            self.assertFalse(packet.validate_receipt_document(receipt, **kwargs)[0])
+            changed_path.write_bytes(b"source:.gitignore")
+            wrong_hashes = dict(hashes, component="0" * 64)
+            self.assertFalse(
+                packet.validate_receipt_document(receipt, **dict(kwargs, hashes=wrong_hashes))[0]
+            )
+            wrong_context = dict(receipt, execution=dict(receipt["execution"], run_id="99999"))
+            self.assertFalse(packet.validate_receipt_document(wrong_context, **kwargs)[0])
+            self.assertFalse(
+                packet.validate_receipt_document(receipt, **dict(kwargs, runtime_log_text="component_runtime=wasmtime-49.0.2"))[0]
+            )
+            bad_scope = dict(receipt, scope=dict(receipt["scope"], physical_boot=True))
+            self.assertFalse(packet.validate_receipt_document(bad_scope, **kwargs)[0])
+            duplicate_inventory = dict(receipt, source=dict(receipt["source"], files=source_records + [source_records[0]]))
+            self.assertFalse(packet.validate_receipt_document(duplicate_inventory, **kwargs)[0])
+
 
     def test_duplicate_receipt_lines_are_rejected(self) -> None:
         line = " ".join(collector.REQUIRED_MARKERS)

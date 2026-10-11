@@ -9,7 +9,7 @@ import re
 import shutil
 import sys
 import tempfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -25,6 +25,48 @@ STEP_ENV = {
     "receipt": "RECEIPT_OUTCOME",
 }
 ALLOWED_OUTCOMES = {"success", "failure", "cancelled", "skipped"}
+REQUIRED_SOURCE_PATHS = frozenset({
+    ".gitignore",
+    ".github/workflows/component-runtime-qualification.yml",
+    "Cargo.toml",
+    "Cargo.lock",
+    "rust-toolchain.toml",
+    "crates/visual-core/Cargo.toml",
+    "crates/visual-core/src/color.rs",
+    "crates/visual-core/src/contract.rs",
+    "crates/visual-core/src/lib.rs",
+    "crates/visual-core/src/mycelium.rs",
+    "crates/visual-core/src/settings.rs",
+    "crates/visual-pack/Cargo.toml",
+    "crates/visual-pack/src/lib.rs",
+    "crates/visual-component/Cargo.toml",
+    "crates/visual-component/src/lib.rs",
+    "crates/visual-component/wit/visual.wit",
+    "tests/fixtures/first-germination.scene.json",
+    "tools/component-host-smoke/Cargo.toml",
+    "tools/component-host-smoke/src/main.rs",
+    "tools/component-host-smoke/assemble-packet.py",
+    "tools/component-host-smoke/collect-evidence.py",
+    "tools/component-host-smoke/test_collect_evidence.py",
+})
+REQUIRED_RUNTIME_MARKERS = (
+    "component_runtime=wasmtime-49.0.2",
+    "configured_replay=byte-identical",
+    "branch_budget=pass",
+    "invalid_config_atomic=pass",
+    "tick_batch_bound=pass",
+    "wasi_imports=none",
+    "resources=dropped",
+)
+REQUIRED_SCOPE = {
+    "component_instantiated": True,
+    "host_imports_registered": False,
+    "configured_replay_byte_identical": True,
+    "hosted_ci_only": True,
+    "browser_presentation": False,
+    "physical_boot": False,
+    "whole_process_memory_limit": False,
+}
 
 
 def sha256_file(path: Path) -> str:
@@ -50,6 +92,70 @@ def copy_if_present(source: Path, destination: Path) -> None:
         destination.unlink(missing_ok=True)
 
 
+def validate_source_inventory(source_files: Any, source_root: Path) -> tuple[bool, str]:
+    """Recompute every committed source record and require the complete expected set."""
+    if not isinstance(source_files, list):
+        return False, "receipt source file inventory is missing"
+    root = source_root.resolve()
+    records: dict[str, dict[str, Any]] = {}
+    for record in source_files:
+        if not isinstance(record, dict):
+            return False, "receipt source inventory contains a non-object record"
+        relative = record.get("path")
+        if not isinstance(relative, str) or not relative or "\\" in relative:
+            return False, "receipt source inventory contains an invalid path"
+        pure = PurePosixPath(relative)
+        if pure.is_absolute() or any(part in ("", ".", "..") for part in pure.parts):
+            return False, f"receipt source inventory contains an unsafe path: {relative}"
+        if relative in records:
+            return False, f"receipt source inventory duplicates path: {relative}"
+        recorded_bytes = record.get("bytes")
+        recorded_hash = record.get("sha256")
+        if type(recorded_bytes) is not int or recorded_bytes < 0:
+            return False, f"receipt source inventory has invalid byte count: {relative}"
+        if not isinstance(recorded_hash, str) or re.fullmatch(r"[0-9a-f]{64}", recorded_hash) is None:
+            return False, f"receipt source inventory has invalid SHA-256: {relative}"
+        records[relative] = record
+
+    seen_paths = set(records)
+    if seen_paths != REQUIRED_SOURCE_PATHS:
+        missing = sorted(REQUIRED_SOURCE_PATHS - seen_paths)
+        extra = sorted(seen_paths - REQUIRED_SOURCE_PATHS)
+        detail = []
+        if missing:
+            detail.append("missing: " + ", ".join(missing))
+        if extra:
+            detail.append("unexpected: " + ", ".join(extra))
+        return False, "receipt source inventory set mismatch (" + "; ".join(detail) + ")"
+
+    for relative, record in records.items():
+        candidate = (root / Path(*PurePosixPath(relative).parts)).resolve()
+        if not candidate.is_relative_to(root):
+            return False, f"receipt source path escapes checkout: {relative}"
+        if not candidate.is_file():
+            return False, f"receipt source file is missing: {relative}"
+        if candidate.stat().st_size != record["bytes"]:
+            return False, f"receipt source byte count mismatch: {relative}"
+        if sha256_file(candidate) != record["sha256"]:
+            return False, f"receipt source SHA-256 mismatch: {relative}"
+    return True, ""
+
+
+def validate_runtime_log(log_text: str) -> tuple[bool, str]:
+    """Independently verify assertion tokens in the archived runtime log."""
+    receipt_lines = [
+        line for line in log_text.splitlines()
+        if line.startswith("component_runtime=")
+    ]
+    if len(receipt_lines) != 1:
+        return False, "runtime log must contain exactly one component receipt line"
+    tokens = set(receipt_lines[0].split())
+    missing = [marker for marker in REQUIRED_RUNTIME_MARKERS if marker not in tokens]
+    if missing:
+        return False, "runtime log is missing required markers: " + ", ".join(missing)
+    return True, ""
+
+
 def validate_receipt_document(
     receipt: Any,
     *,
@@ -60,6 +166,8 @@ def validate_receipt_document(
     runner_os: str,
     hashes: dict[str, str],
     sizes: dict[str, int],
+    source_root: Path,
+    runtime_log_text: str,
 ) -> tuple[bool, str]:
     """Validate the pass receipt against the actual packet inputs and run context."""
     if not isinstance(receipt, dict):
@@ -77,24 +185,9 @@ def validate_receipt_document(
     if source.get("commit") != expected_commit or source.get("expected_commit") != expected_commit:
         return False, "receipt source commit does not match the packet commit"
     source_files = source.get("files")
-    if not isinstance(source_files, list):
-        return False, "receipt source file inventory is missing"
-    source_paths = {
-        record.get("path")
-        for record in source_files
-        if isinstance(record, dict) and isinstance(record.get("path"), str)
-    }
-    required_source_paths = {
-        ".gitignore",
-        ".github/workflows/component-runtime-qualification.yml",
-        "tools/component-host-smoke/assemble-packet.py",
-        "tools/component-host-smoke/collect-evidence.py",
-        "tools/component-host-smoke/test_collect_evidence.py",
-        "tools/component-host-smoke/src/main.rs",
-    }
-    missing_paths = sorted(required_source_paths - source_paths)
-    if missing_paths:
-        return False, "receipt source inventory omits: " + ", ".join(missing_paths)
+    inventory_valid, inventory_error = validate_source_inventory(source_files, source_root)
+    if not inventory_valid:
+        return False, inventory_error
 
     execution = receipt.get("execution")
     if not isinstance(execution, dict):
@@ -109,6 +202,20 @@ def validate_receipt_document(
             return False, f"receipt execution {field} does not match the packet context"
     if execution.get("runtime_log_sha256") != hashes.get("runtime_log"):
         return False, "runtime log digest does not match the receipt"
+    if execution.get("workflow") != "Component Model runtime qualification":
+        return False, "receipt workflow name does not match the qualification lane"
+    if execution.get("required_runtime_markers") != list(REQUIRED_RUNTIME_MARKERS):
+        return False, "receipt required runtime marker policy does not match the packet policy"
+    runtime_valid, runtime_error = validate_runtime_log(runtime_log_text)
+    if not runtime_valid:
+        return False, runtime_error
+
+    scope = receipt.get("scope")
+    if not isinstance(scope, dict):
+        return False, "receipt scope section is missing"
+    for field, expected in REQUIRED_SCOPE.items():
+        if scope.get(field) is not expected:
+            return False, f"receipt scope {field} does not match the allowed claim boundary"
 
     artifacts = receipt.get("artifacts")
     if not isinstance(artifacts, dict):
@@ -210,6 +317,8 @@ def main() -> int:
                 runner_os=runner_os,
                 hashes=hashes,
                 sizes=sizes,
+                source_root=ROOT,
+                runtime_log_text=packet_paths["runtime_log"].read_text(encoding="utf-8"),
             )
             receipt_valid = valid
     else:
