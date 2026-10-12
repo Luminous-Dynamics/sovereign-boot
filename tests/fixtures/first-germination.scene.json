@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "sceneId": "luminous.first-germination",
+  "sceneVersion": "0.1.0",
+  "title": "First Germination",
+  "description": "A procedural mycelial world that grows during boot, settles into quiet desktop motion, and has reduced-motion and static variants.",
+  "license": {
+    "spdxId": "AGPL-3.0-or-later"
+  },
+  "assets": [],
+  "palette": {
+    "canvas": "#0A100E",
+    "substrate": "#1A2E22",
+    "filament": "#7EC8A0",
+    "node": "#E8C547",
+    "lichen": "#5A6B5E",
+    "glow": "#76D9C1"
+  },
+  "simulation": {
+    "engine": "mycelial-network-v1",
+    "engineVersion": "1.0.0",
+    "seed": 20261010,
+    "fixedStepHz": 30,
+    "parameters": {
+      "branchLimit": 2048,
+      "maxDepth": 10,
+      "growthRate": 0.28,
+      "pulsePeriodSeconds": 7.5,
+      "driftAmplitude": 0.12
+    }
+  },
+  "presentations": {
+    "boot": {
+      "motion": "full",
+      "maxFps": 30,
+      "brightness": 1,
+      "composition": "centered-network",
+      "safeRegions": []
+    },
+    "desktop": {
+      "motion": "ambient",
+      "maxFps": 30,
+      "brightness": 0.72,
+      "composition": "edge-biased-network",
+      "safeRegions": [
+        {
+          "id": "desktop-icon-column",
+          "x": 0,
+          "y": 0,
+          "width": 0.2,
+          "height": 1
+        },
+        {
+          "id": "desktop-panel",
+          "x": 0,
+          "y": 0,
+          "width": 1,
+          "height": 0.07
+        }
+      ]
+    },
+    "idle": {
+      "motion": "reduced",
+      "maxFps": 10,
+      "brightness": 0.5,
+      "composition": "edge-biased-network",
+      "safeRegions": []
+    },
+    "lockedBackground": {
+      "motion": "minimal",
+      "maxFps": 5,
+      "brightness": 0.38,
+      "composition": "minimal-network",
+      "safeRegions": [
+        {
+          "id": "clock-area",
+          "x": 0.25,
+          "y": 0.2,
+          "width": 0.5,
+          "height": 0.25
+        }
+      ]
+    },
+    "staticFallback": {
+      "motion": "none",
+      "maxFps": 0,
+      "brightness": 0.58,
+      "composition": "gradient-only",
+      "safeRegions": []
+    }
+  },
+  "resourceBudget": {
+    "maxFps": 30,
+    "maxBranches": 2048,
+    "maxMemoryMiB": 128,
+    "pauseWhenHidden": true,
+    "pauseWhenDisplayAsleep": true
+  },
+  "capabilities": {
+    "required": [],
+    "staticFallbackRequired": true
+  },
+  "inputs": [],
+  "lifecycle": {
+    "onLock": "reduced-motion",
+    "onSuspend": "pause",
+    "onWake": "reinitialize-from-seed"
+  },
+  "accessibility": {
+    "reducedMotionPresentation": "idle",
+    "colorIsSoleSignal": false,
+    "staticFallbackAvailable": true
+  }
+}

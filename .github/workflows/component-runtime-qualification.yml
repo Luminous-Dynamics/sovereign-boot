@@ -1,0 +1,125 @@
+name: Component Model runtime qualification
+
+on:
+  pull_request:
+    paths:
+      - ".gitignore"
+      - ".github/workflows/component-runtime-qualification.yml"
+      - "contracts/tests/scene-pack-v1-negative-fixtures.json"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - "crates/visual-core/**"
+      - "crates/visual-pack/**"
+      - "crates/visual-component/**"
+      - "tools/component-host-smoke/**"
+      - "tests/fixtures/first-germination.scene.json"
+  push:
+    branches: [main]
+    paths:
+      - ".gitignore"
+      - ".github/workflows/component-runtime-qualification.yml"
+      - "contracts/tests/scene-pack-v1-negative-fixtures.json"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - "crates/visual-core/**"
+      - "crates/visual-pack/**"
+      - "crates/visual-component/**"
+      - "tools/component-host-smoke/**"
+      - "tests/fixtures/first-germination.scene.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Runtime qualification has a separate lifecycle from the full Cargo/Nix lane.
+concurrency:
+  group: component-runtime-qualification-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qualify-component:
+    name: Instantiate and exercise the actual WIT component
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact source revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Install Rust toolchain and WASI target
+        id: toolchain
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --component rustfmt
+          rustup +1.96.0 target add wasm32-wasip2
+          rustc +1.96.0 --version > "$RUNNER_TEMP/rustc-version.txt"
+          rustc +1.96.0 --version --verbose > "$RUNNER_TEMP/rustc-version-verbose.txt"
+          cargo +1.96.0 --version --verbose > "$RUNNER_TEMP/cargo-version.txt"
+          rustup +1.96.0 show > "$RUNNER_TEMP/rustup-toolchain.txt"
+          rustup +1.96.0 target list --installed > "$RUNNER_TEMP/rust-targets.txt"
+          cat /etc/os-release > "$RUNNER_TEMP/runner-os-release.txt"
+          uname -srvm > "$RUNNER_TEMP/runner-kernel.txt"
+
+      # Resolve first so the lockfile can be preserved even when the guest build fails.
+      - name: Resolve isolated host dependency graph
+        id: resolve_lockfile
+        run: cargo +1.96.0 generate-lockfile --manifest-path tools/component-host-smoke/Cargo.toml
+
+      - name: Test evidence receipt validation
+        id: receipt_tests
+        run: python3 -B tools/component-host-smoke/test_collect_evidence.py
+
+      - name: Check host formatting
+        id: host_format
+        run: cargo +1.96.0 fmt --manifest-path tools/component-host-smoke/Cargo.toml -- --check
+
+      - name: Build the production Component Model guest
+        id: build_component
+        run: cargo +1.96.0 build --locked --release -p sovereign-visual-component --target wasm32-wasip2
+
+      - name: Execute guest through the no-import Wasmtime host
+        id: runtime
+        run: |
+          set -euo pipefail
+          cargo +1.96.0 run --release --locked --manifest-path tools/component-host-smoke/Cargo.toml -- target/wasm32-wasip2/release/sovereign_visual_component.wasm > "$RUNNER_TEMP/component-runtime.log" 2> "$RUNNER_TEMP/component-runtime-stderr.log"
+          cat "$RUNNER_TEMP/component-runtime.log"
+
+      - name: Create source-bound qualification receipt
+        id: receipt
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/component-evidence"
+          python3 tools/component-host-smoke/collect-evidence.py \
+            --expected-commit "${{ github.event.pull_request.head.sha || github.sha }}" \
+            --component target/wasm32-wasip2/release/sovereign_visual_component.wasm \
+            --fixture tests/fixtures/first-germination.scene.json \
+            --lockfile tools/component-host-smoke/Cargo.lock \
+            --runtime-log "$RUNNER_TEMP/component-runtime.log" \
+            --rustc-version "$(cat "$RUNNER_TEMP/rustc-version.txt")" \
+            --output "$RUNNER_TEMP/component-evidence/qualification.json" \
+            2> "$RUNNER_TEMP/component-evidence/collector-stderr.log"
+
+      - name: Assemble reviewable evidence packet
+        if: always()
+        env:
+          EXPECTED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+          TOOLCHAIN_OUTCOME: ${{ steps.toolchain.outcome }}
+          LOCKFILE_OUTCOME: ${{ steps.resolve_lockfile.outcome }}
+          RECEIPT_TESTS_OUTCOME: ${{ steps.receipt_tests.outcome }}
+          FORMAT_OUTCOME: ${{ steps.host_format.outcome }}
+          BUILD_OUTCOME: ${{ steps.build_component.outcome }}
+          RUNTIME_OUTCOME: ${{ steps.runtime.outcome }}
+          RECEIPT_OUTCOME: ${{ steps.receipt.outcome }}
+        run: |
+          python3 tools/component-host-smoke/assemble-packet.py
+      - name: Upload runtime evidence and lockfile
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: component-runtime-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/component-evidence/
+          if-no-files-found: warn
+          retention-days: 30
