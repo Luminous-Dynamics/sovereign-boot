@@ -88,17 +88,20 @@ class EvidenceCollectorTests(unittest.TestCase):
         workflow = (collector.ROOT / ".github/workflows/component-runtime-qualification.yml").read_text(
             encoding="utf-8"
         )
+        packet_builder = (
+            collector.ROOT / "tools/component-host-smoke/assemble-packet.py"
+        ).read_text(encoding="utf-8")
         self.assertIn('id: runtime', workflow)
         self.assertIn('id: receipt', workflow)
         self.assertIn('if: always()', workflow)
-        self.assertIn('packet-status.json', workflow)
-        self.assertIn('runtime.stderr.log', workflow)
-        self.assertIn('collector-stderr.log', workflow)
-        self.assertIn('"qualification_result": "$QUALIFICATION_RESULT"', workflow)
-        self.assertIn('"receipt_present": $RECEIPT_PRESENT', workflow)
-        self.assertIn('if [ "$RECEIPT_OUTCOME" = "success" ] && [ "$RECEIPT_PRESENT" = true ]; then', workflow)
-        self.assertIn('"runtime_log": "$(digest_if_file "$RUNNER_TEMP/component-runtime.log")"', workflow)
-        self.assertIn('"collector_stderr": "$(digest_if_file "$RUNNER_TEMP/component-evidence/collector-stderr.log")"', workflow)
+        self.assertIn('output = evidence_dir / "packet-status.json"', packet_builder)
+        self.assertIn('"runtime_stderr": evidence_dir / "runtime.stderr.log"', packet_builder)
+        self.assertIn('collector_stderr_path = evidence_dir / "collector-stderr.log"', packet_builder)
+        self.assertIn('"qualification_result": result', packet_builder)
+        self.assertIn('"receipt_present": receipt_present', packet_builder)
+        self.assertIn('"steps": outcomes', packet_builder)
+        self.assertIn('"sha256": hashes', packet_builder)
+        self.assertIn('"bytes": sizes', packet_builder)
 
     def test_source_inventory_rejects_unbound_compile_time_include(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

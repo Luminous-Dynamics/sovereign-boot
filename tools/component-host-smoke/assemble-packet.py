@@ -316,12 +316,12 @@ def qualification_result(
     outcomes: dict[str, str], *, receipt_present: bool, receipt_valid: bool
 ) -> str:
     """Pass only if every required stage succeeded and the receipt validates."""
-    if outcomes.get("receipt") == "success" and (not receipt_present or not receipt_valid):
-        return "failure"
     if any(value == "failure" for value in outcomes.values()):
         return "failure"
     if any(value == "cancelled" for value in outcomes.values()):
         return "cancelled"
+    if outcomes.get("receipt") == "success" and (not receipt_present or not receipt_valid):
+        return "failure"
     if (
         all(outcomes.get(step) == "success" for step in REQUIRED_STEPS)
         and receipt_present

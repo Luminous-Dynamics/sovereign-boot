@@ -154,7 +154,7 @@ grep -q 'request.inflight' nix/modules/sovereign-boot.nix
 grep -q 'canaryArchiveDir' nix/modules/sovereign-boot.nix
 grep -q 'canaryPrebootProbe' nix/modules/sovereign-boot.nix
 grep -q 'preboot_probe_sha256' scripts/arm-physical-canary.sh
-grep -q '\$archive_dir/\${request_id}.request' nix/modules/sovereign-boot.nix
+grep -Fq "archive_dir/''\${request_id}.request" nix/modules/sovereign-boot.nix
 grep -Fq "''\${request_id:-}" nix/modules/sovereign-boot.nix
 grep -Fq "''\${request_id}.request" nix/modules/sovereign-boot.nix
 grep -q '0700 root root' nix/modules/sovereign-boot.nix
