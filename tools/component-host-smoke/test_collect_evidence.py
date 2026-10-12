@@ -95,11 +95,14 @@ class EvidenceCollectorTests(unittest.TestCase):
         self.assertIn('id: receipt', workflow)
         self.assertIn('if: always()', workflow)
         self.assertIn('output = evidence_dir / "packet-status.json"', packet_builder)
+        self.assertIn('"qualification_workflow": evidence_dir / "qualification-workflow.yml"', packet_builder)
         self.assertIn('"runtime_stderr": evidence_dir / "runtime.stderr.log"', packet_builder)
         self.assertIn('collector_stderr_path = evidence_dir / "collector-stderr.log"', packet_builder)
         self.assertIn('"qualification_result": result', packet_builder)
         self.assertIn('"receipt_present": receipt_present', packet_builder)
         self.assertIn('"steps": outcomes', packet_builder)
+        self.assertIn('"command_provenance":', packet_builder)
+        self.assertIn('"toolchain_identity":', packet_builder)
         self.assertIn('"sha256": hashes', packet_builder)
         self.assertIn('"bytes": sizes', packet_builder)
 
@@ -230,6 +233,12 @@ class EvidenceCollectorTests(unittest.TestCase):
             (runner_temp / "component-runtime.log").write_text(runtime_log, encoding="utf-8")
             (runner_temp / "component-runtime-stderr.log").write_text("", encoding="utf-8")
             (runner_temp / "rustc-version.txt").write_text("rustc 1.96.0 (synthetic)", encoding="utf-8")
+            (runner_temp / "rustc-version-verbose.txt").write_text("rustc verbose identity\n", encoding="utf-8")
+            (runner_temp / "cargo-version.txt").write_text("cargo verbose identity\n", encoding="utf-8")
+            (runner_temp / "rustup-toolchain.txt").write_text("active toolchain identity\n", encoding="utf-8")
+            (runner_temp / "rust-targets.txt").write_text("wasm32-wasip2\n", encoding="utf-8")
+            (runner_temp / "runner-os-release.txt").write_text("ID=ubuntu\nVERSION_ID=24.04\n", encoding="utf-8")
+            (runner_temp / "runner-kernel.txt").write_text("Linux 6.x x86_64\n", encoding="utf-8")
             evidence.mkdir(parents=True, exist_ok=True)
             (evidence / "collector-stderr.log").write_text("", encoding="utf-8")
 
@@ -340,6 +349,23 @@ class EvidenceCollectorTests(unittest.TestCase):
                 "rustc 1.96.0 (synthetic)",
                 (evidence / "rustc-version.txt").read_text(encoding="utf-8"),
             )
+            self.assertEqual(
+                (root / ".github/workflows/component-runtime-qualification.yml").read_bytes(),
+                (evidence / "qualification-workflow.yml").read_bytes(),
+            )
+            self.assertEqual(
+                "cargo verbose identity\n",
+                (evidence / "cargo-version.txt").read_text(encoding="utf-8"),
+            )
+            self.assertEqual(
+                "wasm32-wasip2\n",
+                (evidence / "rust-targets.txt").read_text(encoding="utf-8"),
+            )
+            self.assertEqual(
+                hashlib.sha256((root / ".github/workflows/component-runtime-qualification.yml").read_bytes()).hexdigest(),
+                status["command_provenance"]["sha256"],
+            )
+            self.assertIn("runner_os_release", status["toolchain_identity"])
 
     def test_packet_receipt_validation_binds_source_context_runtime_and_artifacts(self) -> None:
         expected_commit = "e" * 40
@@ -365,6 +391,27 @@ class EvidenceCollectorTests(unittest.TestCase):
                     "bytes": len(content),
                     "sha256": hashlib.sha256(content).hexdigest(),
                 })
+            workflow_bytes = (
+                source_root / ".github/workflows/component-runtime-qualification.yml"
+            ).read_bytes()
+            hashes.update({
+                "qualification_workflow": hashlib.sha256(workflow_bytes).hexdigest(),
+                "rustc_version_verbose": "d" * 64,
+                "cargo_version": "e" * 64,
+                "rustup_toolchain": "1" * 64,
+                "rust_targets": "2" * 64,
+                "runner_os_release": "3" * 64,
+                "runner_kernel": "4" * 64,
+            })
+            sizes.update({
+                "qualification_workflow": len(workflow_bytes),
+                "rustc_version_verbose": 1,
+                "cargo_version": 1,
+                "rustup_toolchain": 1,
+                "rust_targets": 1,
+                "runner_os_release": 1,
+                "runner_kernel": 1,
+            })
             receipt = {
                 "schema": "luminous-sovereign-visual-component-runtime-evidence-v1",
                 "result": "pass",
@@ -443,6 +490,14 @@ class EvidenceCollectorTests(unittest.TestCase):
             wrong_hashes = dict(hashes, component="0" * 64)
             self.assertFalse(
                 packet.validate_receipt_document(receipt, **dict(kwargs, hashes=wrong_hashes))[0]
+            )
+            missing_cargo_identity = dict(hashes, cargo_version="")
+            self.assertFalse(
+                packet.validate_receipt_document(receipt, **dict(kwargs, hashes=missing_cargo_identity))[0]
+            )
+            wrong_workflow_copy = dict(hashes, qualification_workflow="0" * 64)
+            self.assertFalse(
+                packet.validate_receipt_document(receipt, **dict(kwargs, hashes=wrong_workflow_copy))[0]
             )
             wrong_rustc = dict(receipt, execution=dict(receipt["execution"], rustc_version="rustc 1.95.0"))
             self.assertFalse(packet.validate_receipt_document(wrong_rustc, **kwargs)[0])

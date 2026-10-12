@@ -56,6 +56,12 @@ jobs:
           rustup toolchain install 1.96.0 --profile minimal --component rustfmt
           rustup +1.96.0 target add wasm32-wasip2
           rustc +1.96.0 --version > "$RUNNER_TEMP/rustc-version.txt"
+          rustc +1.96.0 --version --verbose > "$RUNNER_TEMP/rustc-version-verbose.txt"
+          cargo +1.96.0 --version --verbose > "$RUNNER_TEMP/cargo-version.txt"
+          rustup +1.96.0 show > "$RUNNER_TEMP/rustup-toolchain.txt"
+          rustup +1.96.0 target list --installed > "$RUNNER_TEMP/rust-targets.txt"
+          cat /etc/os-release > "$RUNNER_TEMP/runner-os-release.txt"
+          uname -srvm > "$RUNNER_TEMP/runner-kernel.txt"
 
       # Resolve first so the lockfile can be preserved even when the guest build fails.
       - name: Resolve isolated host dependency graph

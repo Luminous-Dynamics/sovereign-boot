@@ -69,6 +69,15 @@ REQUIRED_SCOPE = {
     "physical_boot": False,
     "whole_process_memory_limit": False,
 }
+REQUIRED_TOOLCHAIN_ARTIFACTS = (
+    "rustc_version",
+    "rustc_version_verbose",
+    "cargo_version",
+    "rustup_toolchain",
+    "rust_targets",
+    "runner_os_release",
+    "runner_kernel",
+)
 
 
 def sha256_file(path: Path) -> str:
@@ -253,6 +262,21 @@ def validate_receipt_document(
     if not inventory_valid:
         return False, inventory_error
 
+    source_records_by_path = {record["path"]: record for record in source_files}
+    workflow_record = source_records_by_path.get(
+        ".github/workflows/component-runtime-qualification.yml"
+    )
+    if not isinstance(workflow_record, dict):
+        return False, "source inventory has no qualification workflow record"
+    if (
+        hashes.get("qualification_workflow") != workflow_record.get("sha256")
+        or sizes.get("qualification_workflow") != workflow_record.get("bytes")
+    ):
+        return False, "archived qualification workflow does not match the source inventory"
+    for artifact_name in REQUIRED_TOOLCHAIN_ARTIFACTS:
+        if not hashes.get(artifact_name) or sizes.get(artifact_name, 0) <= 0:
+            return False, f"toolchain identity artifact is missing or empty: {artifact_name}"
+
     execution = receipt.get("execution")
     if not isinstance(execution, dict):
         return False, "receipt execution section is missing"
@@ -349,18 +373,32 @@ def main() -> int:
 
     fixture_path = ROOT / "tests/fixtures/first-germination.scene.json"
     source_paths = {
+        "qualification_workflow": ROOT / ".github/workflows/component-runtime-qualification.yml",
         "host_lockfile": ROOT / "tools/component-host-smoke/Cargo.lock",
         "component": ROOT / "target/wasm32-wasip2/release/sovereign_visual_component.wasm",
         "scene_pack_fixture": fixture_path,
         "rustc_version": runner_temp / "rustc-version.txt",
+        "rustc_version_verbose": runner_temp / "rustc-version-verbose.txt",
+        "cargo_version": runner_temp / "cargo-version.txt",
+        "rustup_toolchain": runner_temp / "rustup-toolchain.txt",
+        "rust_targets": runner_temp / "rust-targets.txt",
+        "runner_os_release": runner_temp / "runner-os-release.txt",
+        "runner_kernel": runner_temp / "runner-kernel.txt",
         "runtime_log": runner_temp / "component-runtime.log",
         "runtime_stderr": runner_temp / "component-runtime-stderr.log",
     }
     packet_paths = {
+        "qualification_workflow": evidence_dir / "qualification-workflow.yml",
         "host_lockfile": evidence_dir / "component-host-Cargo.lock",
         "component": evidence_dir / "sovereign_visual_component.wasm",
         "scene_pack_fixture": evidence_dir / "first-germination.scene.json",
         "rustc_version": evidence_dir / "rustc-version.txt",
+        "rustc_version_verbose": evidence_dir / "rustc-version-verbose.txt",
+        "cargo_version": evidence_dir / "cargo-version.txt",
+        "rustup_toolchain": evidence_dir / "rustup-toolchain.txt",
+        "rust_targets": evidence_dir / "rust-targets.txt",
+        "runner_os_release": evidence_dir / "runner-os-release.txt",
+        "runner_kernel": evidence_dir / "runner-kernel.txt",
         "runtime_log": evidence_dir / "runtime.log",
         "runtime_stderr": evidence_dir / "runtime.stderr.log",
     }
@@ -454,6 +492,15 @@ def main() -> int:
         "receipt_validation": "valid" if receipt_valid else ("invalid" if receipt_present else "missing"),
         "receipt_validation_error": "" if receipt_valid else validation_error,
         "steps": outcomes,
+        "command_provenance": {
+            "workflow_file": "qualification-workflow.yml",
+            "sha256": hashes.get("qualification_workflow", ""),
+            "bytes": sizes.get("qualification_workflow", -1),
+        },
+        "toolchain_identity": {
+            key: {"sha256": hashes.get(key, ""), "bytes": sizes.get(key, -1)}
+            for key in REQUIRED_TOOLCHAIN_ARTIFACTS
+        },
         "sha256": hashes,
         "bytes": sizes,
     }
