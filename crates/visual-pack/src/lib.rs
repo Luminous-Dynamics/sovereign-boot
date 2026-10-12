@@ -672,38 +672,60 @@ fn valid_segmented_id(value: &str) -> bool {
 }
 
 fn validate_semver(field: &str, value: &str) -> Result<(), ScenePackError> {
-    let (core, prerelease) = match value.split_once('-') {
-        Some((core, suffix)) => (core, Some(suffix)),
+    // Parse the three SemVer 2.0.0 components separately from prerelease and
+    // build identifiers. In particular, split identifiers must never be empty:
+    // otherwise values such as "1.2.3-alpha..1" can pass a character-only check.
+    let invalid = || invalid_value(field, "must be a valid SemVer 2.0.0 version");
+    let (without_build, build) = match value.split_once('+') {
+        Some((version, metadata)) => {
+            if metadata.is_empty() || metadata.contains('+') {
+                return Err(invalid());
+            }
+            (version, Some(metadata))
+        }
         None => (value, None),
     };
+
+    let (core, prerelease) = match without_build.split_once('-') {
+        Some((core, suffix)) => (core, Some(suffix)),
+        None => (without_build, None),
+    };
     let mut parts = core.split('.');
-    let valid_component = |part: &str| {
+    let valid_numeric_component = |part: &str| {
         !part.is_empty()
             && part.bytes().all(|byte| byte.is_ascii_digit())
             && (part == "0" || !part.starts_with('0'))
     };
     if ![parts.next(), parts.next(), parts.next()]
         .into_iter()
-        .all(|part| part.is_some_and(valid_component))
+        .all(|part| part.is_some_and(valid_numeric_component))
         || parts.next().is_some()
     {
-        return Err(invalid_value(
-            field,
-            "must use semantic major.minor.patch versioning",
-        ));
+        return Err(invalid());
     }
-    if let Some(suffix) = prerelease {
-        if suffix.is_empty()
-            || !suffix
+
+    let valid_identifier = |identifier: &str| {
+        !identifier.is_empty()
+            && identifier
                 .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'.' || byte == b'-')
-        {
-            return Err(invalid_value(
-                field,
-                "has an invalid semantic-version suffix",
-            ));
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+    };
+    if let Some(prerelease) = prerelease {
+        if !prerelease.split('.').all(|identifier| {
+            valid_identifier(identifier)
+                && (!identifier.bytes().all(|byte| byte.is_ascii_digit())
+                    || identifier == "0"
+                    || !identifier.starts_with('0'))
+        }) {
+            return Err(invalid());
         }
     }
+    if let Some(build) = build {
+        if !build.split('.').all(valid_identifier) {
+            return Err(invalid());
+        }
+    }
+
     Ok(())
 }
 
@@ -1145,6 +1167,40 @@ mod tests {
     use super::*;
 
     const FIXTURE: &str = include_str!("../../../tests/fixtures/first-germination.scene.json");
+    #[test]
+    fn semantic_versions_follow_semver_2_identifier_rules() {
+        for version in [
+            "0.0.0",
+            "1.2.3",
+            "1.2.3-alpha",
+            "1.2.3-alpha.1",
+            "1.2.3-0A.1-z",
+            "1.2.3+build.7",
+            "1.2.3-rc.1+build.42",
+        ] {
+            assert!(validate_semver("sceneVersion", version).is_ok(), "{version}");
+        }
+
+        for version in [
+            "",
+            "1",
+            "1.2",
+            "01.2.3",
+            "1.02.3",
+            "1.2.03",
+            "1.2.3-",
+            "1.2.3-alpha..1",
+            "1.2.3-01",
+            "1.2.3+",
+            "1.2.3+build..7",
+            "1.2.3+bad_thing",
+            "1.2.3-alpha+build+extra",
+            "1.2.3-\u{00DF}",
+        ] {
+            assert!(validate_semver("sceneVersion", version).is_err(), "{version}");
+        }
+    }
+
 
     #[test]
     fn parses_pinned_first_germination_profile() {
