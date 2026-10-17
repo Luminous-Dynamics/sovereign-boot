@@ -183,7 +183,8 @@ jobs:
           : > "$timestamps"
           for ((index = 0; index < 45; index++)); do
             printf -v frame_name 'frame-%06d.ppm' "$((index + 1))"
-            if ((index >= 13 && index < 18)); then
+            phase=$((index % 8))
+            if ((phase >= 2 && phase <= 5)); then
               printf 'P6\n2 1\n255\n\377\377\377\377\377\377' > "$corpus/$frame_name"
             else
               printf 'P6\n2 1\n255\n\000\000\000\000\000\000' > "$corpus/$frame_name"
