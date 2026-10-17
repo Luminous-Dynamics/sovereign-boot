@@ -241,6 +241,15 @@ jobs:
           test "$(sha256sum "$output/benchmark.json" | cut -c1-64)" = "$(jq -r .benchmark_receipt_sha256 "$output/capture-manifest.json")"
           (cd "$output" && sha256sum --check evidence.sha256)
 
+          # Correctness receipt is deterministic; runtime belongs only in benchmark.json.
+          repeat_output="$RUNNER_TEMP/chunked-audit-evidence-repeat"
+          validation/chunked-frame-audit.sh \
+            --output-dir "$repeat_output" \
+            --timestamps "$timestamps" --max-gap-ms 150 --chunk-frames 15 \
+            --frames "${frames[@]}"
+          cmp "$output/audit.json" "$repeat_output/audit.json"
+          test "$(sha256sum "$output/audit.json" | cut -c1-64)" = "$(sha256sum "$repeat_output/audit.json" | cut -c1-64)"
+
           # Shift this timestamp and every later sample by 200 ms: a 300 ms
           # adjacent gap must be reported incomplete against a 150 ms limit.
           awk 'NR < 21 { print; next } { printf "%.0f\n", $1 + 200000000 }' \
