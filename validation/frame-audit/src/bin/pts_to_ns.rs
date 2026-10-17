@@ -215,11 +215,12 @@ mod tests {
     #[test]
     fn rejects_checked_integer_overflow() {
         assert!(normalize_pts(
-            "9223372036854775807\n9223372036854775806\n9223372036854775805\n",
+            "9223372036854775805\n9223372036854775806\n9223372036854775807\n",
             i64::MAX,
             1,
         )
-        .is_err());
+        .unwrap_err()
+        .contains("overflowed"));
     }
 
     #[test]
