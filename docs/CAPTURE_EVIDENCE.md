@@ -41,6 +41,21 @@ Verify the bundle after transfer:
 
 The original video itself is not copied into the bundle; its SHA-256 is recorded in capture-manifest.json. In video mode, the normalized PTS sidecar, source PTS origin, and filter time base are recorded and hashed. For PPM-sequence mode, the caller-provided sidecar is copied byte-for-byte and hashed; the manifest does not assert that it came from original media. Keep the recording separately, along with display model/refresh rate, capture method, OS/compositor, color-management settings, and any camera/display geometry notes. Do not publish real lock-screen recordings or raw captures without a privacy review.
 
+## Long-duration chunked capture audit
+
+The initial bounded chunking path for pre-extracted ordered P6 PPM sequences is validation/chunked-frame-audit.sh. It is qualification-gated and is not yet a replacement for the single-shot path. It keeps the existing per-audit 500,000,000-sampled-pixel bound and accepts up to 10,000 caller-owned frames under an aggregate input-byte cap; every chunk is independently checked by the same Rust auditor.
+
+Example:
+
+    validation/chunked-frame-audit.sh \
+      --output-dir /tmp/chunked-frame-audit-evidence \
+      --timestamps /tmp/presentation-timestamps-ns.txt \
+      --max-gap-ms 100 --chunk-frames 60 \
+      --frames /tmp/frames/frame-000001.ppm /tmp/frames/frame-000002.ppm /tmp/frames/frame-000003.ppm
+
+Each later chunk starts at the earliest observed sample within one second of its first newly emitted sample, plus one earlier predecessor. The wrapper audits both the full chunk and the prefix ending immediately before new samples, then subtracts prefix counters so overlapped transitions/windows are not double-counted. It checks nonnegative deltas and requires the merged transition count to equal frame_count - 1. The receipt binds ordered input hashes, source and normalized timestamp hashes, per-chunk full/prefix receipts, sampled-pixel work, elapsed wall time, and an evidence checksum. Original frame paths are not written to the evidence bundle; the PPM corpus remains caller-owned and must be retained separately.
+
+Large sample gaps remain explicitly incomplete_sampling_due_to_gap; a green-looking event count is not a complete result when the coverage gate fails. The workflow compares a deterministic chunked run to the monolithic timestamped receipt, including temporal-window summaries, and runs a gap negative control. This first version only chunks pre-extracted PPM files. It does not yet serialize/restore the auditor's per-pixel state, stream source video, or qualify a 60-second 1080p/30 capture under a named machine/RSS benchmark. It remains a non-normative visual regression proxy, not WCAG certification.
 ## Interpretation limits
 
 For ordered PPM frames, supply a timestamp sidecar:
