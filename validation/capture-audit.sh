@@ -144,6 +144,8 @@ temporal_basis="nominal_fps"
 timestamps_path=""
 source_media_pts_preserved="false"
 source_pts_origin_ns_json="null"
+source_pts_origin_ns_exact_json="null"
+source_pts_origin_ticks_exact_json="null"
 source_pts_time_base_json="null"
 max_video_frames=0
 extraction_method="ordered P6 PPM input; copied without resizing"
@@ -175,44 +177,42 @@ if [[ "$mode" == "video" ]]; then
   video_frame_limit=$((max_video_frames + 1))
 
   timestamps_path="$output_dir/presentation-timestamps-ns.txt"
-  extraction_method="FFmpeg-selected source PTS converted through showinfo filter time base; relative to first selected frame"
+  extraction_method="FFmpeg-selected source PTS converted by checked Rust integer arithmetic through the showinfo filter time base; relative to first selected frame"
   ffmpeg_log="$output_dir/.ffmpeg-extraction.log"
   pts_origin_file="$output_dir/.source-pts-origin-ns"
+  pts_origin_ticks_file="$output_dir/.source-pts-origin-ticks"
+
+  # The integer normalizer is independent of the renderer and has no external
+  # crates. Compile it before extracting so source PTS never pass through awk
+  # floating-point arithmetic.
+  cargo build --manifest-path validation/frame-audit/Cargo.toml --locked --release
+  pts_normalizer_bin="$CARGO_TARGET_DIR/release/pts-to-ns"
+  [[ -x "$pts_normalizer_bin" ]] || die "Rust integer PTS normalizer was not built"
+
   ffmpeg -nostdin -hide_banner -loglevel info -i "$video_path" \
     -map 0:v:0 \
-    -vf "select='isnan(prev_selected_t)+gte(t-prev_selected_t\,0.999/${fps})',showinfo" \
+    -vf "select='isnan(prev_selected_t)+gte(t-prev_selected_t\\,0.999/${fps})',showinfo" \
     -fps_mode passthrough -frames:v "$video_frame_limit" -start_number 1 \
     "$frame_dir/frame-%06d.ppm" 2> "$ffmpeg_log"
 
-  time_base="$(sed -nE 's/.*config in time_base: ([0-9]+)\/([0-9]+),.*/\1 \2/p' "$ffmpeg_log" | head -n 1)"
-  [[ -n "$time_base" ]] || die "FFmpeg did not report the selected-frame PTS time base"
-  read -r pts_timebase_num pts_timebase_den <<< "$time_base"
-  [[ "$pts_timebase_num" =~ ^[0-9]+$ && "$pts_timebase_den" =~ ^[0-9]+$ ]] || die "invalid FFmpeg PTS time base"
-  ((pts_timebase_num > 0 && pts_timebase_den > 0)) || die "invalid zero-valued FFmpeg PTS time base"
+  time_base="$(sed -nE 's/.*config in time_base: ([0-9]+)\/([0-9]+),.*/\1\/\2/p' "$ffmpeg_log" | head -n 1)"
+  [[ "$time_base" =~ ^[0-9]+/[0-9]+$ ]] || die "FFmpeg did not report a valid selected-frame PTS time base"
   if ! grep -q 'showinfo.* n:.*pts:' "$ffmpeg_log"; then
     die "FFmpeg did not report presentation timestamps for selected frames"
   fi
   grep 'showinfo.* n:.*pts:' "$ffmpeg_log" \
     | sed -nE 's/.* n:[[:space:]]*[0-9]+ pts:[[:space:]]*(-?[0-9]+) pts_time:.*/\1/p' \
-    | awk -v num="$pts_timebase_num" -v den="$pts_timebase_den" -v origin_path="$pts_origin_file" '
-        NF {
-          t = ($1 + 0) * num * 1000000000 / den
-          if (!seen) {
-            origin = t
-            printf "%.0f\n", origin > origin_path
-            close(origin_path)
-            seen = 1
-          }
-          ns = t - origin
-          if (ns < 0) exit 2
-          printf "%.0f\n", ns
-        }
-        END { if (!seen) exit 3 }
-      ' > "$timestamps_path"
-  [[ -s "$timestamps_path" && -s "$pts_origin_file" ]] || die "could not generate a complete PTS sidecar"
+    | "$pts_normalizer_bin" --time-base "$time_base" \
+        --timestamps-out "$timestamps_path" \
+        --origin-ns-out "$pts_origin_file" \
+        --origin-ticks-out "$pts_origin_ticks_file"
+  [[ -s "$timestamps_path" && -s "$pts_origin_file" && -s "$pts_origin_ticks_file" ]] || die "could not generate a complete PTS sidecar"
   source_pts_origin_ns="$(cat "$pts_origin_file")"
-  rm -f -- "$pts_origin_file"
+  source_pts_origin_ticks="$(cat "$pts_origin_ticks_file")"
+  rm -f -- "$pts_origin_file" "$pts_origin_ticks_file"
   source_pts_origin_ns_json="$source_pts_origin_ns"
+  source_pts_origin_ns_exact_json="\"$source_pts_origin_ns\""
+  source_pts_origin_ticks_exact_json="\"$source_pts_origin_ticks\""
   source_pts_time_base_json="\"$time_base\""
   rm -f -- "$ffmpeg_log"
   temporal_basis="presentation_timestamp_ns"
@@ -314,6 +314,8 @@ jq -n \
   --argjson max_gap_ms "$max_gap_ms" \
   --argjson source_media_pts_preserved "$source_media_pts_preserved" \
   --argjson source_pts_origin_ns "$source_pts_origin_ns_json" \
+  --argjson source_pts_origin_ns_exact "$source_pts_origin_ns_exact_json" \
+  --argjson source_pts_origin_ticks_exact "$source_pts_origin_ticks_exact_json" \
   --argjson source_pts_time_base "$source_pts_time_base_json" \
   --argjson frame_count "${#ppm_files[@]}" \
   --arg frame_manifest_sha256 "$frame_manifest_sha256" \
@@ -350,6 +352,8 @@ jq -n \
     timestamp_timeline_analyzed: ($temporal_basis == "presentation_timestamp_ns"),
     source_media_pts_preserved: $source_media_pts_preserved,
     source_pts_origin_ns: $source_pts_origin_ns,
+    source_pts_origin_ns_exact: $source_pts_origin_ns_exact,
+    source_pts_origin_ticks_exact: $source_pts_origin_ticks_exact,
     source_pts_time_base: $source_pts_time_base,
     normative_wcag_conformance: false,
     limitations: [
