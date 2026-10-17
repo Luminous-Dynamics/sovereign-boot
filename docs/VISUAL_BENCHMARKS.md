@@ -162,6 +162,42 @@ Proposed performance targets to validate after collecting the initial baseline:
 
 These are target budgets, not current measured performance results. The current 500-million-pixel workload cap permits only about 241 frames at 1080p and 60 at 4K; longer traces require a separately qualified chunked/resumable mode with state preserved across chunk boundaries. Do not remove the existing cap merely to make the longer-duration target appear satisfied.
 
+## Paradigm shift: qualify a visual system, not an isolated shader
+
+The proposed unit of design is a **visual contract**: intent, composition features, palette, motion envelope, state meaning, resource budget, deterministic seed, reduced-motion representation, and safe fallback. Themes should not be ten names wired to one hidden generic scene. Nor should an attractive screenshot be accepted as proof of good timing, accessibility, power use, or safe lifecycle integration.
+
+Qualify five independent properties instead of collapsing them into a single visual score:
+
+1. **Semantic controllability.** A declared theme/family selector must create its intended composition. Test the ten current families under a neutral palette so colour alone cannot make them appear distinct. Later, collect blinded owner-review ratings of theme identity; start with at least 80% correct family identification and record uncertainty rather than turning that target into a claim about universal perception.
+2. **Bounded expressivity.** The same seed and fixed inputs reproduce exact pixels on the same backend; changing only the declared seed changes the scene within its budget; Reduced ignores time and renders its intentional still composition. Do not confuse randomness with creativity or require pixel equality across unlike backends.
+3. **Temporal safety as a time-series property.** Keep source PTS, sampling gaps, transition history, and one-second windows in timestamp space. Test both monolithic and segmented analysis against the same corpus. The PPM chunker is a first prototype using overlap/prefix deltas, not a serialized continuation of per-pixel state; it remains unqualified until it matches the monolithic oracle and malformed-input negative controls pass.
+4. **Operational isolation.** The desktop may use the GPU; early boot and recovery must not depend on GPU discovery, shader compilation, remote assets, or the decorative process succeeding. Measure first useful frame, stop-to-DRM-release, fallback completion, crash recovery, and privacy separately.
+5. **Resource truth.** Report unique source pixels separately from actual processed pixel work (including repeated overlap), compile time separately from audit time, CPU submission separately from GPU execution, and frame rendering separately from presentation. Missing telemetry is null/unmeasured, not an estimate.
+
+### Chunked-evidence acceptance targets
+
+| Gate | Target before qualification | Negative control |
+|---|---|---|
+| Segment equivalence | Same event counts, per-window summaries, area maxima, and transition count as monolithic analysis for identical ordered frames/timestamps | Put an opposing transition across a segment boundary; deliberately remove/duplicate a chunk or mismatch timestamps |
+| Window coverage | Every one-second window is counted once; overlap does not inflate counts | Compare the complete window-summary object to the monolithic oracle |
+| Gap semantics | A gap within the configured limit remains within policy; larger gap is explicitly incomplete | Introduce a 300 ms gap with a 150 ms declared limit |
+| Input integrity | SHA-256 manifest binds order; re-hash detects source mutation; source/build commits are recorded | Duplicate/backward/missing timestamp and changed input fail closed |
+| Work reporting | Report unique pixels, actual pixel-work, redundant overlap, chunk limits, wall time, coverage status | Resource-bound failure never produces a clean zero-event pass |
+| Long capture | At least 60 seconds of 1920×1080 at 30 samples/s (1,800 frames), preserving one-second semantics across every boundary | Replay a known flash pattern before/across/after boundaries; all receipts reconcile |
+| Memory | Peak RSS ≤256 MiB at 1080p and ≤512 MiB at 4K on a named machine | Oversized frame, byte, frame-count, or pixel-work budget must reject visibly |
+
+Do not treat the 60-second target as achieved by increasing a frame limit. This branch's first chunked PPM implementation re-reads overlapping frames and subtracts prefix counters; it still needs measured equivalence, resource benchmarks, video-input support, and eventually a serializable auditor state if overlap reprocessing is too expensive. Report p50/p95/p99/max and peak RSS over at least five repetitions on a fixed named machine. Keep CI fixtures small and deterministic; put 60-second/4K performance work on a dedicated runner or local qualification machine with raw artifacts and exact SHAs.
+
+### Evidence hierarchy
+
+- **Unit/property tests** prove local math and parser invariants.
+- **Synthetic frame corpus** proves known-positive and known-negative temporal behaviour under controlled timestamps.
+- **Chunked-versus-monolithic oracle** detects segmentation bugs; it does not establish that the input captured every real display event.
+- **Offscreen GPU captures** establish shader compilation, pixel determinism, and same-adapter throughput only.
+- **OS/compositor and physical-display captures** establish additional lifecycle/timing facts but still require correct instrumentation and a documented capture chain.
+- **Owner visual review** evaluates composition and meaning; structural colour-bin and luminance statistics are only blank/degenerate-image alarms.
+
+Flash-frequency guidance should be read from the [W3C WCAG 2.2 SC 2.3.1 explanation](https://www.w3.org/WAI/WCAG22/Understanding/three-flashes-or-below-threshold.html). Our Rust auditor is deliberately non-normative; a passing receipt is not certification, and a sampling-gap pass is not proof that no unobserved event occurred.
 ## Human-quality evaluation
 
 Use a small, blinded study with identical display hardware and lighting. Ask participants to rank coherence, beauty, legibility, motion comfort, and perceived system-state clarity separately.
