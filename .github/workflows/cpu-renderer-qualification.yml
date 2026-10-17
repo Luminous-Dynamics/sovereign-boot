@@ -203,7 +203,7 @@ jobs:
             --slurpfile mono "$RUNNER_TEMP/chunked-audit-monolithic.json" \
             --slurpfile chunked "$output/audit.json" \
             --slurpfile bench "$output/benchmark.json" '
-            ($mono[0]) as $m | ($chunked[0]) as $c |
+            ($mono[0]) as $m | ($chunked[0]) as $c | ($bench[0]) as $b |
             $c.schema == "captured-frame-audit-v5-chunked"
             and $c.frames_examined == $m.frames_examined
             and $c.frame_transitions_examined == $m.frame_transitions_examined
