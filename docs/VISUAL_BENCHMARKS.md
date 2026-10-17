@@ -127,6 +127,41 @@ The spatial screen reports the maximum candidate-flash ratio in a sliding local 
 
 **This remains a regression proxy, not WCAG conformance.** The scaled raster window is not the actual physical 10-degree visual field for every monitor/viewing distance; sampling can miss events between frames; and red-colour handling is conservative, not independently certified. Use a validated analyser and actual display captures for any stronger claim.
 
+## Timestamp semantics and evidence completeness
+
+The external frame auditor now has two explicitly different timing modes:
+
+- **Legacy nominal-FPS mode:** schema captured-frame-audit-v3; frame-index spacing is interpreted using the declared FPS. Keep this path for existing reproducible fixtures.
+- **Timestamp-sidecar mode:** schema captured-frame-audit-v4-timestamped; each input frame has exactly one strictly increasing unsigned integer timestamp in nanoseconds. Opposing-edge pairing and rolling one-second event windows use elapsed timestamp time. The source/build SHAs remain embedded in the receipt.
+
+The CLI takes the sidecar with --timestamps timestamps-ns.txt. --max-gap-ms declares a maximum allowed adjacent sample gap (default 100 ms). A trace with a larger gap emits coverage_status: incomplete_sampling_due_to_gap; its observed event counts must not be interpreted as a complete scan of the unobserved interval. This threshold is an engineering coverage alarm, not proof that every shorter interval was adequately sampled. Both timestamp and legacy modes continue to report normative_wcag_conformance: false.
+
+### New qualification targets
+
+| Check | Acceptance target | Failure behavior |
+|---|---|---|
+| Timestamp format | Exactly one timestamp per frame; integer nanoseconds; no negative, duplicate, decreasing, malformed, missing, or extra entries | Reject the audit with non-zero exit |
+| Pair timing | Opposing edges ≤1,000,000,000 ns apart can pair; edges beyond one second cannot pair | Deterministic boundary fixtures fail on any divergence |
+| Rolling windows | Event counts use any observed one-second timestamp interval, including irregular sample spacing | Positive/negative boundary fixtures must match expected counts |
+| Gap reporting | Every sequence with a gap above --max-gap-ms is labeled incomplete_sampling_due_to_gap | Incomplete data may never be represented as complete coverage |
+| Determinism | Identical pixel bytes, timestamp sidecar, options, and build produce identical audit metrics | Different metrics or event summaries block qualification |
+| Provenance | Receipt binds source/build commits; capture manifest binds timestamp-sidecar hash, ordered frame-hash manifest, and receipt hash | Missing or mismatched evidence blocks release |
+| Schema compatibility | Legacy FPS receipts remain v3; timestamp receipts use v4; mode must be visible in the receipt | A receipt must never hide which timing basis was used |
+| Resource bounds | Retain maximum frame, count, timestamp-file, and sampled-pixel limits; report truncation/gap status explicitly | No partial run can be mistaken for a clean audit |
+
+### Performance baseline before optimization
+
+Measure the timestamped and legacy modes separately on the same named reference machine. Use at least five repetitions and report frame count, resolution, total pixel work, timeline span, max sample gap, elapsed audit time, peak RSS, and p50/p95/p99 per-transition time. Do not compare a timestamped full-resolution capture against a low-resolution nominal-FPS run as if the difference were a code speedup.
+
+Proposed performance targets to validate after collecting the initial baseline:
+
+- 1080p: sustain 30 sampled frames/second with per-transition p95 ≤33.3 ms; peak RSS ≤256 MiB.
+- 4K: sustain 10 sampled frames/second as an initial target; peak RSS ≤512 MiB.
+- Repeated run: zero audit-metric divergence for identical frame/timestamp inputs.
+- Gap negative control: zero cases where a large timestamp gap produces a complete-coverage status.
+
+These are target budgets, not current measured performance results. The current 500-million-pixel workload cap permits only about 241 frames at 1080p and 60 at 4K; longer traces require a separately qualified chunked/resumable mode with state preserved across chunk boundaries. Do not remove the existing cap merely to make the longer-duration target appear satisfied.
+
 ## Human-quality evaluation
 
 Use a small, blinded study with identical display hardware and lighting. Ask participants to rank coherence, beauty, legibility, motion comfort, and perceived system-state clarity separately.
