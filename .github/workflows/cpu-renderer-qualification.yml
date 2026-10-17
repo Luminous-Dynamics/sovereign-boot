@@ -93,8 +93,8 @@ jobs:
             -f lavfi -i "color=c=black:s=32x32:r=10:d=0.5" \
             -f lavfi -i "color=c=white:s=32x32:r=10:d=0.5" \
             -f lavfi -i "color=c=black:s=32x32:r=10:d=0.5" \
-            -filter_complex "[0:v][1:v][2:v]concat=n=3:v=1:a=0,format=yuv444p" \
-            -fps_mode passthrough -c:v ffv1 "$video_file"
+            -filter_complex "[0:v][1:v][2:v]concat=n=3:v=1:a=0,select='not(eq(n\,5))',format=yuv444p" \
+            -fps_mode vfr -c:v ffv1 "$video_file"
           validation/capture-audit.sh \
             --video "$video_file" --fps 10 --max-gap-ms 250 \
             --output-dir "$video_evidence"
@@ -110,13 +110,14 @@ jobs:
             and (.timestamp_sidecar_sha256 | type == "string" and length == 64)
             and (.source_pts_origin_ns | type == "number")
             and (.source_pts_time_base | type == "string")
-            and .frame_count >= 3 and .frame_count <= 15
+            and .frame_count == 14
             and .normative_wcag_conformance == false
           ' "$video_evidence/capture-manifest.json"
           jq -e '
             .schema == "captured-frame-audit-v4-timestamped"
             and .temporal_basis == "monotonic_presentation_timestamps_ns"
             and .timeline.sampling_gap_gate_passed == true
+            and .timeline.max_sample_gap_ns >= 200000000
             and .timeline.max_sample_gap_ns <= 250000000
             and .normative_wcag_conformance == false
           ' "$video_evidence/audit.json"

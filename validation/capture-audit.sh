@@ -175,7 +175,7 @@ if [[ "$mode" == "video" ]]; then
   pts_origin_file="$output_dir/.source-pts-origin-ns"
   ffmpeg -nostdin -hide_banner -loglevel info -i "$video_path" \
     -map 0:v:0 \
-    -vf "select='isnan(prev_selected_t)+gte(t-prev_selected_t\,1/${fps})',showinfo" \
+    -vf "select='isnan(prev_selected_t)+gte(t-prev_selected_t\,0.999/${fps})',showinfo" \
     -fps_mode passthrough -frames:v "$video_frame_limit" -start_number 1 \
     "$frame_dir/frame-%06d.ppm" 2> "$ffmpeg_log"
 
