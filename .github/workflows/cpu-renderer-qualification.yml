@@ -247,7 +247,7 @@ jobs:
           validation/chunked-frame-audit.sh \
             --output-dir "$duplicate_output" \
             --timestamps "$corpus/timestamps-duplicate-ns.txt" --max-gap-ms 150 --chunk-frames 15 \
-            --frames "\${frames[@]}" > "$RUNNER_TEMP/chunked-audit-duplicate.stdout" 2>&1
+            --frames "${frames[@]}" > "$RUNNER_TEMP/chunked-audit-duplicate.stdout" 2>&1
           duplicate_status=$?
           set -e
           test "$duplicate_status" -eq 2
