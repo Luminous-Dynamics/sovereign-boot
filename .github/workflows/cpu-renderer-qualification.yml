@@ -141,7 +141,11 @@ jobs:
             and (.source_video_sha256 | type == "string" and length == 64)
             and (.timestamp_sidecar_sha256 | type == "string" and length == 64)
             and (.source_pts_origin_ns | type == "number")
-            and (.source_pts_time_base | type == "string")
+            and (.source_pts_origin_ns_exact | type == "string")
+            and (.source_pts_origin_ns_exact | test("^-?[0-9]+$"))
+            and (.source_pts_origin_ticks_exact | type == "string")
+            and (.source_pts_origin_ticks_exact | test("^-?[0-9]+$"))
+            and (.source_pts_time_base | test("^[0-9]+/[0-9]+$"))
             and .frame_count == 14
             and .normative_wcag_conformance == false
           ' "$video_evidence/capture-manifest.json"
@@ -161,6 +165,17 @@ jobs:
           set -euo pipefail
           export CARGO_TARGET_DIR="$RUNNER_TEMP/chunked-frame-audit-target"
           bash -n validation/chunked-frame-audit.sh
+          cargo build --manifest-path validation/frame-audit/Cargo.toml --locked --release
+          printf '9007199254740993\n9007199254740994\n9007199254740995\n' \
+            | "$CARGO_TARGET_DIR/release/pts-to-ns" \
+                --time-base 1/1000000000 \
+                --timestamps-out "$RUNNER_TEMP/pts-exact-ns.txt" \
+                --origin-ns-out "$RUNNER_TEMP/pts-origin-ns.txt" \
+                --origin-ticks-out "$RUNNER_TEMP/pts-origin-ticks.txt"
+          printf '0\n1\n2\n' > "$RUNNER_TEMP/pts-exact-expected.txt"
+          cmp "$RUNNER_TEMP/pts-exact-expected.txt" "$RUNNER_TEMP/pts-exact-ns.txt"
+          test "$(cat "$RUNNER_TEMP/pts-origin-ns.txt")" = "9007199254740993"
+          test "$(cat "$RUNNER_TEMP/pts-origin-ticks.txt")" = "9007199254740993"
           corpus="$RUNNER_TEMP/chunked-audit-corpus"
           output="$RUNNER_TEMP/chunked-audit-evidence"
           mkdir -p "$corpus"
