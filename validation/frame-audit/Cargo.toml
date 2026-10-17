@@ -7,6 +7,3 @@ default-run = "sovereign-frame-audit"
 
 [workspace]
 
-[[bin]]
-name = "pts-to-ns"
-path = "src/bin/pts_to_ns.rs"
