@@ -163,7 +163,6 @@ for ((frame_index = 0; frame_index < ${#frames[@]}; frame_index++)); do
   printf '%08d %s\n' "$frame_index" "$frame_hash" >> "$output_dir/input-frames.manifest"
 done
 frame_manifest_sha256="$(sha256sum -- "$output_dir/input-frames.manifest" | awk '{print $1}')"
-audit_started_epoch_ns="$(date +%s%N)"
 
 temporary_cargo_target=""
 if [[ -z "${CARGO_TARGET_DIR:-}" ]]; then
@@ -174,6 +173,7 @@ fi
 cargo build --manifest-path validation/frame-audit/Cargo.toml --locked --release
 auditor_bin="$CARGO_TARGET_DIR/release/sovereign-frame-audit"
 [[ -x "$auditor_bin" ]] || die "compiled independent frame auditor not found"
+audit_started_epoch_ns="$(date +%s%N)"
 
 run_audit() {
   local start_index="$1"
@@ -310,7 +310,8 @@ jq -n \
     | ($runs | map(.full.one_second_window_summary.general_windows_over_three_flash_events - (.prefix.one_second_window_summary.general_windows_over_three_flash_events // 0))) as $general_window_deltas
     | ($runs | map(.full.one_second_window_summary.red_windows_over_three_flash_events - (.prefix.one_second_window_summary.red_windows_over_three_flash_events // 0))) as $red_window_deltas
     | ([ $fulls[].timeline.max_sample_gap_ns ] | max) as $max_gap_ns
-    | ($frame_count * $fulls[0].resolution.width * $fulls[0].resolution.height) as $pixel_work_processed
+    | ($frame_count * $fulls[0].resolution.width * $fulls[0].resolution.height) as $unique_source_pixel_work
+    | ([$runs[] | ((.full.frames_examined + (.prefix.frames_examined // 0)) * .full.resolution.width * .full.resolution.height)] | add) as $audit_pixel_work
     | ([$fulls[] | (.frames_examined * .resolution.width * .resolution.height)] | max) as $max_chunk_pixel_work
     | {
         schema:"captured-frame-audit-v5-chunked",
@@ -321,7 +322,9 @@ jq -n \
         chunking_method:"one_second_timestamp_overlap_plus_predecessor_frame_with_prefix_delta_accounting",
         frames_examined:$frame_count,
         frame_transitions_examined:($transition_deltas | add),
-        sampled_pixels_processed:$pixel_work_processed,
+        unique_source_sampled_pixels:$unique_source_pixel_work,
+        audit_sampled_pixels_processed:$audit_pixel_work,
+        redundant_overlap_pixels:($audit_pixel_work - $unique_source_pixel_work),
         max_chunk_sampled_pixels:$max_chunk_pixel_work,
         resolution:$fulls[0].resolution,
         timeline:{
@@ -381,7 +384,7 @@ done
 
 audit_finished_epoch_ns="$(date +%s%N)"
 elapsed_wall_ms=$(((audit_finished_epoch_ns - audit_started_epoch_ns) / 1000000))
-jq --argjson elapsed "$elapsed_wall_ms" '. + {elapsed_wall_ms:$elapsed}' "$output_dir/audit.json" > "$output_dir/audit.json.tmp"
+jq --argjson elapsed "$elapsed_wall_ms" '. + {chunk_audit_elapsed_wall_ms:$elapsed}' "$output_dir/audit.json" > "$output_dir/audit.json.tmp"
 mv -- "$output_dir/audit.json.tmp" "$output_dir/audit.json"
 audit_sha256="$(sha256sum -- "$output_dir/audit.json" | awk '{print $1}')"
 jq -n \
