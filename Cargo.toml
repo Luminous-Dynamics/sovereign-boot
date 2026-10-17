@@ -6,6 +6,8 @@ members = [
 ]
 exclude = [
     "crates/spore-kernel/fuzz",
+    # Standalone WGSL validator is intentionally isolated from the extracted workspace.
+    "validation/wgsl-check",
 ]
 
 [workspace.package]

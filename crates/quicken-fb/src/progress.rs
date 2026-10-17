@@ -5,11 +5,16 @@
 ///
 /// Reads events from a named pipe (FIFO) written by the installer, or
 /// falls back to polling /proc/diskstats for disk I/O rate estimation.
-use std::fs::File;
-use std::io::{self, BufRead, BufReader};
-use std::os::unix::fs::FileTypeExt;
+use std::fs::{File, OpenOptions};
+use std::io::{self, BufRead, BufReader, Read};
+use std::os::unix::fs::{FileTypeExt, OpenOptionsExt};
 use std::path::Path;
 use std::time::{Duration, Instant};
+
+/// Maximum bytes accepted into a single progress event.
+const MAX_PROGRESS_LINE_BYTES: usize = 512;
+/// Bound time spent draining a continuously-written FIFO on any one frame.
+const MAX_PROGRESS_BYTES_PER_POLL: usize = 4096;
 
 /// Events emitted by the progress monitor.
 #[derive(Debug, Clone)]
@@ -28,7 +33,7 @@ pub enum ProgressEvent {
 
 /// Progress monitor that reads from a named pipe.
 pub struct ProgressMonitor {
-    reader: Option<BufReader<File>>,
+    reader: Option<File>,
     /// Fallback: poll /proc/diskstats
     last_diskstats_bytes: u64,
     last_diskstats_time: Instant,
@@ -37,6 +42,8 @@ pub struct ProgressMonitor {
     /// Whether installation is complete.
     pub complete: bool,
     line_buf: String,
+    /// Discard an oversized or non-ASCII record until the next newline.
+    discarding_line: bool,
 }
 
 impl ProgressMonitor {
@@ -45,17 +52,20 @@ impl ProgressMonitor {
     pub fn new(pipe_path: Option<&str>) -> Self {
         let reader = pipe_path.and_then(|path| {
             let p = Path::new(path);
-            if !p.exists() {
+            // Refuse symlinks and non-FIFOs. This path is opened by an early-boot
+            // process; don't follow a configured FIFO path through a symlink.
+            let meta = std::fs::symlink_metadata(p).ok()?;
+            if !meta.file_type().is_fifo() {
                 return None;
             }
-            // Check it's a FIFO
-            if let Ok(meta) = p.metadata() {
-                if !meta.file_type().is_fifo() {
-                    return None;
-                }
-            }
-            // Open non-blocking — we'll poll
-            File::open(p).ok().map(BufReader::new)
+
+            // O_NONBLOCK is essential here: a reader-only FIFO open can otherwise
+            // hang boot while waiting for a writer that might never appear.
+            OpenOptions::new()
+                .read(true)
+                .custom_flags(nix::libc::O_NONBLOCK | nix::libc::O_CLOEXEC)
+                .open(p)
+                .ok()
         });
 
         Self {
@@ -65,6 +75,7 @@ impl ProgressMonitor {
             io_rate: 0.0,
             complete: false,
             line_buf: String::with_capacity(256),
+            discarding_line: false,
         }
     }
 
@@ -72,24 +83,68 @@ impl ProgressMonitor {
     pub fn poll(&mut self) -> Vec<ProgressEvent> {
         let mut events = Vec::new();
 
-        if let Some(ref mut reader) = self.reader {
-            // Try reading lines from the pipe
-            loop {
-                self.line_buf.clear();
-                match reader.read_line(&mut self.line_buf) {
-                    Ok(0) => break, // EOF / no data
-                    Ok(_) => {
-                        let line = self.line_buf.trim();
-                        if let Some(ev) = Self::parse_line(line) {
-                            if matches!(ev, ProgressEvent::InstallComplete) {
-                                self.complete = true;
+        if self.reader.is_some() {
+            // Fixed-size reads plus a per-poll byte budget keep an untrusted or
+            // continuously-writing FIFO from stalling the render loop.
+            let mut chunk = [0u8; 512];
+            let mut bytes_read = 0usize;
+            let mut remove_reader = false;
+
+            while bytes_read < MAX_PROGRESS_BYTES_PER_POLL {
+                let remaining = MAX_PROGRESS_BYTES_PER_POLL - bytes_read;
+                let read_len = chunk.len().min(remaining);
+                let result = match self.reader.as_mut() {
+                    Some(reader) => reader.read(&mut chunk[..read_len]),
+                    None => break,
+                };
+
+                match result {
+                    Ok(0) => break,
+                    Ok(count) => {
+                        bytes_read += count;
+                        for &byte in &chunk[..count] {
+                            if byte == b'\n' {
+                                if !self.discarding_line {
+                                    let line = self.line_buf.trim();
+                                    if let Some(event) = Self::parse_line(line) {
+                                        if matches!(event, ProgressEvent::InstallComplete) {
+                                            self.complete = true;
+                                        }
+                                        events.push(event);
+                                    }
+                                }
+                                self.line_buf.clear();
+                                self.discarding_line = false;
+                                continue;
                             }
-                            events.push(ev);
+
+                            if self.discarding_line {
+                                continue;
+                            }
+
+                            let allowed_ascii = byte.is_ascii()
+                                && (!byte.is_ascii_control() || byte == b'\r' || byte == b'\t');
+                            if !allowed_ascii || self.line_buf.len() >= MAX_PROGRESS_LINE_BYTES {
+                                self.line_buf.clear();
+                                self.discarding_line = true;
+                            } else {
+                                self.line_buf.push(byte as char);
+                            }
                         }
                     }
-                    Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => break,
-                    Err(_) => break,
+                    Err(ref error) if error.kind() == io::ErrorKind::WouldBlock => break,
+                    Err(ref error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                    Err(_) => {
+                        remove_reader = true;
+                        break;
+                    }
                 }
+            }
+
+            if remove_reader {
+                self.reader = None;
+                self.line_buf.clear();
+                self.discarding_line = false;
             }
         }
 
@@ -224,5 +279,76 @@ mod tests {
     fn test_monitor_creation_nonexistent_pipe() {
         let mon = ProgressMonitor::new(Some("/nonexistent/pipe"));
         assert!(mon.reader.is_none());
+    }
+
+    #[test]
+    fn progress_monitor_refuses_regular_file_and_symlink() {
+        use std::os::unix::fs::symlink;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock after epoch")
+            .as_nanos();
+        let base = std::env::temp_dir().join(format!(
+            "quicken-progress-path-{}-{nonce}",
+            std::process::id()
+        ));
+        let regular = base.with_extension("txt");
+        let link = base.with_extension("link");
+        std::fs::write(&regular, b"not a fifo").expect("write regular file");
+        symlink(&regular, &link).expect("make symlink");
+
+        assert!(ProgressMonitor::new(regular.to_str()).reader.is_none());
+        assert!(ProgressMonitor::new(link.to_str()).reader.is_none());
+
+        let _ = std::fs::remove_file(regular);
+        let _ = std::fs::remove_file(link);
+    }
+
+    #[test]
+    fn fifo_without_writer_does_not_block_and_oversized_line_is_discarded() {
+        use std::io::Write;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        assert_eq!(MAX_PROGRESS_LINE_BYTES, 512);
+        assert_eq!(MAX_PROGRESS_BYTES_PER_POLL, 4096);
+
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock after epoch")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "quicken-progress-{}-{nonce}.fifo",
+            std::process::id()
+        ));
+        nix::unistd::mkfifo(
+            &path,
+            nix::sys::stat::Mode::from_bits_truncate(0o600),
+        )
+        .expect("create test FIFO");
+
+        // This construction must return before any writer has opened the FIFO.
+        let mut monitor = ProgressMonitor::new(Some(path.to_str().expect("UTF-8 temp path")));
+        assert!(monitor.reader.is_some());
+
+        let mut writer = OpenOptions::new()
+            .write(true)
+            .open(&path)
+            .expect("open writer after nonblocking reader");
+        let oversized = format!("DRV:{}\n", "x".repeat(MAX_PROGRESS_LINE_BYTES + 32));
+        writer
+            .write_all(format!("{oversized}COMPLETE\n").as_bytes())
+            .expect("write bounded test stream");
+        drop(writer);
+
+        let events = monitor.poll();
+        assert!(monitor.complete, "valid event after oversized line was lost");
+        assert!(
+            !events.iter().any(|event| matches!(event, ProgressEvent::DerivationComplete(_))),
+            "oversized FIFO record must be discarded"
+        );
+
+        std::fs::remove_file(path).expect("remove test FIFO");
     }
 }
