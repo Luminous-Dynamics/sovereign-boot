@@ -44,11 +44,13 @@ jobs:
           capture_dir="$RUNNER_TEMP/capture-audit-wrapper-input"
           evidence_dir="$RUNNER_TEMP/capture-audit-wrapper-evidence"
           mkdir -p "$capture_dir"
+          printf '0\n500000000\n1000000000\n' > "$capture_dir/timestamps-ns.txt"
           printf 'P6\n2 1\n255\n\000\000\000\000\000\000' > "$capture_dir/frame-000001.ppm"
           printf 'P6\n2 1\n255\n\377\377\377\377\377\377' > "$capture_dir/frame-000002.ppm"
           printf 'P6\n2 1\n255\n\000\000\000\000\000\000' > "$capture_dir/frame-000003.ppm"
           validation/capture-audit.sh \
-            --output-dir "$evidence_dir" --fps 2 \
+            --output-dir "$evidence_dir" --fps 2 --max-gap-ms 500 \
+            --timestamps "$capture_dir/timestamps-ns.txt" \
             --frames "$capture_dir/frame-000001.ppm" \
                      "$capture_dir/frame-000002.ppm" \
                      "$capture_dir/frame-000003.ppm"
@@ -57,7 +59,9 @@ jobs:
             and .source_commit == $source
             and .build_commit == $build
             and .input_kind == "frames"
-            and .sample_fps_assumed == 2
+            and .sample_fps_assumed == null
+            and .temporal_basis == "presentation_timestamp_ns"
+            and (.timestamp_sidecar_sha256 | type == "string" and length == 64)
             and .frame_count == 3
             and .resolution.width == 2 and .resolution.height == 1
             and (.frame_hash_manifest_sha256 | length == 64)
@@ -67,10 +71,12 @@ jobs:
             and .normative_wcag_conformance == false
           ' "$evidence_dir/capture-manifest.json"
           jq -e --arg source "$VISUAL_SOURCE_COMMIT" --arg build "$VISUAL_BUILD_COMMIT" '
-            .schema == "captured-frame-audit-v3"
+            .schema == "captured-frame-audit-v4-timestamped"
             and .source_commit == $source and .build_commit == $build
             and .frames_examined == 3 and .normative_wcag_conformance == false
           ' "$evidence_dir/audit.json"
+          jq -e '.timeline.sampling_gap_gate_passed == true and .timeline.max_sample_gap_ns == 500000000' "$evidence_dir/audit.json"
+          test -f "$evidence_dir/presentation-timestamps-ns.txt"
           (cd "$evidence_dir" && sha256sum --check evidence.sha256 && sha256sum --check frames.sha256)
           sha256sum "$evidence_dir/capture-manifest.json" "$evidence_dir/audit.json" \
             > "$RUNNER_TEMP/capture-audit-wrapper-checksums.txt"

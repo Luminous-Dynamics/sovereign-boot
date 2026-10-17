@@ -23,6 +23,8 @@ output_arg=""
 fps="30"
 video=""
 frames=()
+timestamps_file=""
+max_gap_ms="100"
 mode=""
 
 while (($#)); do
@@ -42,6 +44,17 @@ while (($#)); do
       [[ -z "$mode" ]] || die "choose either --video or --frames, not both"
       mode="video"
       video="$2"
+      shift 2
+      ;;
+    --timestamps)
+      (($# >= 2)) || die "--timestamps requires a file path"
+      [[ -z "$timestamps_file" ]] || die "--timestamps may be supplied only once"
+      timestamps_file="$2"
+      shift 2
+      ;;
+    --max-gap-ms)
+      (($# >= 2)) || die "--max-gap-ms requires a value"
+      max_gap_ms="$2"
       shift 2
       ;;
     --frames)
@@ -71,6 +84,10 @@ done
 fps=$((10#$fps))
 [[ "$mode" == "video" || "$mode" == "frames" ]] || die "one input mode is required"
 [[ "$mode" != "frames" || ${#frames[@]} -ge 3 ]] || die "--frames requires at least three ordered PPM files"
+[[ "$max_gap_ms" =~ ^[0-9]+$ && ${#max_gap_ms} -le 5 ]] || die "--max-gap-ms must be an integer from 1 to 60000"
+((10#$max_gap_ms >= 1 && 10#$max_gap_ms <= 60000)) || die "--max-gap-ms must be an integer from 1 to 60000"
+max_gap_ms=$((10#$max_gap_ms))
+[[ "$mode" != "video" || -z "$timestamps_file" ]] || die "--timestamps is supported with --frames; video extraction remains nominal-FPS in this revision"
 
 for command_name in git cargo rustc jq sha256sum realpath; do
   command -v "$command_name" >/dev/null 2>&1 || die "required command missing: $command_name"
@@ -108,7 +125,11 @@ ffmpeg_version="not-used"
 ffprobe_version="not-used"
 source_video_sha256=""
 source_sequence_sha256=""
+timestamp_sidecar_sha256=""
+timestamp_sidecar_json="null"
 source_media_json="null"
+temporal_basis="nominal_fps"
+timestamps_path=""
 extraction_method="ordered P6 PPM input; copied without resizing"
 
 if [[ "$mode" == "video" ]]; then
@@ -145,6 +166,17 @@ else
     printf '%06d %s\n' "$frame_index" "$digest" >> "$output_dir/input-frames.sha256"
   done
   source_sequence_sha256="$(sha256sum -- "$output_dir/input-frames.sha256" | awk '{print $1}')"
+  if [[ -n "$timestamps_file" ]]; then
+    [[ -f "$timestamps_file" ]] || [[ -f "$invocation_dir/$timestamps_file" ]] || die "timestamp sidecar must be a local regular file"
+    timestamps_source_path="$timestamps_file"
+    [[ "$timestamps_source_path" == /* ]] || timestamps_source_path="$invocation_dir/$timestamps_source_path"
+    timestamps_source_path="$(cd -- "$(dirname -- "$timestamps_source_path")" && pwd -P)/$(basename -- "$timestamps_source_path")"
+    timestamps_path="$output_dir/presentation-timestamps-ns.txt"
+    cp -- "$timestamps_source_path" "$timestamps_path"
+    timestamp_sidecar_sha256="$(sha256sum -- "$timestamps_path" | awk '{print $1}')"
+    timestamp_sidecar_json="\"$timestamp_sidecar_sha256\""
+    temporal_basis="presentation_timestamp_ns"
+  fi
 fi
 
 shopt -s nullglob
@@ -158,11 +190,18 @@ ppm_files=("$frame_dir"/frame-*.ppm)
   sha256sum --check frames.sha256 >/dev/null
 )
 
-cargo run --manifest-path validation/frame-audit/Cargo.toml --locked --release -- \
-  --fps "$fps" "${ppm_files[@]}" > "$output_dir/audit.json"
+if [[ -n "$timestamps_path" ]]; then
+  cargo run --manifest-path validation/frame-audit/Cargo.toml --locked --release -- \
+    --timestamps "$timestamps_path" --max-gap-ms "$max_gap_ms" "${ppm_files[@]}" > "$output_dir/audit.json"
+  expected_audit_schema="captured-frame-audit-v4-timestamped"
+else
+  cargo run --manifest-path validation/frame-audit/Cargo.toml --locked --release -- \
+    --fps "$fps" "${ppm_files[@]}" > "$output_dir/audit.json"
+  expected_audit_schema="captured-frame-audit-v3"
+fi
 
 audit_schema="$(jq -r '.schema // empty' "$output_dir/audit.json")"
-[[ "$audit_schema" == "captured-frame-audit-v3" ]] || die "unexpected auditor receipt schema"
+[[ "$audit_schema" == "$expected_audit_schema" ]] || die "unexpected auditor receipt schema"
 jq -e --arg source "$source_commit" --arg build "$build_commit" \
   '.source_commit == $source and .build_commit == $build and .normative_wcag_conformance == false' \
   "$output_dir/audit.json" >/dev/null || die "auditor receipt provenance/schema validation failed"
@@ -185,6 +224,9 @@ jq -n \
   --arg ffmpeg_version "$ffmpeg_version" \
   --arg ffprobe_version "$ffprobe_version" \
   --argjson fps "$fps" \
+  --arg temporal_basis "$temporal_basis" \
+  --argjson timestamp_sidecar_sha256 "$timestamp_sidecar_json" \
+  --argjson max_gap_ms "$max_gap_ms" \
   --argjson frame_count "${#ppm_files[@]}" \
   --arg frame_manifest_sha256 "$frame_manifest_sha256" \
   --arg audit_sha256 "$audit_sha256" \
@@ -201,7 +243,10 @@ jq -n \
     source_video_sha256: $source_video_sha256,
     source_frame_sequence_sha256: $source_sequence_sha256,
     source_media: $source_media,
-    sample_fps_assumed: $fps,
+    sample_fps_assumed: (if $temporal_basis == "nominal_fps" then $fps else null end),
+    temporal_basis: $temporal_basis,
+    declared_max_sample_gap_ms: $max_gap_ms,
+    timestamp_sidecar_sha256: $timestamp_sidecar_sha256,
     frame_count: $frame_count,
     resolution: $audit[0].resolution,
     extraction_method: $extraction_method,
@@ -229,6 +274,7 @@ jq -n \
   check_files=(audit.json capture-manifest.json frames.sha256)
   [[ ! -f input-frames.sha256 ]] || check_files+=(input-frames.sha256)
   [[ ! -f source-media-probe.json ]] || check_files+=(source-media-probe.json)
+  [[ ! -f presentation-timestamps-ns.txt ]] || check_files+=(presentation-timestamps-ns.txt)
   sha256sum "${check_files[@]}" > evidence.sha256
   sha256sum --check evidence.sha256 >/dev/null
 )

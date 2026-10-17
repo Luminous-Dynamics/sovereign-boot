@@ -18,7 +18,9 @@ For frames already extracted from a recording, preserve their order explicitly:
       --fps 30 \
       --output-dir /tmp/sovereign-boot-capture-evidence
 
-The input is restricted to local regular files. Video mode hashes the original recording and records selected ffprobe stream metadata; it extracts frames uniformly at the requested integer FPS without resizing. Frame mode hashes the original ordered PPM inputs. The tool never writes source paths or source filenames into the manifest. Evidence is created with owner-only permissions because captures may show private desktop or lock-screen content.
+The input is restricted to local regular files. Video mode hashes the original recording and records selected ffprobe stream metadata; in this revision it extracts frames at a nominal constant FPS. Frame mode hashes the original ordered PPM inputs and accepts an optional timestamp sidecar through `--timestamps`. The sidecar must contain one strictly increasing integer nanosecond timestamp per input frame, in the same order. `--max-gap-ms` sets the sampling-gap alarm (default 100 ms). The wrapper rejects a timestamp sidecar for video mode rather than implying that source PTS are already preserved there; video timestamp extraction remains follow-on work.
+
+The tool never writes source paths or source filenames into the manifest. Evidence is created with owner-only permissions because captures may show private desktop or lock-screen content.
 
 ## Evidence bundle
 
@@ -26,6 +28,7 @@ The input is restricted to local regular files. Video mode hashes the original r
 - **audit.json:** the independent Rust auditor's captured-frame-audit-v3 receipt.
 - **frames/:** normalized, ordered P6 PPM files actually examined.
 - **frames.sha256:** hashes for every audited frame.
+- **presentation-timestamps-ns.txt:** the normalized time series used by timestamp mode, when supplied.
 - **input-frames.sha256:** source PPM hashes and order when frame-sequence mode is used.
 - **source-media-probe.json:** selected video metadata in video mode.
 - **evidence.sha256:** checksums for the evidence manifests/receipts; the frame manifest separately authenticates the frame bytes.
@@ -40,11 +43,12 @@ The original video itself is not copied into the bundle; its SHA-256 is recorded
 
 ## Interpretation limits
 
-The current `capture-audit.sh` wrapper uses the legacy nominal-FPS mode. The independent Rust CLI also supports an opt-in timestamp sidecar: one strictly increasing unsigned integer nanosecond timestamp per frame, in exactly the same order as the PPM paths. Example:
+For ordered PPM frames, supply a timestamp sidecar:
 
-    cargo run --manifest-path validation/frame-audit/Cargo.toml --locked --release -- \
-      --timestamps /path/to/timestamps-ns.txt --max-gap-ms 100 \
-      /path/to/frame-000001.ppm /path/to/frame-000002.ppm /path/to/frame-000003.ppm
+    validation/capture-audit.sh \
+      --frames /tmp/frame-000001.ppm /tmp/frame-000002.ppm /tmp/frame-000003.ppm \
+      --timestamps /tmp/timestamps-ns.txt --max-gap-ms 100 \
+      --output-dir /tmp/sovereign-boot-capture-evidence
 
 Timestamp mode emits schema `captured-frame-audit-v4-timestamped`. It pairs opposing transitions using elapsed nanoseconds and evaluates one-second windows against presentation timestamps. A frame gap above the declared threshold (100 ms by default) is explicitly reported as `incomplete_sampling_due_to_gap`; observed event counts must not be interpreted as complete when that gate fails. Timestamps are presumed to use a single monotonic time base; do not mix wall-clock timestamps with media-relative PTS.
 
