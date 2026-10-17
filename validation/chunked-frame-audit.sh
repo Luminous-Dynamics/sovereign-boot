@@ -384,9 +384,41 @@ done
 
 audit_finished_epoch_ns="$(date +%s%N)"
 elapsed_wall_ms=$(((audit_finished_epoch_ns - audit_started_epoch_ns) / 1000000))
-jq --argjson elapsed "$elapsed_wall_ms" '. + {chunk_audit_elapsed_wall_ms:$elapsed}' "$output_dir/audit.json" > "$output_dir/audit.json.tmp"
-mv -- "$output_dir/audit.json.tmp" "$output_dir/audit.json"
+((elapsed_wall_ms >= 0)) || die "wall clock moved backwards; benchmark duration is invalid"
 audit_sha256="$(sha256sum -- "$output_dir/audit.json" | awk '{print $1}')"
+jq -n \
+  --arg source_commit "$source_commit" \
+  --arg build_commit "$build_commit" \
+  --arg frame_manifest_sha256 "$frame_manifest_sha256" \
+  --arg source_timestamp_sha256 "$source_timestamp_sha256" \
+  --arg analyzed_timestamp_sha256 "$analyzed_timestamp_sha256" \
+  --arg chunk_records_sha256 "$chunk_records_sha256" \
+  --arg audit_receipt_sha256 "$audit_sha256" \
+  --argjson frame_count "$frame_count" \
+  --argjson chunk_count "$chunk_index" \
+  --argjson chunk_frame_limit "$chunk_frames" \
+  --argjson elapsed_wall_ms "$elapsed_wall_ms" \
+  --slurpfile audit "$output_dir/audit.json" \
+  '{
+    schema:"chunked-capture-benchmark-v1",
+    source_commit:$source_commit,
+    build_commit:$build_commit,
+    measurement:"shell_wall_clock_including_chunk_audits_and_final_input_rehash_excluding_cargo_build",
+    frame_count:$frame_count,
+    chunk_count:$chunk_count,
+    chunk_frame_limit:$chunk_frame_limit,
+    unique_source_sampled_pixels:$audit[0].unique_source_sampled_pixels,
+    audit_sampled_pixels_processed:$audit[0].audit_sampled_pixels_processed,
+    redundant_overlap_pixels:$audit[0].redundant_overlap_pixels,
+    max_chunk_sampled_pixels:$audit[0].max_chunk_sampled_pixels,
+    elapsed_wall_ms:$elapsed_wall_ms,
+    input_frame_manifest_sha256:$frame_manifest_sha256,
+    source_timestamp_sidecar_sha256:$source_timestamp_sha256,
+    analyzed_timestamp_sidecar_sha256:$analyzed_timestamp_sha256,
+    chunk_record_manifest_sha256:$chunk_records_sha256,
+    audit_receipt_sha256:$audit_receipt_sha256
+  }' > "$output_dir/benchmark.json"
+benchmark_sha256="$(sha256sum -- "$output_dir/benchmark.json" | awk '{print $1}')"
 jq -n \
   --arg source_commit "$source_commit" \
   --arg build_commit "$build_commit" \
@@ -395,6 +427,7 @@ jq -n \
   --arg frame_manifest_sha256 "$frame_manifest_sha256" \
   --arg chunk_records_sha256 "$chunk_records_sha256" \
   --arg audit_sha256 "$audit_sha256" \
+  --arg benchmark_sha256 "$benchmark_sha256" \
   --arg created_utc "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
   --argjson frame_count "$frame_count" \
   --argjson chunk_count "$chunk_index" \
@@ -416,6 +449,7 @@ jq -n \
     input_frame_manifest_sha256:$frame_manifest_sha256,
     chunk_record_manifest_sha256:$chunk_records_sha256,
     audit_receipt_sha256:$audit_sha256,
+    benchmark_receipt_sha256:$benchmark_sha256,
     source_paths_recorded:false,
     normative_wcag_conformance:false,
     limitations:[
@@ -428,7 +462,7 @@ jq -n \
 
 (
   cd "$output_dir"
-  check_files=(audit.json capture-manifest.json chunk-records.jsonl input-frames.manifest source-timestamps.txt presentation-timestamps-ns.txt)
+  check_files=(audit.json benchmark.json capture-manifest.json chunk-records.jsonl input-frames.manifest source-timestamps.txt presentation-timestamps-ns.txt)
   while IFS= read -r receipt; do check_files+=("$receipt"); done < <(find chunks -maxdepth 1 -type f -name '*.json' -print | sort)
   sha256sum "${check_files[@]}" > evidence.sha256
   sha256sum --check evidence.sha256 >/dev/null

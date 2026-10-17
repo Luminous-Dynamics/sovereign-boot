@@ -201,7 +201,8 @@ jobs:
             --frames "${frames[@]}"
           jq -en \
             --slurpfile mono "$RUNNER_TEMP/chunked-audit-monolithic.json" \
-            --slurpfile chunked "$output/audit.json" '
+            --slurpfile chunked "$output/audit.json" \
+            --slurpfile bench "$output/benchmark.json" '
             ($mono[0]) as $m | ($chunked[0]) as $c |
             $c.schema == "captured-frame-audit-v5-chunked"
             and $c.frames_examined == $m.frames_examined
@@ -209,7 +210,11 @@ jobs:
             and $c.unique_source_sampled_pixels == ($m.frames_examined * $m.resolution.width * $m.resolution.height)
             and $c.audit_sampled_pixels_processed >= $c.unique_source_sampled_pixels
             and $c.redundant_overlap_pixels == ($c.audit_sampled_pixels_processed - $c.unique_source_sampled_pixels)
-            and $c.chunk_audit_elapsed_wall_ms >= 0
+            and $b[0].schema == "chunked-capture-benchmark-v1"
+            and $b[0].elapsed_wall_ms >= 0
+            and $b[0].unique_source_sampled_pixels == $c.unique_source_sampled_pixels
+            and $b[0].audit_sampled_pixels_processed == $c.audit_sampled_pixels_processed
+            and $b[0].redundant_overlap_pixels == $c.redundant_overlap_pixels
             and $c.resolution == $m.resolution
             and $c.timeline.start_ns == $m.timeline.start_ns
             and $c.timeline.end_ns == $m.timeline.end_ns
@@ -232,6 +237,8 @@ jobs:
             and $c.normative_wcag_conformance == false
           ' > "$RUNNER_TEMP/chunked-audit-equivalence.json"
           jq -e '. == true' "$RUNNER_TEMP/chunked-audit-equivalence.json"
+          test "$(sha256sum "$output/audit.json" | cut -c1-64)" = "$(jq -r .audit_receipt_sha256 "$output/benchmark.json")"
+          test "$(sha256sum "$output/benchmark.json" | cut -c1-64)" = "$(jq -r .benchmark_receipt_sha256 "$output/capture-manifest.json")"
           (cd "$output" && sha256sum --check evidence.sha256)
 
           # Shift this timestamp and every later sample by 200 ms: a 300 ms
