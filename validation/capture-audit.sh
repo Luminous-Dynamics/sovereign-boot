@@ -66,12 +66,13 @@ done
 
 [[ -n "$output_arg" ]] || die "--output-dir is required"
 [[ "$fps" =~ ^[0-9]+$ ]] || die "--fps must be an integer between 1 and 240"
+[[ ${#fps} -le 3 ]] || die "--fps must be an integer between 1 and 240"
 ((10#$fps >= 1 && 10#$fps <= 240)) || die "--fps must be an integer between 1 and 240"
 fps=$((10#$fps))
 [[ "$mode" == "video" || "$mode" == "frames" ]] || die "one input mode is required"
 [[ "$mode" != "frames" || ${#frames[@]} -ge 3 ]] || die "--frames requires at least three ordered PPM files"
 
-for command_name in git cargo rustc jq sha256sum; do
+for command_name in git cargo rustc jq sha256sum realpath; do
   command -v "$command_name" >/dev/null 2>&1 || die "required command missing: $command_name"
 done
 
@@ -90,16 +91,17 @@ case "$output_arg" in
   /*) output_dir="$output_arg" ;;
   *) output_dir="$invocation_dir/$output_arg" ;;
 esac
-mkdir -p -- "$output_dir"
-output_dir="$(cd -- "$output_dir" && pwd -P)"
+output_dir="$(realpath -m -- "$output_dir")"
 case "$output_dir/" in
   "$repo_root/"*) die "output directory must be outside the Git checkout" ;;
 esac
+mkdir -p -- "$output_dir"
 [[ -z "$(find "$output_dir" -mindepth 1 -maxdepth 1 -print -quit)" ]] || die "output directory must be empty"
+chmod 700 -- "$output_dir"
 
 frame_dir="$output_dir/frames"
 mkdir -m 700 -- "$frame_dir"
-capture_utc="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+bundle_created_utc="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 cargo_version="$(cargo --version)"
 rustc_version="$(rustc --version)"
 ffmpeg_version="not-used"
@@ -175,7 +177,7 @@ source_video_json="null"
 jq -n \
   --arg source_commit "$source_commit" \
   --arg build_commit "$build_commit" \
-  --arg capture_utc "$capture_utc" \
+  --arg bundle_created_utc "$bundle_created_utc" \
   --arg input_kind "$mode" \
   --arg extraction_method "$extraction_method" \
   --arg cargo_version "$cargo_version" \
@@ -194,7 +196,7 @@ jq -n \
     schema: "visual-capture-provenance-v1",
     source_commit: $source_commit,
     build_commit: $build_commit,
-    captured_at_utc: $capture_utc,
+    bundle_created_at_utc: $bundle_created_utc,
     input_kind: $input_kind,
     source_video_sha256: $source_video_sha256,
     source_frame_sequence_sha256: $source_sequence_sha256,

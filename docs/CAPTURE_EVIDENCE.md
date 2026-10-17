@@ -22,7 +22,7 @@ The input is restricted to local regular files. Video mode hashes the original r
 
 ## Evidence bundle
 
-- **capture-manifest.json:** schema version, source/build commit SHAs, capture time, input type, source hashes, sample cadence, dimensions, tool versions, hashes of the frame manifest and audit receipt, plus explicit limitations.
+- **capture-manifest.json:** schema version, source/build commit SHAs, bundle creation time (not source-media capture time), input type, source hashes, sample cadence, dimensions, tool versions, hashes of the frame manifest and audit receipt, plus explicit limitations.
 - **audit.json:** the independent Rust auditor's captured-frame-audit-v3 receipt.
 - **frames/:** normalized, ordered P6 PPM files actually examined.
 - **frames.sha256:** hashes for every audited frame.
