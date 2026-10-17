@@ -176,6 +176,7 @@ else
     timestamp_sidecar_sha256="$(sha256sum -- "$timestamps_path" | awk '{print $1}')"
     timestamp_sidecar_json="\"$timestamp_sidecar_sha256\""
     temporal_basis="presentation_timestamp_ns"
+    extraction_method="ordered P6 PPM input; caller timestamp sidecar copied as supplied; no resizing"
   fi
 fi
 
@@ -263,7 +264,11 @@ jq -n \
     original_media_pts_preserved: false,
     normative_wcag_conformance: false,
     limitations: [
-      "The auditor assumes uniformly spaced samples at sample_fps_assumed.",
+      (if $temporal_basis == "nominal_fps" then
+        "The auditor assumes uniformly spaced samples at sample_fps_assumed."
+       else
+        "The auditor uses the supplied timestamp sidecar; a sampling-gap threshold pass does not prove all intervening display events were observed."
+       end),
       "Video frame extraction can omit, duplicate, resample, color-convert, or miss display events.",
       "A passing proxy receipt does not establish WCAG conformance or physical-display safety.",
       "Keep the original recording and capture/display details with this local evidence bundle."

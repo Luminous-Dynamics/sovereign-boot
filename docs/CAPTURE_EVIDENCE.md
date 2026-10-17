@@ -39,7 +39,7 @@ Verify the bundle after transfer:
     sha256sum --check evidence.sha256
     sha256sum --check frames.sha256
 
-The original video itself is not copied into the bundle; its SHA-256 is recorded in capture-manifest.json. Keep the recording separately, along with display model/refresh rate, capture method, OS/compositor, color-management settings, and any camera/display geometry notes. Do not publish real lock-screen recordings or raw captures without a privacy review.
+The original video itself is not copied into the bundle; its SHA-256 is recorded in capture-manifest.json. In timestamp mode, the supplied sidecar is copied byte-for-byte and hashed; the manifest does not assert that the sidecar came from the original media. Keep the recording separately, along with display model/refresh rate, capture method, OS/compositor, color-management settings, and any camera/display geometry notes. Do not publish real lock-screen recordings or raw captures without a privacy review.
 
 ## Interpretation limits
 
