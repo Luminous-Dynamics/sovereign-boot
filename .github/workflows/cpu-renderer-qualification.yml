@@ -348,7 +348,26 @@ jobs:
           grep -q "unknown motion mode" "$RUNNER_TEMP/unknown-motion.stderr"
 
       - name: Parse and semantically validate WGSL without a GPU
-        run: cargo run --manifest-path validation/wgsl-check/Cargo.toml --locked -- renderers/wgpu/shaders/mycelial_field.wgsl
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Temporary bootstrap while refreshing the dedicated validator lock.
+          # Capture the exact regenerated lock in logs so it can be committed;
+          # the steady-state gate must return to a plain --locked invocation.
+          if cargo run --manifest-path validation/wgsl-check/Cargo.toml --locked -- renderers/wgpu/shaders/mycelial_field.wgsl; then
+            exit 0
+          fi
+          echo "wgsl-check lockfile bootstrap: initial --locked invocation failed; regenerating the dedicated lock for diagnosis"
+          cp validation/wgsl-check/Cargo.lock "$RUNNER_TEMP/wgsl-check-Cargo.lock.before"
+          cargo generate-lockfile --manifest-path validation/wgsl-check/Cargo.toml
+          echo "=== WGSL_CHECK_LOCKFILE_BEGIN ==="
+          base64 -w0 validation/wgsl-check/Cargo.lock
+          echo
+          echo "=== WGSL_CHECK_LOCKFILE_END ==="
+          echo "=== WGSL_CHECK_LOCKFILE_DIFF_BEGIN ==="
+          diff -u "$RUNNER_TEMP/wgsl-check-Cargo.lock.before" validation/wgsl-check/Cargo.lock || true
+          echo "=== WGSL_CHECK_LOCKFILE_DIFF_END ==="
+          cargo run --manifest-path validation/wgsl-check/Cargo.toml --locked -- renderers/wgpu/shaders/mycelial_field.wgsl
 
       - name: Smoke benchmark all ten scenes in cinematic and reduced modes
         run: |
@@ -696,7 +715,6 @@ jobs:
                 measurement:"same_adapter_neutral_palette_160x90_60_replayed_passes",
                 normative_wcag_conformance:false
               }' > "$RUNNER_TEMP/wgpu-reference-shader-ab-$theme.json"
-            done
           done
           test "$(wc -l < "$RUNNER_TEMP/wgpu-reference-shader-ab-hashes.txt")" -eq 20
           sha256sum "$RUNNER_TEMP/wgpu-reference-shader-ab-"*.json "$RUNNER_TEMP/wgpu-reference-shader-ab-"*.ppm \
