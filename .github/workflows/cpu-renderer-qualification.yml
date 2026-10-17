@@ -41,6 +41,22 @@ jobs:
         run: |
           set -euo pipefail
           bash -n validation/capture-audit.sh
+
+          # Reject overlong frame lists before touching any listed path or output.
+          too_many_frames=()
+          for ((index = 0; index < 1801; index++)); do
+            too_many_frames+=("not-opened.ppm")
+          done
+          set +e
+          validation/capture-audit.sh \
+            --output-dir "$RUNNER_TEMP/frame-count-overflow" \
+            --frames "${too_many_frames[@]}" \
+            > "$RUNNER_TEMP/frame-count-overflow.log" 2>&1
+          frame_limit_status=$?
+          set -e
+          test "$frame_limit_status" -eq 2
+          grep -q "exceeds the auditor's 1,800-frame limit" "$RUNNER_TEMP/frame-count-overflow.log"
+          test ! -e "$RUNNER_TEMP/frame-count-overflow"
           capture_dir="$RUNNER_TEMP/capture-audit-wrapper-input"
           evidence_dir="$RUNNER_TEMP/capture-audit-wrapper-evidence"
           mkdir -p "$capture_dir"
@@ -82,6 +98,22 @@ jobs:
           (cd "$evidence_dir" && sha256sum --check evidence.sha256 && sha256sum --check frames.sha256)
           sha256sum "$evidence_dir/capture-manifest.json" "$evidence_dir/audit.json" \
             > "$RUNNER_TEMP/capture-audit-wrapper-checksums.txt"
+
+          # Reject oversized PPM input before copying it into the evidence bundle.
+          truncate -s 25000001 "$capture_dir/oversized.ppm"
+          oversized_output="$RUNNER_TEMP/oversized-frame-output"
+          set +e
+          validation/capture-audit.sh \
+            --output-dir "$oversized_output" \
+            --frames "$capture_dir/oversized.ppm" \
+                     "$capture_dir/frame-000001.ppm" \
+                     "$capture_dir/frame-000002.ppm" \
+            > "$RUNNER_TEMP/oversized-frame.log" 2>&1
+          oversized_status=$?
+          set -e
+          test "$oversized_status" -eq 2
+          grep -q "input frame exceeds 25,000,000-byte limit" "$RUNNER_TEMP/oversized-frame.log"
+          rm -rf -- "$oversized_output"
           # Exercise source-PTS extraction on a synthetic encoded video.
           if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
             sudo apt-get update

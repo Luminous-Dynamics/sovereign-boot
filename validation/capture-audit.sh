@@ -3,6 +3,10 @@
 # frame auditor. The wrapper records provenance; it is not a WCAG certifier.
 set -euo pipefail
 umask 077
+# P6 RGB at UHD 4K is about 24.9 MB including its short header.
+MAX_INPUT_FRAME_BYTES=25000000
+MAX_INPUT_TOTAL_BYTES=1600000000
+MAX_INPUT_FRAMES=1800
 
 usage() {
   cat <<'USAGE'
@@ -84,12 +88,13 @@ done
 fps=$((10#$fps))
 [[ "$mode" == "video" || "$mode" == "frames" ]] || die "one input mode is required"
 [[ "$mode" != "frames" || ${#frames[@]} -ge 3 ]] || die "--frames requires at least three ordered PPM files"
+[[ "$mode" != "frames" || ${#frames[@]} -le "$MAX_INPUT_FRAMES" ]] || die "--frames exceeds the auditor's 1,800-frame limit"
 [[ "$max_gap_ms" =~ ^[0-9]+$ && ${#max_gap_ms} -le 5 ]] || die "--max-gap-ms must be an integer from 1 to 60000"
 ((10#$max_gap_ms >= 1 && 10#$max_gap_ms <= 60000)) || die "--max-gap-ms must be an integer from 1 to 60000"
 max_gap_ms=$((10#$max_gap_ms))
 [[ "$mode" != "video" || -z "$timestamps_file" ]] || die "--timestamps is for PPM input; video mode derives timestamps from source PTS"
 
-for command_name in git cargo rustc jq sha256sum realpath; do
+for command_name in git cargo rustc jq sha256sum realpath stat; do
   command -v "$command_name" >/dev/null 2>&1 || die "required command missing: $command_name"
 done
 
@@ -217,11 +222,17 @@ if [[ "$mode" == "video" ]]; then
 else
   : > "$output_dir/input-frames.sha256"
   frame_index=0
+  total_input_frame_bytes=0
   for frame in "${frames[@]}"; do
-    [[ -f "$frame" ]] || [[ -f "$invocation_dir/$frame" ]] || die "frame input must be a local regular file"
     frame_path="$frame"
     [[ "$frame_path" == /* ]] || frame_path="$invocation_dir/$frame_path"
+    [[ -f "$frame_path" && ! -L "$frame_path" ]] || die "frame input must be a local regular, non-symlink file"
     frame_path="$(cd -- "$(dirname -- "$frame_path")" && pwd -P)/$(basename -- "$frame_path")"
+    frame_size_bytes="$(stat -c '%s' -- "$frame_path")"
+    [[ "$frame_size_bytes" =~ ^[0-9]+$ ]] || die "could not determine input frame size"
+    ((frame_size_bytes <= MAX_INPUT_FRAME_BYTES)) || die "input frame exceeds 25,000,000-byte limit"
+    total_input_frame_bytes=$((total_input_frame_bytes + frame_size_bytes))
+    ((total_input_frame_bytes <= MAX_INPUT_TOTAL_BYTES)) || die "ordered PPM inputs exceed 1,600,000,000-byte aggregate limit"
     frame_index=$((frame_index + 1))
     printf -v frame_name 'frame-%06d.ppm' "$frame_index"
     cp -- "$frame_path" "$frame_dir/$frame_name"
@@ -230,9 +241,9 @@ else
   done
   source_sequence_sha256="$(sha256sum -- "$output_dir/input-frames.sha256" | awk '{print $1}')"
   if [[ -n "$timestamps_file" ]]; then
-    [[ -f "$timestamps_file" ]] || [[ -f "$invocation_dir/$timestamps_file" ]] || die "timestamp sidecar must be a local regular file"
     timestamps_source_path="$timestamps_file"
     [[ "$timestamps_source_path" == /* ]] || timestamps_source_path="$invocation_dir/$timestamps_source_path"
+    [[ -f "$timestamps_source_path" && ! -L "$timestamps_source_path" ]] || die "timestamp sidecar must be a local regular, non-symlink file"
     timestamps_source_path="$(cd -- "$(dirname -- "$timestamps_source_path")" && pwd -P)/$(basename -- "$timestamps_source_path")"
     timestamps_path="$output_dir/presentation-timestamps-ns.txt"
     cp -- "$timestamps_source_path" "$timestamps_path"
