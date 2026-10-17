@@ -11,8 +11,8 @@ Usage:
   validation/capture-audit.sh --output-dir DIR --fps N --frames A.ppm B.ppm C.ppm [...]
 
 Provide exactly one input mode. Frames must be ordered P6 PPM files. Video
-frames are sampled uniformly by FFmpeg without resizing. Use an output folder
-outside the Git checkout; evidence images may contain private screen content.
+frames are sampled by source PTS at the requested minimum cadence; neither path
+resizes frames. Use an output folder outside the Git checkout; captures may be private.
 USAGE
 }
 
@@ -87,6 +87,7 @@ fps=$((10#$fps))
 [[ "$max_gap_ms" =~ ^[0-9]+$ && ${#max_gap_ms} -le 5 ]] || die "--max-gap-ms must be an integer from 1 to 60000"
 ((10#$max_gap_ms >= 1 && 10#$max_gap_ms <= 60000)) || die "--max-gap-ms must be an integer from 1 to 60000"
 max_gap_ms=$((10#$max_gap_ms))
+[[ "$mode" != "video" || -z "$timestamps_file" ]] || die "--timestamps is for PPM input; video mode derives timestamps from source PTS"
 
 for command_name in git cargo rustc jq sha256sum realpath; do
   command -v "$command_name" >/dev/null 2>&1 || die "required command missing: $command_name"

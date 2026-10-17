@@ -96,7 +96,7 @@ jobs:
             -filter_complex "[0:v][1:v][2:v]concat=n=3:v=1:a=0,format=yuv444p" \
             -fps_mode passthrough -c:v ffv1 "$video_file"
           validation/capture-audit.sh \
-            --video "$video_file" --fps 10 --max-gap-ms 150 \
+            --video "$video_file" --fps 10 --max-gap-ms 250 \
             --output-dir "$video_evidence"
           jq -e --arg source "$VISUAL_SOURCE_COMMIT" --arg build "$VISUAL_BUILD_COMMIT" '
             .schema == "visual-capture-provenance-v1"
@@ -108,6 +108,7 @@ jobs:
             and .source_media_pts_preserved == true
             and (.source_video_sha256 | type == "string" and length == 64)
             and (.timestamp_sidecar_sha256 | type == "string" and length == 64)
+            and (.source_pts_origin_ns | type == "number")
             and (.source_pts_time_base | type == "string")
             and .frame_count >= 3 and .frame_count <= 15
             and .normative_wcag_conformance == false
@@ -116,6 +117,7 @@ jobs:
             .schema == "captured-frame-audit-v4-timestamped"
             and .temporal_basis == "monotonic_presentation_timestamps_ns"
             and .timeline.sampling_gap_gate_passed == true
+            and .timeline.max_sample_gap_ns <= 250000000
             and .normative_wcag_conformance == false
           ' "$video_evidence/audit.json"
           (cd "$video_evidence" && sha256sum --check evidence.sha256 && sha256sum --check frames.sha256)

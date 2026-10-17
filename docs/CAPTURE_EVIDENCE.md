@@ -4,7 +4,7 @@
 
 ## Run against a local recording
 
-Use a locally stored MP4 or other FFmpeg-readable recording. The output directory must be outside the Git checkout and empty; the tool refuses a dirty checkout so a receipt cannot silently claim to describe a different source tree.
+Use a locally stored MP4 or other FFmpeg-readable recording. Video frames are selected at the requested minimum temporal cadence using source PTS; this is not a guarantee that every source frame or every display event is captured. The output directory must be outside the Git checkout and empty; the tool refuses a dirty checkout so a receipt cannot silently claim to describe a different source tree.
 
     validation/capture-audit.sh \
       --video /path/to/local-display-recording.mp4 \
@@ -25,7 +25,7 @@ The tool never writes source paths or source filenames into the manifest. Eviden
 ## Evidence bundle
 
 - **capture-manifest.json:** schema version, source/build commit SHAs, bundle creation time (not source-media capture time), input type, source hashes, sample cadence, dimensions, tool versions, hashes of the frame manifest and audit receipt, plus explicit limitations.
-- **audit.json:** the independent Rust auditor's captured-frame-audit-v3 receipt.
+- **audit.json:** the independent Rust auditor's v3 nominal-FPS receipt or v4 timestamped receipt, depending on input mode.
 - **frames/:** normalized, ordered P6 PPM files actually examined.
 - **frames.sha256:** hashes for every audited frame.
 - **presentation-timestamps-ns.txt:** the normalized nanosecond timestamp series used by timestamp mode; for video it is derived from selected source PTS and the recorded filter time base.
@@ -39,7 +39,7 @@ Verify the bundle after transfer:
     sha256sum --check evidence.sha256
     sha256sum --check frames.sha256
 
-The original video itself is not copied into the bundle; its SHA-256 is recorded in capture-manifest.json. In timestamp mode, the supplied sidecar is copied byte-for-byte and hashed; the manifest does not assert that the sidecar came from the original media. Keep the recording separately, along with display model/refresh rate, capture method, OS/compositor, color-management settings, and any camera/display geometry notes. Do not publish real lock-screen recordings or raw captures without a privacy review.
+The original video itself is not copied into the bundle; its SHA-256 is recorded in capture-manifest.json. In video mode, the normalized PTS sidecar, source PTS origin, and filter time base are recorded and hashed. For PPM-sequence mode, the caller-provided sidecar is copied byte-for-byte and hashed; the manifest does not assert that it came from original media. Keep the recording separately, along with display model/refresh rate, capture method, OS/compositor, color-management settings, and any camera/display geometry notes. Do not publish real lock-screen recordings or raw captures without a privacy review.
 
 ## Interpretation limits
 
@@ -52,13 +52,13 @@ For ordered PPM frames, supply a timestamp sidecar:
 
 Timestamp mode emits schema `captured-frame-audit-v4-timestamped`. It pairs opposing transitions using elapsed nanoseconds and evaluates one-second windows against presentation timestamps. A frame gap above the declared threshold (100 ms by default) is explicitly reported as `incomplete_sampling_due_to_gap`; observed event counts must not be interpreted as complete when that gate fails. Timestamps are presumed to use a single monotonic time base; do not mix wall-clock timestamps with media-relative PTS.
 
-The legacy nominal-FPS mode remains schema v3 for reproducibility. Timestamp mode improves time accounting but does not recover events that happen between sampled frames. Camera exposure/rolling shutter, codec artifacts, display scaling, color conversion, and physical-display differences may change what is observed. Preserve the original source and never present the bundle as proof that no unobserved event occurred.
+The legacy nominal-FPS mode remains schema v3 for reproducibility. Timestamp mode (including video-derived source PTS) uses schema v4. Timestamp mode improves time accounting but does not recover events that happen between sampled frames. Camera exposure/rolling shutter, codec artifacts, display scaling, color conversion, and physical-display differences may change what is observed. Preserve the original source and never present the bundle as proof that no unobserved event occurred.
 
 W3C's [WCAG 2.2 understanding of SC 2.3.1](https://www.w3.org/WAI/WCAG22/Understanding/three-flashes-or-below-threshold) describes flashes as opposing transitions and evaluates frequency over any one-second period. Its local visual-field area criteria are not equivalent to a percentage of the full raster. This repository's analyzer deliberately reports normative_wcag_conformance: false and remains a regression proxy; use a validated independent analyzer and appropriate real-display measurements for any stronger claim.
 
 ## Next qualification milestones
 
-1. Qualify selected-frame PTS extraction against variable-frame-rate, missing-PTS, discontinuous-timestamp, and time-base-changing fixtures; retain the PTS origin and filter time base in provenance.
+1. Expand video tests to variable-frame-rate, missing-PTS, discontinuous-timestamp, and time-base-changing fixtures; retain the PTS origin and filter time base in provenance.
 2. Compare at least one monitor/camera capture and one OS-level screen capture; document what each path does and does not observe.
 3. Add known-positive, known-negative, red-transition, bright-plateau, and between-sample adversarial fixtures; retain their raw frames and expected results.
 4. Record end-to-end boot/desktop lifecycle traces separately from shader time: process start, first presented frame, compositor handoff, stop request, last display access, and fallback completion.
