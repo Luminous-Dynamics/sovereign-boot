@@ -87,7 +87,6 @@ fps=$((10#$fps))
 [[ "$max_gap_ms" =~ ^[0-9]+$ && ${#max_gap_ms} -le 5 ]] || die "--max-gap-ms must be an integer from 1 to 60000"
 ((10#$max_gap_ms >= 1 && 10#$max_gap_ms <= 60000)) || die "--max-gap-ms must be an integer from 1 to 60000"
 max_gap_ms=$((10#$max_gap_ms))
-[[ "$mode" != "video" || -z "$timestamps_file" ]] || die "--timestamps is supported with --frames; video extraction remains nominal-FPS in this revision"
 
 for command_name in git cargo rustc jq sha256sum realpath; do
   command -v "$command_name" >/dev/null 2>&1 || die "required command missing: $command_name"
@@ -97,6 +96,13 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 repo_root="$(cd -- "$script_dir/.." && pwd -P)"
 cd "$repo_root"
 [[ -z "$(git status --porcelain --untracked-files=normal)" ]] || die "checkout must be clean so receipts identify reviewed source exactly"
+
+temporary_cargo_target=""
+if [[ -z "${CARGO_TARGET_DIR:-}" ]]; then
+  temporary_cargo_target="$(mktemp -d "${TMPDIR:-/tmp}/sovereign-capture-audit-target.XXXXXX")"
+  export CARGO_TARGET_DIR="$temporary_cargo_target"
+  trap 'if [[ -n "${temporary_cargo_target:-}" ]]; then rm -rf -- "$temporary_cargo_target"; fi' EXIT
+fi
 
 source_commit="${VISUAL_SOURCE_COMMIT:-$(git rev-parse HEAD)}"
 build_commit="${VISUAL_BUILD_COMMIT:-$(git rev-parse HEAD)}"
@@ -130,6 +136,10 @@ timestamp_sidecar_json="null"
 source_media_json="null"
 temporal_basis="nominal_fps"
 timestamps_path=""
+source_media_pts_preserved="false"
+source_pts_origin_ns_json="null"
+source_pts_time_base_json="null"
+max_video_frames=0
 extraction_method="ordered P6 PPM input; copied without resizing"
 
 if [[ "$mode" == "video" ]]; then
@@ -144,13 +154,65 @@ if [[ "$mode" == "video" ]]; then
   ffprobe_version="$(ffprobe -version | sed -n '1p')"
   probe_path="$output_dir/source-media-probe.json"
   ffprobe -v error -select_streams v:0 \
-    -show_entries 'stream=width,height,avg_frame_rate,r_frame_rate,pix_fmt,color_space,color_transfer,color_primaries:format=duration' \
+    -show_entries 'stream=width,height,time_base,avg_frame_rate,r_frame_rate,pix_fmt,color_space,color_transfer,color_primaries:format=duration' \
     -of json "$video_path" > "$probe_path"
   source_media_json="$(cat "$probe_path")"
-  extraction_method="ffmpeg fps=${fps} filter; CFR samples; no resizing; original timestamps are not passed to the audit"
-  ffmpeg -nostdin -hide_banner -v error -i "$video_path" \
-    -vf "fps=${fps}" -fps_mode cfr -start_number 1 \
-    "$frame_dir/frame-%06d.ppm"
+  video_width="$(jq -r '.streams[0].width // empty' "$probe_path")"
+  video_height="$(jq -r '.streams[0].height // empty' "$probe_path")"
+  [[ "$video_width" =~ ^[0-9]+$ && ${#video_width} -le 5 ]] || die "could not determine a bounded video width"
+  [[ "$video_height" =~ ^[0-9]+$ && ${#video_height} -le 5 ]] || die "could not determine a bounded video height"
+  video_pixels=$((video_width * video_height))
+  ((video_pixels > 0 && video_pixels <= 8294400)) || die "video resolution exceeds the auditor's UHD 4K per-frame bound"
+  max_video_frames=$((500000000 / video_pixels))
+  ((max_video_frames <= 1800)) || max_video_frames=1800
+  ((max_video_frames >= 3)) || die "video resolution leaves too little pixel-work budget for a three-frame audit"
+  video_frame_limit=$((max_video_frames + 1))
+
+  timestamps_path="$output_dir/presentation-timestamps-ns.txt"
+  extraction_method="FFmpeg-selected source PTS converted through showinfo filter time base; relative to first selected frame"
+  ffmpeg_log="$output_dir/.ffmpeg-extraction.log"
+  pts_origin_file="$output_dir/.source-pts-origin-ns"
+  ffmpeg -nostdin -hide_banner -loglevel info -i "$video_path" \
+    -map 0:v:0 \
+    -vf "select='isnan(prev_selected_t)+gte(t-prev_selected_t\,1/${fps})',showinfo" \
+    -fps_mode passthrough -frames:v "$video_frame_limit" -start_number 1 \
+    "$frame_dir/frame-%06d.ppm" 2> "$ffmpeg_log"
+
+  time_base="$(sed -nE 's/.*config in time_base: ([0-9]+)\/([0-9]+),.*/\1 \2/p' "$ffmpeg_log" | head -n 1)"
+  [[ -n "$time_base" ]] || die "FFmpeg did not report the selected-frame PTS time base"
+  read -r pts_timebase_num pts_timebase_den <<< "$time_base"
+  [[ "$pts_timebase_num" =~ ^[0-9]+$ && "$pts_timebase_den" =~ ^[0-9]+$ ]] || die "invalid FFmpeg PTS time base"
+  ((pts_timebase_num > 0 && pts_timebase_den > 0)) || die "invalid zero-valued FFmpeg PTS time base"
+  if ! grep -q 'showinfo.* n:.*pts:' "$ffmpeg_log"; then
+    die "FFmpeg did not report presentation timestamps for selected frames"
+  fi
+  grep 'showinfo.* n:.*pts:' "$ffmpeg_log" \
+    | sed -nE 's/.* n:[[:space:]]*[0-9]+ pts:[[:space:]]*(-?[0-9]+) pts_time:.*/\1/p' \
+    | awk -v num="$pts_timebase_num" -v den="$pts_timebase_den" -v origin_path="$pts_origin_file" '
+        NF {
+          t = ($1 + 0) * num * 1000000000 / den
+          if (!seen) {
+            origin = t
+            printf "%.0f\n", origin > origin_path
+            close(origin_path)
+            seen = 1
+          }
+          ns = t - origin
+          if (ns < 0) exit 2
+          printf "%.0f\n", ns
+        }
+        END { if (!seen) exit 3 }
+      ' > "$timestamps_path"
+  [[ -s "$timestamps_path" && -s "$pts_origin_file" ]] || die "could not generate a complete PTS sidecar"
+  source_pts_origin_ns="$(cat "$pts_origin_file")"
+  rm -f -- "$pts_origin_file"
+  source_pts_origin_ns_json="$source_pts_origin_ns"
+  source_pts_time_base_json="\"$time_base\""
+  rm -f -- "$ffmpeg_log"
+  temporal_basis="presentation_timestamp_ns"
+  timestamp_sidecar_sha256="$(sha256sum -- "$timestamps_path" | awk '{print $1}')"
+  timestamp_sidecar_json="\"$timestamp_sidecar_sha256\""
+  source_media_pts_preserved="true"
 else
   : > "$output_dir/input-frames.sha256"
   frame_index=0
@@ -176,6 +238,9 @@ else
     timestamp_sidecar_sha256="$(sha256sum -- "$timestamps_path" | awk '{print $1}')"
     timestamp_sidecar_json="\"$timestamp_sidecar_sha256\""
     temporal_basis="presentation_timestamp_ns"
+    source_media_pts_preserved="false"
+    source_pts_origin_ns_json="null"
+    source_pts_time_base_json="null"
     extraction_method="ordered P6 PPM input; caller timestamp sidecar copied as supplied; no resizing"
   fi
 fi
@@ -184,6 +249,13 @@ shopt -s nullglob
 ppm_files=("$frame_dir"/frame-*.ppm)
 ((${#ppm_files[@]} >= 3)) || die "capture yielded fewer than three frames"
 ((${#ppm_files[@]} <= 1800)) || die "capture exceeds auditor's 1,800-frame limit"
+if [[ "$mode" == "video" ]] && (( ${#ppm_files[@]} > max_video_frames )); then
+  die "video exceeds the 500-million-pixel audit budget; shorten the recording or lower capture resolution"
+fi
+if [[ "$mode" == "video" ]]; then
+  timestamp_count="$(wc -l < "$timestamps_path")"
+  [[ "$timestamp_count" -eq "${#ppm_files[@]}" ]] || die "timestamp count does not match extracted frame count"
+fi
 
 (
   cd "$output_dir"
@@ -228,6 +300,9 @@ jq -n \
   --arg temporal_basis "$temporal_basis" \
   --argjson timestamp_sidecar_sha256 "$timestamp_sidecar_json" \
   --argjson max_gap_ms "$max_gap_ms" \
+  --argjson source_media_pts_preserved "$source_media_pts_preserved" \
+  --argjson source_pts_origin_ns "$source_pts_origin_ns_json" \
+  --argjson source_pts_time_base "$source_pts_time_base_json" \
   --argjson frame_count "${#ppm_files[@]}" \
   --arg frame_manifest_sha256 "$frame_manifest_sha256" \
   --arg audit_sha256 "$audit_sha256" \
@@ -260,14 +335,18 @@ jq -n \
     frame_hash_manifest_sha256: $frame_manifest_sha256,
     audit_receipt_sha256: $audit_sha256,
     source_paths_recorded: false,
-    provided_timestamp_sidecar_analyzed: ($temporal_basis == "presentation_timestamp_ns"),
-    original_media_pts_preserved: false,
+    timestamp_timeline_analyzed: ($temporal_basis == "presentation_timestamp_ns"),
+    source_media_pts_preserved: $source_media_pts_preserved,
+    source_pts_origin_ns: $source_pts_origin_ns,
+    source_pts_time_base: $source_pts_time_base,
     normative_wcag_conformance: false,
     limitations: [
       (if $temporal_basis == "nominal_fps" then
         "The auditor assumes uniformly spaced samples at sample_fps_assumed."
+       elif $source_media_pts_preserved then
+        "Source PTS are converted through the recorded filter time base and normalized to source_pts_origin_ns; sampled frames can still miss intervening events."
        else
-        "The auditor uses the supplied timestamp sidecar; a sampling-gap threshold pass does not prove all intervening display events were observed."
+        "The auditor uses the caller-provided timestamp sidecar; a sampling-gap threshold pass does not prove all intervening display events were observed."
        end),
       "Video frame extraction can omit, duplicate, resample, color-convert, or miss display events.",
       "A passing proxy receipt does not establish WCAG conformance or physical-display safety.",

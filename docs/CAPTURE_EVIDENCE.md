@@ -18,7 +18,7 @@ For frames already extracted from a recording, preserve their order explicitly:
       --fps 30 \
       --output-dir /tmp/sovereign-boot-capture-evidence
 
-The input is restricted to local regular files. Video mode hashes the original recording and records selected ffprobe stream metadata; in this revision it extracts frames at a nominal constant FPS. Frame mode hashes the original ordered PPM inputs and accepts an optional timestamp sidecar through `--timestamps`. The sidecar must contain one strictly increasing integer nanosecond timestamp per input frame, in the same order. `--max-gap-ms` sets the sampling-gap alarm (default 100 ms). The wrapper rejects a timestamp sidecar for video mode rather than implying that source PTS are already preserved there; video timestamp extraction remains follow-on work.
+The input is restricted to local regular files. Video mode hashes the original recording, records selected ffprobe metadata, and uses FFmpeg select/showinfo to sample by elapsed source presentation time. Each selected frame's integer PTS is converted through the filter-reported time base into a relative nanosecond sidecar; the original PTS origin and time base are recorded in the manifest. Extraction is bounded by the UHD 4K per-frame limit, a maximum of 1,800 frames, and a 500-million-sampled-pixel work budget; higher-workload clips are rejected rather than silently truncated. Frame mode hashes the ordered PPM inputs and accepts an optional timestamp sidecar through `--timestamps`; that sidecar is copied byte-for-byte and does not imply source-media PTS provenance. `--max-gap-ms` sets the sampling-gap alarm (default 100 ms).
 
 The tool never writes source paths or source filenames into the manifest. Evidence is created with owner-only permissions because captures may show private desktop or lock-screen content.
 
@@ -28,7 +28,7 @@ The tool never writes source paths or source filenames into the manifest. Eviden
 - **audit.json:** the independent Rust auditor's captured-frame-audit-v3 receipt.
 - **frames/:** normalized, ordered P6 PPM files actually examined.
 - **frames.sha256:** hashes for every audited frame.
-- **presentation-timestamps-ns.txt:** the timestamp series used by timestamp mode, copied from the caller's sidecar.
+- **presentation-timestamps-ns.txt:** the normalized nanosecond timestamp series used by timestamp mode; for video it is derived from selected source PTS and the recorded filter time base.
 - **input-frames.sha256:** source PPM hashes and order when frame-sequence mode is used.
 - **source-media-probe.json:** selected video metadata in video mode.
 - **evidence.sha256:** checksums for the evidence manifests/receipts; the frame manifest separately authenticates the frame bytes.
@@ -58,7 +58,7 @@ W3C's [WCAG 2.2 understanding of SC 2.3.1](https://www.w3.org/WAI/WCAG22/Underst
 
 ## Next qualification milestones
 
-1. Add video PTS extraction to `capture-audit.sh`; video mode is deliberately still nominal-FPS until extracted timestamps can be matched to the exact selected frames.
+1. Qualify selected-frame PTS extraction against variable-frame-rate, missing-PTS, discontinuous-timestamp, and time-base-changing fixtures; retain the PTS origin and filter time base in provenance.
 2. Compare at least one monitor/camera capture and one OS-level screen capture; document what each path does and does not observe.
 3. Add known-positive, known-negative, red-transition, bright-plateau, and between-sample adversarial fixtures; retain their raw frames and expected results.
 4. Record end-to-end boot/desktop lifecycle traces separately from shader time: process start, first presented frame, compositor handoff, stop request, last display access, and fallback completion.

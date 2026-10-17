@@ -44,6 +44,7 @@ jobs:
           capture_dir="$RUNNER_TEMP/capture-audit-wrapper-input"
           evidence_dir="$RUNNER_TEMP/capture-audit-wrapper-evidence"
           mkdir -p "$capture_dir"
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/capture-audit-target"
           printf '0\n500000000\n1000000000\n' > "$capture_dir/timestamps-ns.txt"
           printf 'P6\n2 1\n255\n\000\000\000\000\000\000' > "$capture_dir/frame-000001.ppm"
           printf 'P6\n2 1\n255\n\377\377\377\377\377\377' > "$capture_dir/frame-000002.ppm"
@@ -67,8 +68,8 @@ jobs:
             and (.frame_hash_manifest_sha256 | length == 64)
             and (.audit_receipt_sha256 | length == 64)
             and .source_paths_recorded == false
-            and .provided_timestamp_sidecar_analyzed == true
-            and .original_media_pts_preserved == false
+            and .timestamp_timeline_analyzed == true
+            and .source_media_pts_preserved == false
             and .normative_wcag_conformance == false
           ' "$evidence_dir/capture-manifest.json"
           jq -e --arg source "$VISUAL_SOURCE_COMMIT" --arg build "$VISUAL_BUILD_COMMIT" '
@@ -81,6 +82,43 @@ jobs:
           (cd "$evidence_dir" && sha256sum --check evidence.sha256 && sha256sum --check frames.sha256)
           sha256sum "$evidence_dir/capture-manifest.json" "$evidence_dir/audit.json" \
             > "$RUNNER_TEMP/capture-audit-wrapper-checksums.txt"
+          # Exercise source-PTS extraction on a synthetic encoded video.
+          if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          fi
+          video_file="$RUNNER_TEMP/capture-audit-synthetic.mkv"
+          video_evidence="$RUNNER_TEMP/capture-audit-video-evidence"
+          ffmpeg -nostdin -hide_banner -loglevel error \
+            -f lavfi -i "color=c=black:s=32x32:r=10:d=0.5" \
+            -f lavfi -i "color=c=white:s=32x32:r=10:d=0.5" \
+            -f lavfi -i "color=c=black:s=32x32:r=10:d=0.5" \
+            -filter_complex "[0:v][1:v][2:v]concat=n=3:v=1:a=0,format=yuv444p" \
+            -fps_mode passthrough -c:v ffv1 "$video_file"
+          validation/capture-audit.sh \
+            --video "$video_file" --fps 10 --max-gap-ms 150 \
+            --output-dir "$video_evidence"
+          jq -e --arg source "$VISUAL_SOURCE_COMMIT" --arg build "$VISUAL_BUILD_COMMIT" '
+            .schema == "visual-capture-provenance-v1"
+            and .source_commit == $source and .build_commit == $build
+            and .input_kind == "video"
+            and .sample_fps_assumed == null
+            and .temporal_basis == "presentation_timestamp_ns"
+            and .timestamp_timeline_analyzed == true
+            and .source_media_pts_preserved == true
+            and (.source_video_sha256 | type == "string" and length == 64)
+            and (.timestamp_sidecar_sha256 | type == "string" and length == 64)
+            and (.source_pts_time_base | type == "string")
+            and .frame_count >= 3 and .frame_count <= 15
+            and .normative_wcag_conformance == false
+          ' "$video_evidence/capture-manifest.json"
+          jq -e '
+            .schema == "captured-frame-audit-v4-timestamped"
+            and .temporal_basis == "monotonic_presentation_timestamps_ns"
+            and .timeline.sampling_gap_gate_passed == true
+            and .normative_wcag_conformance == false
+          ' "$video_evidence/audit.json"
+          (cd "$video_evidence" && sha256sum --check evidence.sha256 && sha256sum --check frames.sha256)
 
       - name: Test independent external-frame audit
         run: cargo test --manifest-path validation/frame-audit/Cargo.toml --locked --all-targets
