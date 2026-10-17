@@ -36,41 +36,6 @@ jobs:
       - name: Install stable Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Test independent external-frame audit
-        run: cargo test --manifest-path validation/frame-audit/Cargo.toml --locked --all-targets
-
-      - name: Exercise external capture-audit CLI with a synthetic flash
-        run: |
-          set -euo pipefail
-          capture_dir="$RUNNER_TEMP/frame-audit-smoke"
-          mkdir -p "$capture_dir"
-          printf 'P6\n2 1\n255\n\000\000\000\000\000\000' > "$capture_dir/frame-000001.ppm"
-          printf 'P6\n2 1\n255\n\377\377\377\377\377\377' > "$capture_dir/frame-000002.ppm"
-          printf 'P6\n2 1\n255\n\000\000\000\000\000\000' > "$capture_dir/frame-000003.ppm"
-          cargo run --manifest-path validation/frame-audit/Cargo.toml --locked --release -- \
-            --fps 2 \
-            "$capture_dir/frame-000001.ppm" \
-            "$capture_dir/frame-000002.ppm" \
-            "$capture_dir/frame-000003.ppm" \
-            > "$RUNNER_TEMP/captured-frame-audit-smoke.json"
-          jq -e --arg commit "$VISUAL_SOURCE_COMMIT" --arg build "$VISUAL_BUILD_COMMIT" '
-            .schema == "captured-frame-audit-v3"
-            and .source_commit == $commit
-            and .build_commit == $build
-            and .source == "external_p6_ppm_frame_sequence"
-            and .frames_examined == 3
-            and .resolution.width == 2 and .resolution.height == 1
-            and .frame_transitions_examined == 2
-            and .max_general_flash_area_ratio == 1
-            and .local_visual_field_proxy.width == 1
-            and .local_visual_field_proxy.height == 1
-            and .local_visual_field_proxy.max_general_flash_area_ratio == 1
-            and .large_local_area_general_flash_transitions == 1
-            and .area_model == "sliding_one_third_local_raster_window_proxy"
-            and .normative_wcag_conformance == false
-          ' "$RUNNER_TEMP/captured-frame-audit-smoke.json"
-          sha256sum "$RUNNER_TEMP/captured-frame-audit-smoke.json" > "$RUNNER_TEMP/captured-frame-audit-smoke.sha256"
-
       - name: Exercise capture provenance wrapper on synthetic frames
         shell: bash
         run: |
@@ -109,6 +74,41 @@ jobs:
           (cd "$evidence_dir" && sha256sum --check evidence.sha256 && sha256sum --check frames.sha256)
           sha256sum "$evidence_dir/capture-manifest.json" "$evidence_dir/audit.json" \
             > "$RUNNER_TEMP/capture-audit-wrapper-checksums.txt"
+
+      - name: Test independent external-frame audit
+        run: cargo test --manifest-path validation/frame-audit/Cargo.toml --locked --all-targets
+
+      - name: Exercise external capture-audit CLI with a synthetic flash
+        run: |
+          set -euo pipefail
+          capture_dir="$RUNNER_TEMP/frame-audit-smoke"
+          mkdir -p "$capture_dir"
+          printf 'P6\n2 1\n255\n\000\000\000\000\000\000' > "$capture_dir/frame-000001.ppm"
+          printf 'P6\n2 1\n255\n\377\377\377\377\377\377' > "$capture_dir/frame-000002.ppm"
+          printf 'P6\n2 1\n255\n\000\000\000\000\000\000' > "$capture_dir/frame-000003.ppm"
+          cargo run --manifest-path validation/frame-audit/Cargo.toml --locked --release -- \
+            --fps 2 \
+            "$capture_dir/frame-000001.ppm" \
+            "$capture_dir/frame-000002.ppm" \
+            "$capture_dir/frame-000003.ppm" \
+            > "$RUNNER_TEMP/captured-frame-audit-smoke.json"
+          jq -e --arg commit "$VISUAL_SOURCE_COMMIT" --arg build "$VISUAL_BUILD_COMMIT" '
+            .schema == "captured-frame-audit-v3"
+            and .source_commit == $commit
+            and .build_commit == $build
+            and .source == "external_p6_ppm_frame_sequence"
+            and .frames_examined == 3
+            and .resolution.width == 2 and .resolution.height == 1
+            and .frame_transitions_examined == 2
+            and .max_general_flash_area_ratio == 1
+            and .local_visual_field_proxy.width == 1
+            and .local_visual_field_proxy.height == 1
+            and .local_visual_field_proxy.max_general_flash_area_ratio == 1
+            and .large_local_area_general_flash_transitions == 1
+            and .area_model == "sliding_one_third_local_raster_window_proxy"
+            and .normative_wcag_conformance == false
+          ' "$RUNNER_TEMP/captured-frame-audit-smoke.json"
+          sha256sum "$RUNNER_TEMP/captured-frame-audit-smoke.json" > "$RUNNER_TEMP/captured-frame-audit-smoke.sha256"
 
       - name: Validate visual theme manifest
         run: |
