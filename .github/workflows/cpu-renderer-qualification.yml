@@ -258,11 +258,16 @@ jobs:
           test ! -e "$duplicate_output/audit.json"
 
       - name: Test independent external-frame audit
-        run: cargo test --manifest-path validation/frame-audit/Cargo.toml --locked --all-targets
+        shell: bash
+        run: |
+          set -euo pipefail
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/external-frame-audit-test-target"
+          cargo test --manifest-path validation/frame-audit/Cargo.toml --locked --all-targets
 
       - name: Exercise external capture-audit CLI with a synthetic flash
         run: |
           set -euo pipefail
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/external-frame-audit-smoke-target"
           capture_dir="$RUNNER_TEMP/frame-audit-smoke"
           mkdir -p "$capture_dir"
           printf 'P6\n2 1\n255\n\000\000\000\000\000\000' > "$capture_dir/frame-000001.ppm"
