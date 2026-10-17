@@ -155,6 +155,71 @@ jobs:
           ' "$video_evidence/audit.json"
           (cd "$video_evidence" && sha256sum --check evidence.sha256 && sha256sum --check frames.sha256)
 
+      - name: Qualify chunked audit against a monolithic timestamped reference
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n validation/chunked-frame-audit.sh
+          corpus="$RUNNER_TEMP/chunked-audit-corpus"
+          output="$RUNNER_TEMP/chunked-audit-evidence"
+          mkdir -p "$corpus"
+          timestamps="$corpus/timestamps-ns.txt"
+          : > "$timestamps"
+          for ((index = 0; index < 45; index++)); do
+            printf -v frame_name 'frame-%06d.ppm' "$((index + 1))"
+            if ((index >= 13 && index < 18)); then
+              printf 'P6\n2 1\n255\n\377\377\377\377\377\377' > "$corpus/$frame_name"
+            else
+              printf 'P6\n2 1\n255\n\000\000\000\000\000\000' > "$corpus/$frame_name"
+            fi
+            printf '%s\n' "$((index * 100000000))" >> "$timestamps"
+          done
+          frames=("$corpus"/frame-*.ppm)
+          cargo run --manifest-path validation/frame-audit/Cargo.toml --locked --release -- \
+            --timestamps "$timestamps" --max-gap-ms 150 "${frames[@]}" \
+            > "$RUNNER_TEMP/chunked-audit-monolithic.json"
+          validation/chunked-frame-audit.sh \
+            --output-dir "$output" \
+            --timestamps "$timestamps" --max-gap-ms 150 --chunk-frames 15 \
+            --frames "${frames[@]}"
+          jq -en \
+            --slurpfile mono "$RUNNER_TEMP/chunked-audit-monolithic.json" \
+            --slurpfile chunked "$output/audit.json" '
+            ($mono[0]) as $m | ($chunked[0]) as $c |
+            $c.schema == "captured-frame-audit-v5-chunked"
+            and $c.frames_examined == $m.frames_examined
+            and $c.frame_transitions_examined == $m.frame_transitions_examined
+            and $c.large_local_area_general_flash_transitions == $m.large_local_area_general_flash_transitions
+            and $c.large_local_area_red_flash_transitions == $m.large_local_area_red_flash_transitions
+            and $c.max_general_flash_area_ratio == $m.max_general_flash_area_ratio
+            and $c.max_red_flash_area_ratio == $m.max_red_flash_area_ratio
+            and $c.local_visual_field_proxy.max_general_flash_area_ratio == $m.local_visual_field_proxy.max_general_flash_area_ratio
+            and $c.local_visual_field_proxy.max_red_flash_area_ratio == $m.local_visual_field_proxy.max_red_flash_area_ratio
+            and $c.one_second_window_summary == $m.one_second_window_summary
+            and $c.timeline.sampling_gap_gate_passed == true
+            and $c.chunked_accounting.transition_count_matches_full_sequence == true
+            and $c.chunked_accounting.all_prefix_deltas_nonnegative == true
+            and $c.normative_wcag_conformance == false
+          ' > "$RUNNER_TEMP/chunked-audit-equivalence.json"
+          jq -e '. == true' "$RUNNER_TEMP/chunked-audit-equivalence.json"
+          (cd "$output" && sha256sum --check evidence.sha256)
+
+          # Shift this timestamp and every later sample by 200 ms: a 300 ms
+          # adjacent gap must be reported incomplete against a 150 ms limit.
+          awk 'NR < 21 { print; next } { printf "%.0f\n", $1 + 200000000 }' \
+            "$timestamps" > "$corpus/timestamps-gap-ns.txt"
+          gap_output="$RUNNER_TEMP/chunked-audit-gap-evidence"
+          validation/chunked-frame-audit.sh \
+            --output-dir "$gap_output" \
+            --timestamps "$corpus/timestamps-gap-ns.txt" --max-gap-ms 150 --chunk-frames 15 \
+            --frames "${frames[@]}"
+          jq -e '
+            .schema == "captured-frame-audit-v5-chunked"
+            and .timeline.sampling_gap_gate_passed == false
+            and .timeline.coverage_status == "incomplete_sampling_due_to_gap"
+            and .normative_wcag_conformance == false
+          ' "$gap_output/audit.json"
+
       - name: Test independent external-frame audit
         run: cargo test --manifest-path validation/frame-audit/Cargo.toml --locked --all-targets
 
