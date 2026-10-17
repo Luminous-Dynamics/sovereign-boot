@@ -109,6 +109,46 @@ jobs:
             and .normative_wcag_conformance == false
           ' "$RUNNER_TEMP/captured-frame-audit-smoke.json"
           sha256sum "$RUNNER_TEMP/captured-frame-audit-smoke.json" > "$RUNNER_TEMP/captured-frame-audit-smoke.sha256"
+          printf '0\n500000000\n1000000000\n' > "$capture_dir/timestamps-inside.txt"
+          cargo run --manifest-path validation/frame-audit/Cargo.toml --locked --release -- \
+            --timestamps "$capture_dir/timestamps-inside.txt" --max-gap-ms 500 \
+            "$capture_dir/frame-000001.ppm" \
+            "$capture_dir/frame-000002.ppm" \
+            "$capture_dir/frame-000003.ppm" \
+            > "$RUNNER_TEMP/captured-frame-audit-timestamped.json"
+          jq -e --arg commit "$VISUAL_SOURCE_COMMIT" --arg build "$VISUAL_BUILD_COMMIT" '
+            .schema == "captured-frame-audit-v4-timestamped"
+            and .source_commit == $commit and .build_commit == $build
+            and .temporal_basis == "monotonic_presentation_timestamps_ns"
+            and .frames_examined == 3
+            and .timeline.start_ns == 0
+            and .timeline.end_ns == 1000000000
+            and .timeline.max_sample_gap_ns == 500000000
+            and .timeline.allowed_sample_gap_ns == 500000000
+            and .timeline.sampling_gap_gate_passed == true
+            and .timeline.coverage_status == "within_declared_gap_limit"
+            and .one_second_window_summary.windows_examined == 1
+            and .one_second_window_summary.max_general_large_area_flash_events == 1
+            and .normative_wcag_conformance == false
+          ' "$RUNNER_TEMP/captured-frame-audit-timestamped.json"
+
+          # Long sampling gaps are surfaced as incomplete evidence, even when
+          # no flash pair is observed inside the one-second edge-pair interval.
+          printf '0\n500000000\n2000000000\n' > "$capture_dir/timestamps-gap.txt"
+          cargo run --manifest-path validation/frame-audit/Cargo.toml --locked --release -- \
+            --timestamps "$capture_dir/timestamps-gap.txt" --max-gap-ms 100 \
+            "$capture_dir/frame-000001.ppm" \
+            "$capture_dir/frame-000002.ppm" \
+            "$capture_dir/frame-000003.ppm" \
+            > "$RUNNER_TEMP/captured-frame-audit-gap.json"
+          jq -e '
+            .schema == "captured-frame-audit-v4-timestamped"
+            and .timeline.sampling_gap_gate_passed == false
+            and .timeline.coverage_status == "incomplete_sampling_due_to_gap"
+            and .normative_wcag_conformance == false
+          ' "$RUNNER_TEMP/captured-frame-audit-gap.json"
+          sha256sum "$RUNNER_TEMP/captured-frame-audit-timestamped.json" "$RUNNER_TEMP/captured-frame-audit-gap.json" \
+            > "$RUNNER_TEMP/captured-frame-audit-timestamped.sha256"
 
       - name: Validate visual theme manifest
         run: |
