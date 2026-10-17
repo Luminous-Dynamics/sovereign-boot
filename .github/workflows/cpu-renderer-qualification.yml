@@ -210,6 +210,12 @@ jobs:
             and $c.audit_sampled_pixels_processed >= $c.unique_source_sampled_pixels
             and $c.redundant_overlap_pixels == ($c.audit_sampled_pixels_processed - $c.unique_source_sampled_pixels)
             and $c.chunk_audit_elapsed_wall_ms >= 0
+            and $c.resolution == $m.resolution
+            and $c.timeline.start_ns == $m.timeline.start_ns
+            and $c.timeline.end_ns == $m.timeline.end_ns
+            and $c.timeline.observed_span_ns == $m.timeline.observed_span_ns
+            and $c.timeline.max_sample_gap_ns == $m.timeline.max_sample_gap_ns
+            and $c.timeline.allowed_sample_gap_ns == $m.timeline.allowed_sample_gap_ns
             and $m.large_local_area_general_flash_transitions == 10
             and $c.large_local_area_general_flash_transitions == $m.large_local_area_general_flash_transitions
             and $c.large_local_area_red_flash_transitions == $m.large_local_area_red_flash_transitions
