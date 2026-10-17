@@ -67,7 +67,8 @@ jobs:
             and (.frame_hash_manifest_sha256 | length == 64)
             and (.audit_receipt_sha256 | length == 64)
             and .source_paths_recorded == false
-            and .original_frame_timestamps_analyzed == false
+            and .provided_timestamp_sidecar_analyzed == true
+            and .original_media_pts_preserved == false
             and .normative_wcag_conformance == false
           ' "$evidence_dir/capture-manifest.json"
           jq -e --arg source "$VISUAL_SOURCE_COMMIT" --arg build "$VISUAL_BUILD_COMMIT" '

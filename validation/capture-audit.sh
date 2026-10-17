@@ -259,7 +259,8 @@ jq -n \
     frame_hash_manifest_sha256: $frame_manifest_sha256,
     audit_receipt_sha256: $audit_sha256,
     source_paths_recorded: false,
-    original_frame_timestamps_analyzed: false,
+    provided_timestamp_sidecar_analyzed: ($temporal_basis == "presentation_timestamp_ns"),
+    original_media_pts_preserved: false,
     normative_wcag_conformance: false,
     limitations: [
       "The auditor assumes uniformly spaced samples at sample_fps_assumed.",

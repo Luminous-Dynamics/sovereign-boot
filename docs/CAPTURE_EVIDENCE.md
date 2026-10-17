@@ -28,7 +28,7 @@ The tool never writes source paths or source filenames into the manifest. Eviden
 - **audit.json:** the independent Rust auditor's captured-frame-audit-v3 receipt.
 - **frames/:** normalized, ordered P6 PPM files actually examined.
 - **frames.sha256:** hashes for every audited frame.
-- **presentation-timestamps-ns.txt:** the normalized time series used by timestamp mode, when supplied.
+- **presentation-timestamps-ns.txt:** the timestamp series used by timestamp mode, copied from the caller's sidecar.
 - **input-frames.sha256:** source PPM hashes and order when frame-sequence mode is used.
 - **source-media-probe.json:** selected video metadata in video mode.
 - **evidence.sha256:** checksums for the evidence manifests/receipts; the frame manifest separately authenticates the frame bytes.
@@ -58,7 +58,7 @@ W3C's [WCAG 2.2 understanding of SC 2.3.1](https://www.w3.org/WAI/WCAG22/Underst
 
 ## Next qualification milestones
 
-1. Integrate timestamp-sidecar generation into `capture-audit.sh` so video PTS can reach the new timestamp mode without manual preparation.
+1. Add video PTS extraction to `capture-audit.sh`; video mode is deliberately still nominal-FPS until extracted timestamps can be matched to the exact selected frames.
 2. Compare at least one monitor/camera capture and one OS-level screen capture; document what each path does and does not observe.
 3. Add known-positive, known-negative, red-transition, bright-plateau, and between-sample adversarial fixtures; retain their raw frames and expected results.
 4. Record end-to-end boot/desktop lifecycle traces separately from shader time: process start, first presented frame, compositor handoff, stop request, last display access, and fallback completion.
