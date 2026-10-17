@@ -159,6 +159,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/chunked-frame-audit-target"
           bash -n validation/chunked-frame-audit.sh
           corpus="$RUNNER_TEMP/chunked-audit-corpus"
           output="$RUNNER_TEMP/chunked-audit-evidence"
@@ -189,6 +190,10 @@ jobs:
             $c.schema == "captured-frame-audit-v5-chunked"
             and $c.frames_examined == $m.frames_examined
             and $c.frame_transitions_examined == $m.frame_transitions_examined
+            and $c.unique_source_sampled_pixels == ($m.frames_examined * $m.resolution.width * $m.resolution.height)
+            and $c.audit_sampled_pixels_processed >= $c.unique_source_sampled_pixels
+            and $c.redundant_overlap_pixels == ($c.audit_sampled_pixels_processed - $c.unique_source_sampled_pixels)
+            and $c.chunk_audit_elapsed_wall_ms >= 0
             and $c.large_local_area_general_flash_transitions == $m.large_local_area_general_flash_transitions
             and $c.large_local_area_red_flash_transitions == $m.large_local_area_red_flash_transitions
             and $c.max_general_flash_area_ratio == $m.max_general_flash_area_ratio
@@ -219,6 +224,19 @@ jobs:
             and .timeline.coverage_status == "incomplete_sampling_due_to_gap"
             and .normative_wcag_conformance == false
           ' "$gap_output/audit.json"
+
+          # Duplicate timestamps must be rejected, not normalized into a clean receipt.
+          sed '21s/.*/1900000000/' "$timestamps" > "$corpus/timestamps-duplicate-ns.txt"
+          duplicate_output="$RUNNER_TEMP/chunked-audit-duplicate-evidence"
+          set +e
+          validation/chunked-frame-audit.sh \
+            --output-dir "$duplicate_output" \
+            --timestamps "$corpus/timestamps-duplicate-ns.txt" --max-gap-ms 150 --chunk-frames 15 \
+            --frames "\${frames[@]}" > "$RUNNER_TEMP/chunked-audit-duplicate.stdout" 2>&1
+          duplicate_status=$?
+          set -e
+          test "$duplicate_status" -eq 2
+          test ! -e "$duplicate_output/audit.json"
 
       - name: Test independent external-frame audit
         run: cargo test --manifest-path validation/frame-audit/Cargo.toml --locked --all-targets
