@@ -40,13 +40,21 @@ The original video itself is not copied into the bundle; its SHA-256 is recorded
 
 ## Interpretation limits
 
-The frame-audit executable receives a single assumed FPS and ordered frames, not the original timestamp of each source frame. Variable-frame-rate timestamps, dropped or duplicated frames, camera exposure/rolling shutter, codec artifacts, display scaling, color conversion, and events between samples may change what it observes. Preserve the original source and never present the bundle as proof that no unobserved event occurred.
+The current `capture-audit.sh` wrapper uses the legacy nominal-FPS mode. The independent Rust CLI also supports an opt-in timestamp sidecar: one strictly increasing unsigned integer nanosecond timestamp per frame, in exactly the same order as the PPM paths. Example:
+
+    cargo run --manifest-path validation/frame-audit/Cargo.toml --locked --release -- \
+      --timestamps /path/to/timestamps-ns.txt --max-gap-ms 100 \
+      /path/to/frame-000001.ppm /path/to/frame-000002.ppm /path/to/frame-000003.ppm
+
+Timestamp mode emits schema `captured-frame-audit-v4-timestamped`. It pairs opposing transitions using elapsed nanoseconds and evaluates one-second windows against presentation timestamps. A frame gap above the declared threshold (100 ms by default) is explicitly reported as `incomplete_sampling_due_to_gap`; observed event counts must not be interpreted as complete when that gate fails. Timestamps are presumed to use a single monotonic time base; do not mix wall-clock timestamps with media-relative PTS.
+
+The legacy nominal-FPS mode remains schema v3 for reproducibility. Timestamp mode improves time accounting but does not recover events that happen between sampled frames. Camera exposure/rolling shutter, codec artifacts, display scaling, color conversion, and physical-display differences may change what is observed. Preserve the original source and never present the bundle as proof that no unobserved event occurred.
 
 W3C's [WCAG 2.2 understanding of SC 2.3.1](https://www.w3.org/WAI/WCAG22/Understanding/three-flashes-or-below-threshold) describes flashes as opposing transitions and evaluates frequency over any one-second period. Its local visual-field area criteria are not equivalent to a percentage of the full raster. This repository's analyzer deliberately reports normative_wcag_conformance: false and remains a regression proxy; use a validated independent analyzer and appropriate real-display measurements for any stronger claim.
 
 ## Next qualification milestones
 
-1. Add timestamp-aware sampling so variable-frame-rate captures can preserve presentation timestamps instead of relying only on a nominal FPS.
+1. Integrate timestamp-sidecar generation into `capture-audit.sh` so video PTS can reach the new timestamp mode without manual preparation.
 2. Compare at least one monitor/camera capture and one OS-level screen capture; document what each path does and does not observe.
 3. Add known-positive, known-negative, red-transition, bright-plateau, and between-sample adversarial fixtures; retain their raw frames and expected results.
 4. Record end-to-end boot/desktop lifecycle traces separately from shader time: process start, first presented frame, compositor handoff, stop request, last display access, and fallback completion.

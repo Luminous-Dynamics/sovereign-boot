@@ -21,11 +21,16 @@ const GENERAL_LUMINANCE_DELTA: f64 = 0.10;
 const RED_CHROMATICITY_DELTA: f64 = 0.20;
 const LARGE_AREA_RATIO: f64 = 0.25;
 const MAX_FLASH_EVENTS_PER_SECOND: usize = 3;
+const DEFAULT_MAX_GAP_MS: u64 = 100;
+const ONE_SECOND_NS: u64 = 1_000_000_000;
+const MAX_TIMESTAMP_FILE_BYTES: u64 = (MAX_FRAMES as u64) * 32;
 
 #[derive(Debug)]
 struct Config {
     fps: u32,
     paths: Vec<PathBuf>,
+    timestamps: Option<PathBuf>,
+    max_gap_ms: u64,
 }
 
 #[derive(Debug)]
@@ -91,6 +96,21 @@ fn run() -> Result<(), String> {
         return Err(format!("provide 3..={MAX_FRAMES} ordered P6 PPM frames"));
     }
 
+    let timestamped = config.timestamps.is_some();
+    let timestamps_ns = match config.timestamps.as_ref() {
+        Some(path) => read_timestamps_ns(path, config.paths.len())?,
+        None => (0..config.paths.len())
+            .map(|index| (index as u128 * ONE_SECOND_NS as u128 / config.fps as u128) as u64)
+            .collect(),
+    };
+    let max_sample_gap_ns = timestamps_ns
+        .windows(2)
+        .map(|pair| pair[1] - pair[0])
+        .max()
+        .unwrap_or(0);
+    let allowed_sample_gap_ns = config.max_gap_ms.saturating_mul(1_000_000);
+    let sampling_gap_gate_passed = !timestamped || max_sample_gap_ns <= allowed_sample_gap_ns;
+
     let mut path_iter = config.paths.iter();
     let first_path = path_iter.next().expect("validated non-empty frames");
     let first = read_ppm(first_path)?;
@@ -120,6 +140,8 @@ fn run() -> Result<(), String> {
     let mut summary = Summary::default();
     let mut general_events = Vec::with_capacity(config.paths.len() - 1);
     let mut red_events = Vec::with_capacity(config.paths.len() - 1);
+    let mut general_events_timed = vec![false; config.paths.len()];
+    let mut red_events_timed = vec![false; config.paths.len()];
 
     for (frame_offset, path) in path_iter.enumerate() {
         let current = read_ppm(path)?;
@@ -127,13 +149,14 @@ fn run() -> Result<(), String> {
             return Err("all frames must have identical dimensions".to_string());
         }
         let frame_index = frame_offset + 1;
-        let pair = analyze_transition_with_masks(
+        let pair = analyze_transition_with_masks_timed(
             &previous.pixels,
             &current.pixels,
             width,
             height,
             frame_index,
-            config.fps,
+            &timestamps_ns,
+            ONE_SECOND_NS,
             &mut last_luminance_transitions,
             &mut last_red_transitions,
             &mut general_flash_mask,
@@ -156,6 +179,8 @@ fn run() -> Result<(), String> {
         let red_event = pair.red_local_window_ratio >= LARGE_AREA_RATIO;
         general_events.push(general_event);
         red_events.push(red_event);
+        general_events_timed[frame_index] = general_event;
+        red_events_timed[frame_index] = red_event;
         if general_event {
             summary.large_area_general_transitions += 1;
         }
@@ -165,6 +190,64 @@ fn run() -> Result<(), String> {
         previous = current;
     }
 
+    if timestamped {
+        let general_windows = summarize_one_second_windows_timed(&timestamps_ns, &general_events_timed);
+        let red_windows = summarize_one_second_windows_timed(&timestamps_ns, &red_events_timed);
+        println!(
+            concat!(
+                "{{\n",
+                "  \"schema\": \"captured-frame-audit-v4-timestamped\",\n",
+                "  \"source_commit\": \"{}\",\n",
+                "  \"build_commit\": \"{}\",\n",
+                "  \"source\": \"external_p6_ppm_frame_sequence\",\n",
+                "  \"temporal_basis\": \"monotonic_presentation_timestamps_ns\",\n",
+                "  \"frames_examined\": {},\n",
+                "  \"resolution\": {{ \"width\": {}, \"height\": {} }},\n",
+                "  \"timeline\": {{ \"start_ns\": {}, \"end_ns\": {}, \"observed_span_ns\": {}, \"max_sample_gap_ns\": {}, \"allowed_sample_gap_ns\": {}, \"sampling_gap_gate_passed\": {}, \"coverage_status\": \"{}\" }},\n",
+                "  \"frame_transitions_examined\": {},\n",
+                "  \"max_general_flash_area_ratio\": {:.6},\n",
+                "  \"max_red_flash_area_ratio\": {:.6},\n",
+                "  \"local_visual_field_proxy\": {{ \"method\": \"scaled_one_third_raster_window\", \"width\": {}, \"height\": {}, \"max_general_flash_area_ratio\": {:.6}, \"max_red_flash_area_ratio\": {:.6} }},\n",
+                "  \"large_local_area_general_flash_transitions\": {},\n",
+                "  \"large_local_area_red_flash_transitions\": {},\n",
+                "  \"one_second_window_summary\": {{ \"basis\": \"presentation_timestamp_ns\", \"windows_examined\": {}, \"max_general_large_area_flash_events\": {}, \"general_windows_over_three_flash_events\": {}, \"max_red_large_area_flash_events\": {}, \"red_windows_over_three_flash_events\": {} }},\n",
+                "  \"area_model\": \"sliding_one_third_local_raster_window_proxy\",\n",
+                "  \"normative_wcag_conformance\": false,\n",
+                "  \"thresholds\": {{ \"general_luminance_delta_ge\": {:.2}, \"red_chromaticity_delta_gt\": {:.2}, \"large_area_ratio_ge\": {:.2}, \"max_events_per_second\": {} }}\n",
+                "}}"
+            ),
+            option_env!("VISUAL_SOURCE_COMMIT").unwrap_or("unavailable-local-build"),
+            option_env!("VISUAL_BUILD_COMMIT").unwrap_or("unavailable-local-build"),
+            config.paths.len(),
+            width,
+            height,
+            timestamps_ns[0],
+            *timestamps_ns.last().expect("timestamp count equals frame count"),
+            timestamps_ns[timestamps_ns.len() - 1] - timestamps_ns[0],
+            max_sample_gap_ns,
+            allowed_sample_gap_ns,
+            sampling_gap_gate_passed,
+            if sampling_gap_gate_passed { "within_declared_gap_limit" } else { "incomplete_sampling_due_to_gap" },
+            summary.transitions_examined,
+            summary.max_general_flash_area_ratio,
+            summary.max_red_flash_area_ratio,
+            field_width,
+            field_height,
+            summary.max_general_local_window_ratio,
+            summary.max_red_local_window_ratio,
+            summary.large_area_general_transitions,
+            summary.large_area_red_transitions,
+            general_windows.windows_examined,
+            general_windows.max_events,
+            general_windows.windows_over_three_events,
+            red_windows.max_events,
+            red_windows.windows_over_three_events,
+            GENERAL_LUMINANCE_DELTA,
+            RED_CHROMATICITY_DELTA,
+            LARGE_AREA_RATIO,
+            MAX_FLASH_EVENTS_PER_SECOND,
+        );
+    } else {
     let general_windows = summarize_one_second_windows(&general_events, config.fps);
     let red_windows = summarize_one_second_windows(&red_events, config.fps);
     let window_samples = config.fps as usize + 1;
@@ -217,12 +300,15 @@ fn run() -> Result<(), String> {
         LARGE_AREA_RATIO,
         MAX_FLASH_EVENTS_PER_SECOND,
     );
+    }
     Ok(())
 }
 
 fn parse_args_from(args: &[String]) -> Result<Option<Config>, String> {
     let mut fps = DEFAULT_FPS;
     let mut paths = Vec::new();
+    let mut timestamps = None;
+    let mut max_gap_ms = DEFAULT_MAX_GAP_MS;
     let mut index = 0usize;
     while index < args.len() {
         match args[index].as_str() {
@@ -234,6 +320,23 @@ fn parse_args_from(args: &[String]) -> Result<Option<Config>, String> {
                     .map_err(|_| "--fps must be an integer between 1 and 240")?;
                 if !(1..=MAX_FPS).contains(&fps) {
                     return Err("--fps must be an integer between 1 and 240".to_string());
+                }
+            }
+            "--timestamps" => {
+                index += 1;
+                let value = args.get(index).ok_or("--timestamps requires a file path")?;
+                if timestamps.is_some() {
+                    return Err("--timestamps may be supplied only once".to_string());
+                }
+                timestamps = Some(PathBuf::from(value));
+            }
+            "--max-gap-ms" => {
+                index += 1;
+                let value = args.get(index).ok_or("--max-gap-ms requires a value")?;
+                max_gap_ms = value.parse::<u64>()
+                    .map_err(|_| "--max-gap-ms must be an integer from 1 to 60000")?;
+                if !(1..=60_000).contains(&max_gap_ms) {
+                    return Err("--max-gap-ms must be an integer from 1 to 60000".to_string());
                 }
             }
             "--help" | "-h" => {
@@ -253,14 +356,97 @@ fn parse_args_from(args: &[String]) -> Result<Option<Config>, String> {
     if paths.len() > MAX_FRAMES {
         return Err(format!("frame count exceeds {MAX_FRAMES}"));
     }
-    Ok(Some(Config { fps, paths }))
+    Ok(Some(Config { fps, paths, timestamps, max_gap_ms }))
 }
 
 fn print_usage() {
     eprintln!(
         "Usage: cargo run --manifest-path validation/frame-audit/Cargo.toml --release -- \
-         [--fps 30] frame-000001.ppm frame-000002.ppm frame-000003.ppm ..."
+         [--fps 30] [--timestamps timestamps-ns.txt [--max-gap-ms 100]] \
+         frame-000001.ppm frame-000002.ppm frame-000003.ppm ..."
     );
+}
+
+
+fn read_timestamps_ns(path: &Path, expected_count: usize) -> Result<Vec<u64>, String> {
+    let metadata = fs::metadata(path)
+        .map_err(|error| format!("cannot stat timestamp sidecar: {error}"))?;
+    if metadata.len() > MAX_TIMESTAMP_FILE_BYTES {
+        return Err("timestamp sidecar exceeds its byte bound".to_string());
+    }
+    let contents = fs::read_to_string(path)
+        .map_err(|error| format!("cannot read UTF-8 timestamp sidecar: {error}"))?;
+    parse_timestamps_ns(&contents, expected_count)
+}
+
+fn parse_timestamps_ns(contents: &str, expected_count: usize) -> Result<Vec<u64>, String> {
+    if expected_count < 3 || expected_count > MAX_FRAMES {
+        return Err("timestamp count target is outside the accepted frame bound".to_string());
+    }
+    if contents.len() as u64 > MAX_TIMESTAMP_FILE_BYTES {
+        return Err("timestamp sidecar exceeds its byte bound".to_string());
+    }
+    let mut timestamps: Vec<u64> = Vec::with_capacity(expected_count);
+    for (line_index, line) in contents.lines().enumerate() {
+        let value = line.trim();
+        if value.is_empty() {
+            continue;
+        }
+        if !value.bytes().all(|byte| byte.is_ascii_digit()) {
+            return Err(format!("timestamp line {} must be unsigned integer nanoseconds", line_index + 1));
+        }
+        let timestamp = value
+            .parse::<u64>()
+            .map_err(|_| format!("timestamp line {} is outside the u64 range", line_index + 1))?;
+        if let Some(previous) = timestamps.last() {
+            if timestamp <= *previous {
+                return Err(format!("timestamps must be strictly increasing (line {})", line_index + 1));
+            }
+        }
+        timestamps.push(timestamp);
+        if timestamps.len() > expected_count {
+            return Err("timestamp count does not match frame count".to_string());
+        }
+    }
+    if timestamps.len() != expected_count {
+        return Err(format!(
+            "timestamp count {} does not match frame count {}",
+            timestamps.len(), expected_count
+        ));
+    }
+    Ok(timestamps)
+}
+
+fn elapsed_within_window(previous_ns: u64, current_ns: u64, window_ns: u64) -> bool {
+    current_ns >= previous_ns && current_ns - previous_ns <= window_ns
+}
+
+fn summarize_one_second_windows_timed(timestamps_ns: &[u64], events: &[bool]) -> WindowSummary {
+    if timestamps_ns.len() != events.len() || timestamps_ns.len() < 2 {
+        return WindowSummary::default();
+    }
+    let mut result = WindowSummary::default();
+    let mut left = 0usize;
+    let mut event_count = 0usize;
+    for right in 0..timestamps_ns.len() {
+        if events[right] {
+            event_count += 1;
+        }
+        while timestamps_ns[right] - timestamps_ns[left] > ONE_SECOND_NS {
+            if events[left] {
+                event_count -= 1;
+            }
+            left += 1;
+        }
+        if timestamps_ns[right] - timestamps_ns[0] >= ONE_SECOND_NS {
+            result.windows_examined += 1;
+            result.max_events = result.max_events.max(event_count);
+            if event_count > MAX_FLASH_EVENTS_PER_SECOND {
+                result.windows_over_three_events += 1;
+            }
+        }
+    }
+    result
 }
 
 fn read_ppm(path: &Path) -> Result<Frame, String> {
@@ -473,6 +659,28 @@ fn analyze_transition_with_masks(
     general_flash_mask: &mut [u8],
     red_flash_mask: &mut [u8],
 ) -> PairMetrics {
+    let timestamps_ns: Vec<u64> = (0..=frame_index)
+        .map(|index| (index as u128 * ONE_SECOND_NS as u128 / fps as u128) as u64)
+        .collect();
+    analyze_transition_with_masks_timed(
+        before, after, width, height, frame_index, &timestamps_ns, ONE_SECOND_NS,
+        last_luminance, last_red, general_flash_mask, red_flash_mask,
+    )
+}
+
+fn analyze_transition_with_masks_timed(
+    before: &[u32],
+    after: &[u32],
+    width: usize,
+    height: usize,
+    frame_index: usize,
+    timestamps_ns: &[u64],
+    max_pair_interval_ns: u64,
+    last_luminance: &mut [LastLuminanceTransition],
+    last_red: &mut [LastRedTransition],
+    general_flash_mask: &mut [u8],
+    red_flash_mask: &mut [u8],
+) -> PairMetrics {
     assert_eq!(before.len(), after.len());
     assert_eq!(before.len(), width * height);
     assert_eq!(before.len(), last_luminance.len());
@@ -480,6 +688,7 @@ fn analyze_transition_with_masks(
     assert_eq!(before.len(), general_flash_mask.len());
     assert_eq!(before.len(), red_flash_mask.len());
     assert!(!before.is_empty());
+    assert!(frame_index < timestamps_ns.len());
 
     general_flash_mask.fill(0);
     red_flash_mask.fill(0);
@@ -497,8 +706,13 @@ fn analyze_transition_with_masks(
             };
             let previous = last_luminance[index];
             if previous.frame_index != 0 {
-                let within_window =
-                    frame_index.saturating_sub(previous.frame_index as usize) <= fps as usize;
+                let previous_index = previous.frame_index as usize;
+                let within_window = previous_index < timestamps_ns.len()
+                    && elapsed_within_window(
+                        timestamps_ns[previous_index],
+                        timestamps_ns[frame_index],
+                        max_pair_interval_ns,
+                    );
                 if within_window && previous.rising != current.rising {
                     general_flash_pixels += 1;
                     general_flash_mask[index] = 1;
@@ -535,8 +749,13 @@ fn analyze_transition_with_masks(
             };
             let previous = last_red[index];
             if previous.frame_index != 0 {
-                let within_window =
-                    frame_index.saturating_sub(previous.frame_index as usize) <= fps as usize;
+                let previous_index = previous.frame_index as usize;
+                let within_window = previous_index < timestamps_ns.len()
+                    && elapsed_within_window(
+                        timestamps_ns[previous_index],
+                        timestamps_ns[frame_index],
+                        max_pair_interval_ns,
+                    );
                 let previous_vector_valid = previous.flags & RED_STATE_VECTOR_VALID != 0;
                 let current_vector_valid = current.flags & RED_STATE_VECTOR_VALID != 0;
                 let opposing = if previous_vector_valid && current_vector_valid {
@@ -813,4 +1032,51 @@ mod tests {
             WindowSummary::default()
         );
     }
+    #[test]
+    fn timestamp_sidecar_requires_exact_count_and_strictly_increasing_values() {
+        assert_eq!(
+            parse_timestamps_ns("100\n200\n350\n", 3).expect("valid timeline"),
+            vec![100, 200, 350]
+        );
+        assert!(parse_timestamps_ns("100\n100\n200\n", 3).is_err());
+        assert!(parse_timestamps_ns("100\n200\n", 3).is_err());
+        assert!(parse_timestamps_ns("100\n200\n300\n400\n", 3).is_err());
+        assert!(parse_timestamps_ns("100\n-2\n300\n", 3).is_err());
+    }
+
+    #[test]
+    fn opposing_edges_use_elapsed_time_not_frame_distance() {
+        assert!(elapsed_within_window(10, 1_000_000_010, ONE_SECOND_NS));
+        assert!(!elapsed_within_window(10, 1_000_000_011, ONE_SECOND_NS));
+        assert!(!elapsed_within_window(20, 10, ONE_SECOND_NS));
+    }
+
+    #[test]
+    fn timestamp_windows_count_events_inside_and_outside_one_second() {
+        let inside_times = vec![0, 200_000_000, 400_000_000, 600_000_000, 800_000_000, 1_000_000_000];
+        let mut inside_events = vec![false; inside_times.len()];
+        inside_events[0] = true;
+        inside_events[1] = true;
+        inside_events[2] = true;
+        inside_events[3] = true;
+        let inside = summarize_one_second_windows_timed(&inside_times, &inside_events);
+        assert_eq!(inside.max_events, 4);
+        assert!(inside.windows_examined > 0);
+
+        let outside_times = vec![0, 500_000_000, 1_000_000_001];
+        let outside_events = vec![true, false, true];
+        let outside = summarize_one_second_windows_timed(&outside_times, &outside_events);
+        assert_eq!(outside.max_events, 1);
+    }
+
+    #[test]
+    fn timestamp_windows_do_not_claim_full_window_before_one_second() {
+        let times = vec![5_000_000_000, 5_100_000_000, 5_900_000_000];
+        let events = vec![true, true, true];
+        assert_eq!(
+            summarize_one_second_windows_timed(&times, &events),
+            WindowSummary::default()
+        );
+    }
+
 }
