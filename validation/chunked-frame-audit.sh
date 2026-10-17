@@ -77,8 +77,8 @@ done
 
 [[ -n "$output_arg" ]] || die "--output-dir is required"
 [[ -n "$timestamps_arg" ]] || die "--timestamps is required"
-(("${#frames[@]}" >= 3)) || die "--frames requires at least three ordered PPM files"
-(("${#frames[@]}" <= MAX_FRAMES_TOTAL)) || die "frame count exceeds the $MAX_FRAMES_TOTAL-frame extended-mode bound"
+((${#frames[@]} >= 3)) || die "--frames requires at least three ordered PPM files"
+((${#frames[@]} <= MAX_FRAMES_TOTAL)) || die "frame count exceeds the $MAX_FRAMES_TOTAL-frame extended-mode bound"
 [[ "$max_gap_ms" =~ ^[0-9]+$ && ${#max_gap_ms} -le 5 ]] || die "--max-gap-ms must be an integer from 1 to 60000"
 ((10#$max_gap_ms >= 1 && 10#$max_gap_ms <= 60000)) || die "--max-gap-ms must be an integer from 1 to 60000"
 max_gap_ms=$((10#$max_gap_ms))
@@ -121,7 +121,7 @@ timestamps_path="$(cd -- "$(dirname -- "$timestamps_path")" && pwd -P)/$(basenam
 timestamp_bytes="$(stat -c '%s' -- "$timestamps_path")"
 ((timestamp_bytes <= MAX_TIMESTAMP_FILE_BYTES)) || die "timestamp sidecar exceeds the $MAX_TIMESTAMP_FILE_BYTES-byte bound"
 mapfile -t raw_timestamps < "$timestamps_path"
-(("${#raw_timestamps[@]}" == "${#frames[@]}")) || die "timestamp count does not match frame count"
+((${#raw_timestamps[@]} == ${#frames[@]})) || die "timestamp count does not match frame count"
 
 declare -a timestamps=()
 previous_timestamp=-1
@@ -163,6 +163,7 @@ for ((frame_index = 0; frame_index < ${#frames[@]}; frame_index++)); do
   printf '%08d %s\n' "$frame_index" "$frame_hash" >> "$output_dir/input-frames.manifest"
 done
 frame_manifest_sha256="$(sha256sum -- "$output_dir/input-frames.manifest" | awk '{print $1}')"
+audit_started_epoch_ns="$(date +%s%N)"
 
 temporary_cargo_target=""
 if [[ -z "${CARGO_TARGET_DIR:-}" ]]; then
@@ -309,6 +310,8 @@ jq -n \
     | ($runs | map(.full.one_second_window_summary.general_windows_over_three_flash_events - (.prefix.one_second_window_summary.general_windows_over_three_flash_events // 0))) as $general_window_deltas
     | ($runs | map(.full.one_second_window_summary.red_windows_over_three_flash_events - (.prefix.one_second_window_summary.red_windows_over_three_flash_events // 0))) as $red_window_deltas
     | ([ $fulls[].timeline.max_sample_gap_ns ] | max) as $max_gap_ns
+    | ($frame_count * $fulls[0].resolution.width * $fulls[0].resolution.height) as $pixel_work_processed
+    | ([$fulls[] | (.frames_examined * .resolution.width * .resolution.height)] | max) as $max_chunk_pixel_work
     | {
         schema:"captured-frame-audit-v5-chunked",
         source_commit:$source_commit,
@@ -318,6 +321,8 @@ jq -n \
         chunking_method:"one_second_timestamp_overlap_plus_predecessor_frame_with_prefix_delta_accounting",
         frames_examined:$frame_count,
         frame_transitions_examined:($transition_deltas | add),
+        sampled_pixels_processed:$pixel_work_processed,
+        max_chunk_sampled_pixels:$max_chunk_pixel_work,
         resolution:$fulls[0].resolution,
         timeline:{
           start_ns:$fulls[0].timeline.start_ns,
@@ -374,6 +379,10 @@ for ((frame_index = 0; frame_index < ${#normalized_frames[@]}; frame_index++)); 
 done
 [[ "$(sha256sum -- "$timestamps_path" | awk '{print $1}')" == "$(sha256sum -- "$output_dir/source-timestamps.txt" | awk '{print $1}')" ]] || die "timestamp sidecar changed during audit"
 
+audit_finished_epoch_ns="$(date +%s%N)"
+elapsed_wall_ms=$(((audit_finished_epoch_ns - audit_started_epoch_ns) / 1000000))
+jq --argjson elapsed "$elapsed_wall_ms" '. + {elapsed_wall_ms:$elapsed}' "$output_dir/audit.json" > "$output_dir/audit.json.tmp"
+mv -- "$output_dir/audit.json.tmp" "$output_dir/audit.json"
 audit_sha256="$(sha256sum -- "$output_dir/audit.json" | awk '{print $1}')"
 jq -n \
   --arg source_commit "$source_commit" \
