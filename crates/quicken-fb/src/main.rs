@@ -212,8 +212,12 @@ fn main() {
         // Render
         network.render(&mut render_buf);
 
-        // Blit to framebuffer
-        fb.blit_from(&render_buf);
+        // A failed mapping/copy must not turn the decorative animation into a
+        // CPU-consuming loop that can no longer update the display.
+        if !fb.blit_from(&render_buf) {
+            eprintln!("quicken-fb: framebuffer write failed; stopping decorative renderer");
+            break;
+        }
     }
 
     // SIGTERM/SIGINT may be the compositor handoff path. Fade out over a
@@ -225,7 +229,10 @@ fn main() {
             let t = frame as f32 / SHUTDOWN_FADE_FRAMES as f32;
             network.fade_out(initial_fade + (1.0 - initial_fade) * t);
             network.render(&mut render_buf);
-            fb.blit_from(&render_buf);
+            if !fb.blit_from(&render_buf) {
+                eprintln!("quicken-fb: framebuffer write failed during shutdown fade");
+                break;
+            }
             std::thread::sleep(shutdown_frame_duration);
         }
     }
@@ -234,7 +241,7 @@ fn main() {
     for pixel in render_buf.iter_mut() {
         *pixel = 0;
     }
-    fb.blit_from(&render_buf);
+    let _ = fb.blit_from(&render_buf);
 
     eprintln!("quicken-fb: clean exit");
 }

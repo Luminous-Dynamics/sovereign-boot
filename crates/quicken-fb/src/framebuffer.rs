@@ -252,9 +252,11 @@ impl DrmFramebuffer {
 
     /// Copy from a row-major u32 buffer (width*height) into the DRM dumb buffer.
     /// Maps the buffer, writes, and unmaps each frame.
-    pub fn blit_from(&mut self, src: &[u32]) {
+    /// Copy a complete frame to scanout. False means the optional renderer
+    /// should stop rather than spin while writes are failing.
+    pub fn blit_from(&mut self, src: &[u32]) -> bool {
         let Ok(mut mapping) = self.card.map_dumb_buffer(&mut self.dumb_buffer) else {
-            return;
+            return false;
         };
 
         let stride_pixels = self.stride as usize / 4;
@@ -269,8 +271,9 @@ impl DrmFramebuffer {
         };
 
         // Reject an undersized mapping instead of displaying a partially copied frame.
-        let _ = copy_frame_to_stride(dst, src, w, h, stride_pixels);
+        let complete = copy_frame_to_stride(dst, src, w, h, stride_pixels);
         // mapping is dropped here, which flushes/unmaps
+        complete
     }
 
     /// Request a page flip (non-blocking). Returns immediately.

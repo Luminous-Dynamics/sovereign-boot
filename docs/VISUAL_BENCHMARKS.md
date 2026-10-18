@@ -30,7 +30,7 @@ These are engineering targets for qualification, not claims about the current re
 | Battery impact | ≤2 W incremental average in low-power mode, if hardware telemetry supports a valid comparison | Matched 30-minute A/B run: same brightness, scene, and workload | Low-power tier or pause animation |
 | Theme switching | New first frame ≤250 ms after selection; no blank uncovered desktop | Timestamped repeated switching | Keep previous frame/static fallback |
 | Display-manager handoff | Renderer releases DRM within 750 ms of stop request | VM/systemd timing plus hardware canary | Boot qualification blocked |
-| Boot impact | No dependency on renderer success; service failure never prevents login or recovery | Inject missing device, crash, timeout, malformed state | Any login/recovery dependency is a blocker |
+| Boot impact | No dependency on renderer success; service failure never prevents login or recovery | Inject missing device, mapping/copy failure, crash, timeout, malformed state | Any login/recovery dependency is a blocker |
 | Shutdown transition | Continuous theme-specific fade; no single full-screen white frame or abrupt white-to-black cut | Capture at ≥60 samples/s; inspect luminance series | Accessibility gate fails |
 | CPU determinism | Identical capture hash for same build, theme, seed, fixed inputs, and resolution | Golden framebuffer test | Explain intentional versioned differences |
 | Cross-backend appearance | SSIM ≥0.99 for approved reference scenes, after documented color conversion | CPU reference vs GPU output | Perceptual mismatch must be reviewed |
