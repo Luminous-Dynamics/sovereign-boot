@@ -5,7 +5,7 @@
 ///
 /// Reads events from a named pipe (FIFO) written by the installer, or
 /// falls back to polling /proc/diskstats for disk I/O rate estimation.
-use std::fs::{File, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufRead, BufReader, Read};
 use std::os::unix::fs::{FileTypeExt, OpenOptionsExt};
 use std::path::Path;
@@ -198,31 +198,47 @@ impl ProgressMonitor {
         None
     }
 
-    /// Read total sector writes from /proc/diskstats (all block devices).
-    /// Returns approximate bytes written.
+    /// Read approximate whole-device write bytes from /proc/diskstats.
+    ///
+    /// Partition rows are excluded using sysfs device numbers, not device-name
+    /// suffix guesses (for example, nvme0n1p1). Counters are saturating because
+    /// this value only decorates the scene and must never panic on overflow.
     fn read_diskstats_bytes() -> u64 {
-        let mut total: u64 = 0;
         let path = Path::new("/proc/diskstats");
-        if !path.exists() {
-            return 0;
-        }
-        let Ok(file) = File::open(path) else {
+        let Ok(contents) = fs::read_to_string(path) else {
             return 0;
         };
-        let reader = BufReader::new(file);
-        for line in reader.lines() {
-            let Ok(line) = line else { continue };
+        Self::sum_diskstats_write_bytes(&contents, Path::new("/sys/dev/block"))
+    }
+
+    /// Parse /proc/diskstats with an injectable sysfs root for deterministic tests.
+    fn sum_diskstats_write_bytes(contents: &str, sysfs_dev_block: &Path) -> u64 {
+        let mut total = 0u64;
+        for line in contents.lines() {
             let fields: Vec<&str> = line.split_whitespace().collect();
-            // Field 9 (0-indexed) is sectors written
-            if fields.len() >= 10 {
-                let name = fields[2];
-                // Only count whole-disk devices, skip partitions
-                if name.starts_with("sd") || name.starts_with("nvme") || name.starts_with("vd") {
-                    if let Ok(sectors) = fields[9].parse::<u64>() {
-                        total += sectors * 512; // sectors are 512 bytes
-                    }
-                }
+            // Fields 0/1 identify major/minor, field 2 is the device name,
+            // and field 9 is sectors written (zero-indexed).
+            if fields.len() < 10 {
+                continue;
             }
+            let name = fields[2];
+            if !(name.starts_with("sd") || name.starts_with("nvme") || name.starts_with("vd")) {
+                continue;
+            }
+            let (Ok(major), Ok(minor), Ok(sectors)) = (
+                fields[0].parse::<u32>(),
+                fields[1].parse::<u32>(),
+                fields[9].parse::<u64>(),
+            ) else {
+                continue;
+            };
+            let partition_marker = sysfs_dev_block
+                .join(format!("{major}:{minor}"))
+                .join("partition");
+            if partition_marker.exists() {
+                continue;
+            }
+            total = total.saturating_add(sectors.saturating_mul(512));
         }
         total
     }
@@ -350,5 +366,54 @@ mod tests {
         );
 
         std::fs::remove_file(path).expect("remove test FIFO");
+    }
+}
+
+
+#[cfg(test)]
+mod diskstats_tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn diskstats_excludes_partition_rows_and_sums_whole_device_bytes() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock after epoch")
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "quicken-diskstats-{}-{nonce}",
+            std::process::id()
+        ));
+        for device in ["8:1", "259:1"] {
+            let partition = root.join(device).join("partition");
+            fs::create_dir_all(partition.parent().expect("partition parent"))
+                .expect("create fake sysfs entry");
+            fs::write(partition, b"1").expect("write partition marker");
+        }
+
+        let sample = concat!(
+            "8 0 sda 1 0 1 0 2 0 4 0\n",
+            "8 1 sda1 1 0 1 0 2 0 100 0\n",
+            "259 0 nvme0n1 1 0 1 0 2 0 5 0\n",
+            "259 1 nvme0n1p1 1 0 1 0 2 0 1000 0\n",
+            "253 0 dm-0 1 0 1 0 2 0 9000 0\n",
+            "bad input\n"
+        );
+        assert_eq!(
+            ProgressMonitor::sum_diskstats_write_bytes(sample, &root),
+            9 * 512,
+        );
+
+        fs::remove_dir_all(root).expect("remove fake sysfs tree");
+    }
+
+    #[test]
+    fn diskstats_byte_arithmetic_saturates_instead_of_panicking() {
+        let sample = "8 0 sda 0 0 0 0 0 0 18446744073709551615 0\n";
+        assert_eq!(
+            ProgressMonitor::sum_diskstats_write_bytes(sample, Path::new("/nonexistent/sysfs")),
+            u64::MAX,
+        );
     }
 }
