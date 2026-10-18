@@ -137,12 +137,21 @@ fn main() {
         } else {
             frame_duration
         };
-        let dt = now.duration_since(last_frame).as_secs_f32();
-        if dt < current_frame_duration.as_secs_f32() {
-            // Busy-wait for precision (no display server vsync available)
-            std::thread::sleep(Duration::from_micros(500));
+        let elapsed_since_frame = now.duration_since(last_frame);
+        if elapsed_since_frame < current_frame_duration {
+            // Sleep to just before the deadline instead of waking every 500 us.
+            // The small margin absorbs timer jitter; the next iteration rechecks
+            // signals and the actual elapsed time before rendering.
+            let remaining = current_frame_duration - elapsed_since_frame;
+            let scheduling_margin = Duration::from_millis(1);
+            if remaining > scheduling_margin {
+                std::thread::sleep(remaining - scheduling_margin);
+            } else {
+                std::thread::yield_now();
+            }
             continue;
         }
+        let dt = elapsed_since_frame.as_secs_f32();
         last_frame = now;
 
         // Poll progress events

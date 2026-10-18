@@ -22,6 +22,7 @@ These are engineering targets for qualification, not claims about the current re
 | Area | Initial target | How to measure | Failure policy |
 |---|---|---|---|
 | CPU/DRM renderer, 1920×1080 | Sustain 30 FPS; p95 frame time ≤33.3 ms | Render loop timings and CPU profile | Degrade density; never delay boot |
+| Frame pacing | No sub-frame polling loop; sleep until within 1 ms of the next frame deadline; preserve the ≤750 ms stop-request budget | Compare process CPU time, wakeups, frame timing and SIGTERM-to-release across all four motion modes | Skip decorative rendering rather than spin when scanout is unavailable |
 | CPU/DRM renderer memory | ≤96 MiB peak RSS at 1920×1080 | Peak RSS under bounded maximum scene | Abort renderer safely, not boot |
 | Desktop renderer, 1920×1080 | 60 FPS on the reference RTX 2070 Laptop GPU; p95 ≤16.7 ms and p99 ≤25 ms | Present timestamps + GPU/CPU traces | Lower quality tier automatically |
 | Desktop renderer, 3840×2160 | At least 30 FPS; p95 ≤33.3 ms | Same protocol at 4K | Fall back to balanced/static mode |
