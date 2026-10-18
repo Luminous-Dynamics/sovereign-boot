@@ -43,7 +43,7 @@ The RTX 2070 Laptop GPU is the initial desktop reference only if the machine is 
 
 ## Bounded early-boot framebuffer allocation
 
-The DRM mode is checked before creating the dumb buffer: width and height must each be at most 16,384 pixels, and the total must not exceed 36,000,000 pixels. The validated pixel count is then reused for the CPU render buffer, avoiding a second unchecked u32 width × height multiplication. This admits common 4K and 8K modes while rejecting zero-sized and pathological modes before large display allocations. At the cap, each 32-bpp pixel buffer is approximately 144 MB (about 137 MiB); that is a buffer-size bound, not a claim that total process RSS is bounded to the same amount. No host boot-time or real hardware performance claim follows from these unit tests.
+The DRM mode is checked before creating the dumb buffer: width and height must each be at most 16,384 pixels, and the total must not exceed 36,000,000 pixels. The validated pixel count is then reused for the CPU render buffer, avoiding a second unchecked u32 width × height multiplication. This admits common 4K and 8K modes while rejecting zero-sized and pathological modes before large display allocations. At the cap, the CPU output buffer is 144,000,000 bytes (about 137 MiB). The DRM allocation can be larger because the driver may pad each row to its stride; the cap is not a guarantee that total process RSS is bounded to the CPU-buffer size. No host boot-time or real hardware performance claim follows from these unit tests.
 
 ## GPU CI throughput baseline
 

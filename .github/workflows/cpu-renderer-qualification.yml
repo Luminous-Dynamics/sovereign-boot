@@ -979,7 +979,8 @@ jobs:
             exit 1
           fi
 
-          # Neutralize time-driven motion so differences isolate manifest particle budgets.
+          # Neutralize time-driven motion. 320x180 covers the shader's full 160x90
+          # cell grid so each declared particle budget has a fair chance to change pixels.
           : > "$RUNNER_TEMP/wgpu-particle-budget-hashes.txt"
           for motion in low-power balanced cinematic; do
             capture="$RUNNER_TEMP/wgpu-particle-budget-$motion.ppm"
@@ -987,7 +988,7 @@ jobs:
             expected_budget="$(jq -r --arg motion "$motion" '.motion_profiles[$motion].particle_budget_scale' themes/visual-genome-v1.json)"
             cargo run --manifest-path validation/wgpu-reference/Cargo.toml --locked --release -- \
               --backend vulkan --force-fallback --theme cosmic-atlas --motion "$motion" --time 0 \
-              --width 128 --height 72 --frames 1 --output "$capture" > "$receipt"
+              --width 320 --height 180 --frames 1 --output "$capture" > "$receipt"
             jq -e --arg motion "$motion" --argjson budget "$expected_budget" \
               '.motion_mode == $motion and .time_seconds == 0 and .particle_budget_scale == $budget and .crossfade_applied == false' "$receipt"
             printf '%s %s %s\n' "$motion" "$expected_budget" "$(sha256sum "$capture" | awk '{print $1}')" >> "$RUNNER_TEMP/wgpu-particle-budget-hashes.txt"

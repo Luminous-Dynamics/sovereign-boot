@@ -17,7 +17,7 @@ use std::os::unix::io::{AsFd, BorrowedFd};
 
 /// Maximum width or height accepted from a reported DRM mode.
 const MAX_FRAMEBUFFER_DIMENSION: u32 = 16_384;
-/// Bound CPU and DRM pixel buffers to about 144 MB each at 32 bpp.
+/// Bound the CPU output to about 144 MB at 32 bpp; DRM row-stride padding may add memory.
 const MAX_FRAMEBUFFER_PIXELS: u64 = 36_000_000;
 
 /// A DRM card device wrapper implementing the drm traits.
