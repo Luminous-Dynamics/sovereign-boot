@@ -26,8 +26,17 @@ const MAX_FRAMEBUFFER_PIXELS: u64 = 36_000_000;
 fn drm_card_index(file_name: &OsStr) -> Option<u32> {
     let name = file_name.to_str()?;
     let suffix = name.strip_prefix("card")?;
-    if suffix.is_empty() || !suffix.bytes().all(|byte| byte.is_ascii_digit()) { return None; }
+    if suffix.is_empty()
+        || !suffix.bytes().all(|byte| byte.is_ascii_digit())
+        || (suffix.len() > 1 && suffix.starts_with('0'))
+    {
+        return None;
+    }
     suffix.parse().ok()
+}
+
+fn sort_card_candidates(candidates: &mut [(u32, PathBuf)]) {
+    candidates.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
 }
 
 /// A DRM card device wrapper implementing the drm traits.
@@ -171,7 +180,7 @@ impl DrmFramebuffer {
                 Some((index, path))
             })
             .collect();
-        candidates.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        sort_card_candidates(&mut candidates);
         if candidates.is_empty() { return Err(DrmError::NoCardDevices); }
         let mut last_error = None;
         for (_, path) in candidates {
@@ -408,15 +417,30 @@ mod tests {
 
 #[cfg(test)]
 mod device_discovery_tests {
-    use super::drm_card_index;
+    use super::{drm_card_index, sort_card_candidates};
     use std::ffi::OsStr;
+    use std::path::PathBuf;
 
     #[test]
     fn parses_only_canonical_numeric_card_names() {
         assert_eq!(drm_card_index(OsStr::new("card0")), Some(0));
         assert_eq!(drm_card_index(OsStr::new("card12")), Some(12));
-        for name in ["", "card", "cardx", "card-1", "card2foo", "renderD128", "by-path"] {
+        for name in ["", "card", "cardx", "card-1", "card2foo", "card0002", "renderD128", "by-path"] {
             assert_eq!(drm_card_index(OsStr::new(name)), None, "unexpected candidate: {name}");
         }
+    }
+
+    #[test]
+    fn sorts_drm_cards_numerically_not_lexicographically() {
+        let mut candidates = vec![
+            (10, PathBuf::from("/dev/dri/card10")),
+            (2, PathBuf::from("/dev/dri/card2")),
+            (0, PathBuf::from("/dev/dri/card0")),
+        ];
+        sort_card_candidates(&mut candidates);
+        assert_eq!(
+            candidates.iter().map(|(index, _)| *index).collect::<Vec<_>>(),
+            vec![0, 2, 10],
+        );
     }
 }
