@@ -202,6 +202,19 @@ impl Theme {
         self.contract().growth_profile
     }
 
+    /// Per-theme safety caps as stable primitive values for inventory tooling.
+    pub fn density_caps(self) -> (usize, usize) {
+        let density = self.density();
+        (density.max_branches, density.max_particles)
+    }
+
+    /// Per-theme growth, pulse and parallax tuning as primitive values for inventory tooling.
+    /// Internal contract structs remain crate-private.
+    pub fn motion_tuning_values(self) -> (f32, f32, f32) {
+        let motion = self.motion_tuning();
+        (motion.growth, motion.pulse, motion.parallax)
+    }
+
     /// Per-theme safety caps generated from the manifest.
     pub(crate) fn density(self) -> ThemeDensity {
         self.contract().density
@@ -354,5 +367,24 @@ mod tests {
         }
         assert_eq!(MotionMode::from_id("unknown"), None);
         assert_eq!(MotionMode::Reduced.scale(), 0.0);
+    }
+}
+
+
+#[cfg(test)]
+mod public_contract_tests {
+    use super::Theme;
+
+    #[test]
+    fn primitive_contract_projection_is_bounded_for_every_theme() {
+        for theme in Theme::ALL {
+            let (max_branches, max_particles) = theme.density_caps();
+            assert!((1..=8192).contains(&max_branches));
+            assert!(max_particles <= 768);
+            let (growth, pulse, parallax) = theme.motion_tuning_values();
+            assert!((0.0..=1.0).contains(&growth));
+            assert!((0.0..=1.0).contains(&pulse));
+            assert!((0.0..=1.0).contains(&parallax));
+        }
     }
 }

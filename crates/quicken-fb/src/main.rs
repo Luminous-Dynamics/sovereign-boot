@@ -314,8 +314,8 @@ fn parse_args() -> Args {
                 for theme in Theme::ALL {
                     let palette = theme.palette();
                     let growth = theme.growth_profile();
-                    let density = theme.density();
-                    let motion = theme.motion_tuning();
+                    let (max_branches, max_particles) = theme.density_caps();
+                    let (growth_motion, pulse_motion, parallax_motion) = theme.motion_tuning_values();
                     println!(
                         concat!(
                             "{}\t{}\t",
@@ -342,11 +342,11 @@ fn parse_args() -> Args {
                         growth.min_children,
                         growth.max_children,
                         growth.pulse_gain,
-                        density.max_branches,
-                        density.max_particles,
-                        motion.growth,
-                        motion.pulse,
-                        motion.parallax
+                        max_branches,
+                        max_particles,
+                        growth_motion,
+                        pulse_motion,
+                        parallax_motion
                     );
                 }
                 std::process::exit(0);
