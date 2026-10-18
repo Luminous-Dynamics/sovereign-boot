@@ -12,13 +12,23 @@ use drm::control::connector::{Info as ConnectorInfo, State as ConnectorState};
 use drm::control::crtc::Handle as CrtcHandle;
 use drm::control::framebuffer::Handle as FbHandle;
 use drm::control::{self, Device as ControlDevice, Mode, ResourceHandles};
-use std::fs::{File, OpenOptions};
+use std::ffi::OsStr;
+use std::fs::{self, File, OpenOptions};
+use std::os::unix::fs::FileTypeExt;
 use std::os::unix::io::{AsFd, BorrowedFd};
+use std::path::Path;
 
 /// Maximum width or height accepted from a reported DRM mode.
 const MAX_FRAMEBUFFER_DIMENSION: u32 = 16_384;
 /// Bound the CPU output to about 144 MB at 32 bpp; DRM row-stride padding may add memory.
 const MAX_FRAMEBUFFER_PIXELS: u64 = 36_000_000;
+
+fn drm_card_index(file_name: &OsStr) -> Option<u32> {
+    let name = file_name.to_str()?;
+    let suffix = name.strip_prefix("card")?;
+    if suffix.is_empty() || !suffix.bytes().all(|byte| byte.is_ascii_digit()) { return None; }
+    suffix.parse().ok()
+}
 
 /// A DRM card device wrapper implementing the drm traits.
 struct Card(File);
@@ -88,6 +98,8 @@ fn copy_frame_to_stride(
 pub enum DrmError {
     DeviceOpen(String, std::io::Error),
     NoConnector,
+    NoCardDevices,
+    AutoDiscovery(std::io::Error),
     NoMode,
     NoEncoder,
     NoCrtc,
@@ -104,6 +116,8 @@ impl std::fmt::Display for DrmError {
         match self {
             Self::DeviceOpen(path, e) => write!(f, "cannot open DRM device {path}: {e}"),
             Self::NoConnector => write!(f, "no connected display found"),
+            Self::NoCardDevices => write!(f, "no /dev/dri/cardN character devices found"),
+            Self::AutoDiscovery(e) => write!(f, "cannot enumerate /dev/dri: {e}"),
             Self::NoMode => write!(f, "no display mode available"),
             Self::NoEncoder => write!(f, "no encoder for connector"),
             Self::NoCrtc => write!(f, "no CRTC available"),
@@ -144,6 +158,32 @@ pub struct DrmFramebuffer {
 }
 
 impl DrmFramebuffer {
+    /// Find the first numeric DRM card device with a connected display.
+    pub fn open_auto() -> Result<(Self, String), DrmError> {
+        let entries = fs::read_dir("/dev/dri").map_err(DrmError::AutoDiscovery)?;
+        let mut candidates: Vec<(u32, Path)> = entries
+            .filter_map(Result::ok)
+            .filter_map(|entry| {
+                let index = drm_card_index(&entry.file_name())?;
+                let path = entry.path();
+                let metadata = fs::symlink_metadata(&path).ok()?;
+                if !metadata.file_type().is_char_device() { return None; }
+                Some((index, path))
+            })
+            .collect();
+        candidates.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        if candidates.is_empty() { return Err(DrmError::NoCardDevices); }
+        let mut last_error = None;
+        for (_, path) in candidates {
+            let device = path.to_string_lossy().into_owned();
+            match Self::open(&device) {
+                Ok(framebuffer) => return Ok((framebuffer, device)),
+                Err(error) => last_error = Some(error),
+            }
+        }
+        Err(last_error.unwrap_or(DrmError::NoCardDevices))
+    }
+
     /// Validate a display mode before allocating its DRM or CPU pixel buffers.
     fn checked_pixel_count(width: u32, height: u32) -> Result<usize, DrmError> {
         let invalid = DrmError::InvalidModeDimensions { width, height };
@@ -362,5 +402,21 @@ mod tests {
         assert!(DrmFramebuffer::checked_pixel_count(1920, 0).is_err());
         assert!(DrmFramebuffer::checked_pixel_count(MAX_FRAMEBUFFER_DIMENSION + 1, 1).is_err());
         assert!(DrmFramebuffer::checked_pixel_count(16_384, 2_198).is_err());
+    }
+}
+
+
+#[cfg(test)]
+mod device_discovery_tests {
+    use super::drm_card_index;
+    use std::ffi::OsStr;
+
+    #[test]
+    fn parses_only_canonical_numeric_card_names() {
+        assert_eq!(drm_card_index(OsStr::new("card0")), Some(0));
+        assert_eq!(drm_card_index(OsStr::new("card12")), Some(12));
+        for name in ["", "card", "cardx", "card-1", "card2foo", "renderD128", "by-path"] {
+            assert_eq!(drm_card_index(OsStr::new(name)), None, "unexpected candidate: {name}");
+        }
     }
 }

@@ -72,10 +72,15 @@ fn main() {
     install_signal_handlers();
 
     // Open DRM framebuffer
-    let mut fb = match DrmFramebuffer::open(&args.device) {
-        Ok(fb) => fb,
-        Err(e) => {
-            eprintln!("quicken-fb: failed to open framebuffer: {e}");
+    let framebuffer_result = if args.device == "auto" {
+        DrmFramebuffer::open_auto()
+    } else {
+        DrmFramebuffer::open(&args.device).map(|framebuffer| (framebuffer, args.device.clone()))
+    };
+    let (mut fb, active_device) = match framebuffer_result {
+        Ok(result) => result,
+        Err(error) => {
+            eprintln!("quicken-fb: failed to open framebuffer: {error}");
             std::process::exit(1);
         }
     };
@@ -85,7 +90,7 @@ fn main() {
         fb.width,
         fb.height,
         fb.mode.vrefresh(),
-        args.device,
+        active_device,
     );
 
     // Create mycelial network
