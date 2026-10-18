@@ -6,7 +6,7 @@
 /// Reads events from a named pipe (FIFO) written by the installer, or
 /// falls back to polling /proc/diskstats for disk I/O rate estimation.
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, BufRead, BufReader, Read};
+use std::io::{self, Read};
 use std::os::unix::fs::{FileTypeExt, OpenOptionsExt};
 use std::path::Path;
 use std::time::{Duration, Instant};
