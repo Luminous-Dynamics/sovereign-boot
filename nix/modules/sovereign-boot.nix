@@ -463,6 +463,9 @@ in
         ProtectKernelModules = true;
         ProtectControlGroups = true;
         RestrictNamespaces = true;
+        # This renderer only uses local device and filesystem interfaces.
+        # It has no IP transport requirement during boot or recovery.
+        RestrictAddressFamilies = [ "AF_UNIX" ];
         LockPersonality = true;
         PrivateTmp = true;
       };

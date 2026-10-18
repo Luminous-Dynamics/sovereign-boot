@@ -16,7 +16,7 @@ use std::ffi::OsStr;
 use std::fs::{self, File, OpenOptions};
 use std::os::unix::fs::FileTypeExt;
 use std::os::unix::io::{AsFd, BorrowedFd};
-use std::path::Path;
+use std::path::PathBuf;
 
 /// Maximum width or height accepted from a reported DRM mode.
 const MAX_FRAMEBUFFER_DIMENSION: u32 = 16_384;
@@ -161,7 +161,7 @@ impl DrmFramebuffer {
     /// Find the first numeric DRM card device with a connected display.
     pub fn open_auto() -> Result<(Self, String), DrmError> {
         let entries = fs::read_dir("/dev/dri").map_err(DrmError::AutoDiscovery)?;
-        let mut candidates: Vec<(u32, Path)> = entries
+        let mut candidates: Vec<(u32, PathBuf)> = entries
             .filter_map(Result::ok)
             .filter_map(|entry| {
                 let index = drm_card_index(&entry.file_name())?;
