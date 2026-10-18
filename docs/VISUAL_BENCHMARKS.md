@@ -343,8 +343,11 @@ exercise all four modes across all ten themes, rather than extrapolating accessi
 behavior from only the slowest and fastest endpoints.
 
 Each benchmark helper applies the same generated particle-budget and crossfade contracts
-as the early-boot binary. Current CI evidence is still a CPU reference measurement; it
-does not substitute for physical-display captures or real-device power measurement.
+as the early-boot binary, and begins at the established visible scene time (8 s) so the
+steady-state matrix does not mistake the pre-entry background for a blank scene in slower
+profiles. The configured entry transition itself is tested separately. Current CI evidence
+is still a CPU reference measurement; it does not substitute for physical-display captures
+or real-device power measurement.
 
 
 ### GPU reference budget parity

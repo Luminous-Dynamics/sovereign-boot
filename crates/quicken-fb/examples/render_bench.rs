@@ -54,9 +54,9 @@ fn main() {
     scene.set_motion_scale(motion.scale());
     scene.set_scene_entry_fade_duration(motion.crossfade_ms() as f32 / 1_000.0);
     scene.set_particle_budget_scale(motion.particle_budget_scale());
-    if motion == MotionMode::Reduced {
-        scene.elapsed = 8.0;
-    }
+    // Start from the established visible scene time: these audits measure steady-state
+    // rendering/motion, while the configured entry transition has its own unit test.
+    scene.elapsed = 8.0;
     let mut buffer = vec![0u32; pixels as usize];
 
     for _ in 0..WARMUP_FRAMES {

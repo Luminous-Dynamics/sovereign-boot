@@ -77,10 +77,9 @@ fn main() {
     scene.set_motion_scale(motion.scale());
     scene.set_scene_entry_fade_duration(motion.crossfade_ms() as f32 / 1_000.0);
     scene.set_particle_budget_scale(motion.particle_budget_scale());
-    if motion == MotionMode::Reduced {
-        // Use the established timepoint for dedicated static compositions.
-        scene.elapsed = 8.0;
-    }
+    // Start from the established visible scene time: these audits measure steady-state
+    // rendering/motion, while the configured entry transition has its own unit test.
+    scene.elapsed = 8.0;
 
     let pixel_count = (width as usize) * (height as usize);
     let mut current = vec![0u32; pixel_count];
