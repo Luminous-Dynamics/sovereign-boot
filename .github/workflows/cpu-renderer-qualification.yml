@@ -423,6 +423,16 @@ jobs:
             echo "generator accepted an out-of-range motion scale"
             exit 1
           fi
+          jq '.themes[0].motion.undeclared = 0.5' themes/visual-genome-v1.json > "$RUNNER_TEMP/visual-genome-extra-field.json"
+          if jq -r -f validation/visual-genome-rust.jq "$RUNNER_TEMP/visual-genome-extra-field.json" > "$RUNNER_TEMP/visual-genome-extra-field.rs" 2> "$RUNNER_TEMP/visual-genome-extra-field.log"; then
+            echo "generator accepted an undeclared theme field"
+            exit 1
+          fi
+          jq '.themes[0].shader_variant = 42' themes/visual-genome-v1.json > "$RUNNER_TEMP/visual-genome-invalid-shader-variant.json"
+          if jq -r -f validation/visual-genome-rust.jq "$RUNNER_TEMP/visual-genome-invalid-shader-variant.json" > "$RUNNER_TEMP/visual-genome-invalid-shader-variant.rs" 2> "$RUNNER_TEMP/visual-genome-invalid-shader-variant.log"; then
+            echo "generator accepted an out-of-range shader variant"
+            exit 1
+          fi
 
       - name: Materialize isolated renderer source
         run: |

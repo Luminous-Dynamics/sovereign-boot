@@ -362,3 +362,14 @@ time zero for Low Power, Balanced and Cinematic so motion amplitude is held cons
 zero effective phase, making image differences evidence of the budget field rather than
 scene-time animation. Receipts record the selected budget and explicitly say that the
 single-frame offscreen tool does not apply the boot-entry crossfade lifecycle.
+
+
+### Strict Visual Genome v1 schema
+
+The generator rejects undeclared or missing keys at the top level and within theme,
+palette, growth, motion and density contracts. It validates surface/motion metadata,
+renderer safety policy, unique shader variants, monotonic motion/particle budgets, and
+parameter ranges before emitting Rust. New fields therefore require an intentional schema
+revision rather than silently disappearing from generated code. CI includes negative
+controls for an undeclared theme field and invalid shader variant as well as malformed
+colors, duplicate IDs and out-of-range profile parameters.

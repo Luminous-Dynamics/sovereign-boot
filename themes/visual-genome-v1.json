@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "status": "ten_theme_ids_palettes_growth_profiles_and_ten_distinct_cpu_scene_families_implemented; manifest_not_consumed_at_runtime",
-  "description": "Visual Genome v1. Ten stable themes map to distinct CPU scene families and bounded growth profiles. Motion modes specify reduced, low-power, balanced and cinematic budgets. Manifest is aligned design data but not dynamically loaded at runtime; compile/test/capture results are pending. Desktop GPU renderer and host integration remain separate milestones.",
+  "status": "ten_theme_ids_palettes_growth_profiles_and_ten_distinct_cpu_scene_families_implemented; manifest_generates_typed_boot_contract_and_motion_budgets; exact_head_compilation_and_visual_capture_qualification_pending",
+  "description": "Visual Genome v1. Ten stable themes map to distinct CPU scene families and bounded growth profiles. Motion modes specify reduced, low-power, balanced and cinematic budgets. CI generates typed CPU contracts from the manifest; the boot renderer does not parse JSON at runtime. Validation tools read this manifest directly; desktop GPU and host integration remain separate milestones.",
   "renderer_policy": {
     "boot": "cpu-reference-only",
     "desktop": "wgpu-vulkan-preferred",
