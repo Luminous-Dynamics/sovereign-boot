@@ -182,6 +182,6 @@ else
     + "\n];\n\n"
     + "const GENERATED_MOTION_MODE_CONTRACTS: [MotionModeContract; 4] = [\n"
     + ($motions | to_entries | sort_by(.value.motion_scale) | map(. as $entry | motion_contract($entry)) | join(",\n"))
-    + "\n];\n"
+    + "\n];"
 end
 

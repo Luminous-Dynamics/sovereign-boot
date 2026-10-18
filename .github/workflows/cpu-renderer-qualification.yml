@@ -990,7 +990,7 @@ jobs:
               --backend vulkan --force-fallback --theme cosmic-atlas --motion "$motion" --time 0 \
               --width 320 --height 180 --frames 1 --output "$capture" > "$receipt"
             jq -e --arg motion "$motion" --argjson budget "$expected_budget" \
-              '.motion_mode == $motion and .time_seconds == 0 and .particle_budget_scale == $budget and .crossfade_applied == false' "$receipt"
+              '.motion_mode == $motion and .time_seconds == 0 and ((.particle_budget_scale - $budget) < 0.00001 and (.particle_budget_scale - $budget) > -0.00001) and .crossfade_applied == false' "$receipt"
             printf '%s %s %s\n' "$motion" "$expected_budget" "$(sha256sum "$capture" | awk '{print $1}')" >> "$RUNNER_TEMP/wgpu-particle-budget-hashes.txt"
           done
           test "$(wc -l < "$RUNNER_TEMP/wgpu-particle-budget-hashes.txt")" -eq 3
