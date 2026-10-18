@@ -124,18 +124,18 @@ pub enum Theme {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ThemeDensity {
-    pub max_branches: usize,
-    pub max_particles: usize,
+pub(crate) struct ThemeDensity {
+    pub(crate) max_branches: usize,
+    pub(crate) max_particles: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct ThemeMotion {
-    pub growth: f32,
-    pub pulse: f32,
+pub(crate) struct ThemeMotion {
+    pub(crate) growth: f32,
+    pub(crate) pulse: f32,
     /// Retained for future input-aware desktop rendering. The CPU boot renderer
     /// has no pointer/camera displacement input and therefore applies no parallax.
-    pub parallax: f32,
+    pub(crate) parallax: f32,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -203,12 +203,12 @@ impl Theme {
     }
 
     /// Per-theme safety caps generated from the manifest.
-    pub fn density(self) -> ThemeDensity {
+    pub(crate) fn density(self) -> ThemeDensity {
         self.contract().density
     }
 
     /// Per-theme growth/pulse tuning generated from the manifest.
-    pub fn motion_tuning(self) -> ThemeMotion {
+    pub(crate) fn motion_tuning(self) -> ThemeMotion {
         self.contract().motion
     }
 }
