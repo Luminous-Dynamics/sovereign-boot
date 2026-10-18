@@ -1,5 +1,5 @@
 {
-  description = "Sovereign Boot Ecology — DRM/KMS framebuffer renderer, fail-open state machine, and Linux recovery executor for NixOS";
+  description = "Sovereign Boot Ecology — deterministic DRM/KMS boot-renderer prototype and optional NixOS lifecycle-integration module";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -40,7 +40,6 @@
           };
 
           default = quicken-fb;
-          spore-boot-tools = quicken-fb;
         };
 
         devShells.default = pkgs.mkShell {
