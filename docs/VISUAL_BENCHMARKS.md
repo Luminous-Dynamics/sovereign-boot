@@ -288,3 +288,22 @@ The external-frame audit is a regression proxy, not the official WCAG algorithm.
 ## Release gate
 
 A visual release may be called qualified only when focused tests and benchmark artifacts refer to the exact reviewed commit. A package build demonstrates that a derivation built; it does not prove service handoff, privacy, visual quality, Vulkan availability, or successful boot.
+
+
+## Manifest as the generated boot contract
+
+The file themes/visual-genome-v1.json is now the single editable source for stable theme
+IDs, scene-family identifiers, palette bytes and bounded procedural-growth parameters.
+The jq generator at validation/visual-genome-rust.jq validates these fields and emits
+crates/quicken-fb/src/visual_genome_generated.rs; the renderer consumes that file through
+include!. The early-boot binary therefore carries typed constants only: no runtime JSON
+parsing, filesystem lookup, network access or generator dependency is introduced into the
+boot renderer. CI regenerates the Rust source and requires byte-for-byte identity, then
+uses malformed-color, duplicate-ID and out-of-range-growth negative controls to prove that
+invalid manifests fail closed.
+
+This removes the previous palette/growth/ID duplication, rather than merely comparing two
+independently maintained tables. A manifest change becomes typed compile input and a
+reviewable generated diff. This is a source-generation contract, not proof that a given
+theme is visually good; capture, accessibility and hardware benchmarks remain separate
+qualification gates.

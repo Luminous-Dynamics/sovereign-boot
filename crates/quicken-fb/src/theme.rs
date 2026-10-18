@@ -105,20 +105,13 @@ impl MotionMode {
 }
 
 impl SceneKind {
-    /// Stable, kebab-case scene-family identifier used by the visual manifest.
-    pub const fn id(self) -> &'static str {
-        match self {
-            Self::MycelialNetwork => "mycelial-network",
-            Self::SolarCanopy => "solar-canopy",
-            Self::CosmicCartography => "cosmic-cartography",
-            Self::OceanWaves => "ocean-waves",
-            Self::EpistemicLattice => "epistemic-lattice",
-            Self::QuantumInterference => "quantum-interference",
-            Self::AuroraRibbons => "aurora-ribbons",
-            Self::GraphiteMinimal => "graphite-minimal",
-            Self::VerdantRecovery => "verdant-recovery",
-            Self::CivicCommons => "civic-commons",
-        }
+    /// Stable, kebab-case scene-family identifier generated from the visual manifest.
+    pub fn id(self) -> &'static str {
+        GENERATED_THEME_CONTRACTS
+            .iter()
+            .find(|contract| contract.scene_kind == self)
+            .map(|contract| contract.scene_family_id)
+            .unwrap_or("unknown-scene-family")
     }
 }
 
@@ -137,261 +130,55 @@ pub enum Theme {
     CivicDawn,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct ThemeContract {
+    theme: Theme,
+    id: &'static str,
+    scene_kind: SceneKind,
+    scene_family_id: &'static str,
+    palette: Palette,
+    growth_profile: GrowthProfile,
+}
+
+include!("visual_genome_generated.rs");
+
 impl Theme {
-    /// All supported themes in stable list order.
-    pub const ALL: [Self; 10] = [
-        Self::MycelialGenesis,
-        Self::SolarCommons,
-        Self::CosmicAtlas,
-        Self::OceanicIntelligence,
-        Self::PrismOfEvidence,
-        Self::QuantumGarden,
-        Self::AuroraSanctuary,
-        Self::GraphiteFocus,
-        Self::VerdantRecovery,
-        Self::CivicDawn,
-    ];
+    /// All supported themes in the stable order defined by the visual manifest.
+    pub const ALL: [Self; 10] = GENERATED_THEME_ALL;
 
-    /// Resolve an exact stable ID. Unknown IDs must fail closed.
+    /// Resolve an exact stable ID; unknown IDs fail closed.
     pub fn from_id(id: &str) -> Option<Self> {
-        match id {
-            "mycelial-genesis" => Some(Self::MycelialGenesis),
-            "solar-commons" => Some(Self::SolarCommons),
-            "cosmic-atlas" => Some(Self::CosmicAtlas),
-            "oceanic-intelligence" => Some(Self::OceanicIntelligence),
-            "prism-of-evidence" => Some(Self::PrismOfEvidence),
-            "quantum-garden" => Some(Self::QuantumGarden),
-            "aurora-sanctuary" => Some(Self::AuroraSanctuary),
-            "graphite-focus" => Some(Self::GraphiteFocus),
-            "verdant-recovery" => Some(Self::VerdantRecovery),
-            "civic-dawn" => Some(Self::CivicDawn),
-            _ => None,
-        }
+        GENERATED_THEME_CONTRACTS
+            .iter()
+            .find(|contract| contract.id == id)
+            .map(|contract| contract.theme)
     }
 
-    /// Canonical, locale-independent ID.
-    pub const fn id(self) -> &'static str {
-        match self {
-            Self::MycelialGenesis => "mycelial-genesis",
-            Self::SolarCommons => "solar-commons",
-            Self::CosmicAtlas => "cosmic-atlas",
-            Self::OceanicIntelligence => "oceanic-intelligence",
-            Self::PrismOfEvidence => "prism-of-evidence",
-            Self::QuantumGarden => "quantum-garden",
-            Self::AuroraSanctuary => "aurora-sanctuary",
-            Self::GraphiteFocus => "graphite-focus",
-            Self::VerdantRecovery => "verdant-recovery",
-            Self::CivicDawn => "civic-dawn",
-        }
+    fn contract(self) -> &'static ThemeContract {
+        GENERATED_THEME_CONTRACTS
+            .iter()
+            .find(|contract| contract.theme == self)
+            .expect("every Theme variant must have a generated Visual Genome contract")
     }
 
-    /// Select a bounded procedural geometry family for this theme.
-    pub const fn scene_kind(self) -> SceneKind {
-        match self {
-            Self::MycelialGenesis => SceneKind::MycelialNetwork,
-            Self::SolarCommons => SceneKind::SolarCanopy,
-            Self::CosmicAtlas => SceneKind::CosmicCartography,
-            Self::OceanicIntelligence => SceneKind::OceanWaves,
-            Self::PrismOfEvidence => SceneKind::EpistemicLattice,
-            Self::QuantumGarden => SceneKind::QuantumInterference,
-            Self::AuroraSanctuary => SceneKind::AuroraRibbons,
-            Self::GraphiteFocus => SceneKind::GraphiteMinimal,
-            Self::VerdantRecovery => SceneKind::VerdantRecovery,
-            Self::CivicDawn => SceneKind::CivicCommons,
-        }
+    /// Canonical, locale-independent ID generated from the manifest.
+    pub fn id(self) -> &'static str {
+        self.contract().id
+    }
+
+    /// Select a bounded procedural geometry family generated from the manifest.
+    pub fn scene_kind(self) -> SceneKind {
+        self.contract().scene_kind
     }
 
     /// Palette used by the CPU reference renderer.
-    pub const fn palette(self) -> Palette {
-        match self {
-            Self::MycelialGenesis => Palette {
-                background: Rgba(0x10, 0x26, 0x1e, 0xff),
-                primary: Rgba(0x7e, 0xc8, 0xa0, 0xff),
-                secondary: Rgba(0x5a, 0x6b, 0x5e, 0xff),
-                node: Rgba(0xe8, 0xc5, 0x47, 0xff),
-                convergence: Rgba(0xc8, 0xea, 0xd7, 0xff),
-            },
-            Self::SolarCommons => Palette {
-                background: Rgba(0x20, 0x18, 0x0f, 0xff),
-                primary: Rgba(0xf6, 0xbd, 0x60, 0xff),
-                secondary: Rgba(0x84, 0xa9, 0x8c, 0xff),
-                node: Rgba(0xf2, 0x84, 0x82, 0xff),
-                convergence: Rgba(0xf7, 0xe9, 0xce, 0xff),
-            },
-            Self::CosmicAtlas => Palette {
-                background: Rgba(0x07, 0x0b, 0x1e, 0xff),
-                primary: Rgba(0x7a, 0xa2, 0xf7, 0xff),
-                secondary: Rgba(0xa7, 0x8b, 0xfa, 0xff),
-                node: Rgba(0xf0, 0xab, 0xfc, 0xff),
-                convergence: Rgba(0xdc, 0xe7, 0xff, 0xff),
-            },
-            Self::OceanicIntelligence => Palette {
-                background: Rgba(0x03, 0x1f, 0x2d, 0xff),
-                primary: Rgba(0x4d, 0xd0, 0xe1, 0xff),
-                secondary: Rgba(0x00, 0x8a, 0x98, 0xff),
-                node: Rgba(0xb2, 0xf7, 0xef, 0xff),
-                convergence: Rgba(0xd7, 0xfa, 0xf7, 0xff),
-            },
-            Self::PrismOfEvidence => Palette {
-                background: Rgba(0x11, 0x18, 0x27, 0xff),
-                primary: Rgba(0x7d, 0xd3, 0xfc, 0xff),
-                secondary: Rgba(0xc4, 0xb5, 0xfd, 0xff),
-                node: Rgba(0xfd, 0xe6, 0x8a, 0xff),
-                convergence: Rgba(0xf1, 0xf5, 0xf9, 0xff),
-            },
-            Self::QuantumGarden => Palette {
-                background: Rgba(0x11, 0x13, 0x1d, 0xff),
-                primary: Rgba(0x80, 0xcb, 0xc4, 0xff),
-                secondary: Rgba(0xb3, 0x9d, 0xdb, 0xff),
-                node: Rgba(0xff, 0xcc, 0x80, 0xff),
-                convergence: Rgba(0xe5, 0xe7, 0xeb, 0xff),
-            },
-            Self::AuroraSanctuary => Palette {
-                background: Rgba(0x11, 0x1c, 0x2c, 0xff),
-                primary: Rgba(0x9b, 0xd9, 0xce, 0xff),
-                secondary: Rgba(0x8b, 0xa9, 0xe8, 0xff),
-                node: Rgba(0xd9, 0xc2, 0xff, 0xff),
-                convergence: Rgba(0xea, 0xf5, 0xf5, 0xff),
-            },
-            Self::GraphiteFocus => Palette {
-                background: Rgba(0x15, 0x17, 0x1a, 0xff),
-                primary: Rgba(0xb8, 0xc0, 0xcc, 0xff),
-                secondary: Rgba(0x73, 0x7b, 0x87, 0xff),
-                node: Rgba(0xe6, 0xe9, 0xef, 0xff),
-                convergence: Rgba(0xf5, 0xf5, 0xf5, 0xff),
-            },
-            Self::VerdantRecovery => Palette {
-                background: Rgba(0x0c, 0x21, 0x1e, 0xff),
-                primary: Rgba(0x69, 0xb9, 0x9f, 0xff),
-                secondary: Rgba(0x68, 0x8b, 0x87, 0xff),
-                node: Rgba(0xd0, 0xe8, 0xc7, 0xff),
-                convergence: Rgba(0xe7, 0xf2, 0xe9, 0xff),
-            },
-            Self::CivicDawn => Palette {
-                background: Rgba(0x17, 0x25, 0x36, 0xff),
-                primary: Rgba(0x6f, 0xc7, 0xb6, 0xff),
-                secondary: Rgba(0x84, 0xa1, 0xcd, 0xff),
-                node: Rgba(0xf6, 0xc1, 0x77, 0xff),
-                convergence: Rgba(0xf4, 0xf4, 0xe9, 0xff),
-            },
-        }
+    pub fn palette(self) -> Palette {
+        self.contract().palette
     }
 
-    /// Bounded procedural-growth controls. These parameters change the actual
-    /// branching rhythm, scale, and motion—not just the theme's colors.
-    pub const fn growth_profile(self) -> GrowthProfile {
-        match self {
-            Self::MycelialGenesis => GrowthProfile {
-                initial_branch_min: 4,
-                initial_branch_variants: 5,
-                branch_length_scale: 1.0,
-                growth_speed: 30.0,
-                min_fork_angle_degrees: 15.0,
-                max_fork_angle_degrees: 45.0,
-                min_children: 1,
-                max_children: 3,
-                pulse_gain: 0.8,
-            },
-            Self::SolarCommons => GrowthProfile {
-                initial_branch_min: 6,
-                initial_branch_variants: 3,
-                branch_length_scale: 1.2,
-                growth_speed: 26.0,
-                min_fork_angle_degrees: 20.0,
-                max_fork_angle_degrees: 55.0,
-                min_children: 1,
-                max_children: 2,
-                pulse_gain: 0.7,
-            },
-            Self::CosmicAtlas => GrowthProfile {
-                initial_branch_min: 4,
-                initial_branch_variants: 3,
-                branch_length_scale: 1.0,
-                growth_speed: 17.0,
-                min_fork_angle_degrees: 26.0,
-                max_fork_angle_degrees: 70.0,
-                min_children: 1,
-                max_children: 2,
-                pulse_gain: 0.5,
-            },
-            Self::OceanicIntelligence => GrowthProfile {
-                initial_branch_min: 5,
-                initial_branch_variants: 3,
-                branch_length_scale: 0.75,
-                growth_speed: 14.0,
-                min_fork_angle_degrees: 8.0,
-                max_fork_angle_degrees: 28.0,
-                min_children: 1,
-                max_children: 2,
-                pulse_gain: 0.65,
-            },
-            Self::PrismOfEvidence => GrowthProfile {
-                initial_branch_min: 6,
-                initial_branch_variants: 2,
-                branch_length_scale: 0.9,
-                growth_speed: 16.0,
-                min_fork_angle_degrees: 28.0,
-                max_fork_angle_degrees: 42.0,
-                min_children: 1,
-                max_children: 2,
-                pulse_gain: 0.45,
-            },
-            Self::QuantumGarden => GrowthProfile {
-                initial_branch_min: 5,
-                initial_branch_variants: 4,
-                branch_length_scale: 1.1,
-                growth_speed: 22.0,
-                min_fork_angle_degrees: 35.0,
-                max_fork_angle_degrees: 72.0,
-                min_children: 1,
-                max_children: 3,
-                pulse_gain: 0.95,
-            },
-            Self::AuroraSanctuary => GrowthProfile {
-                initial_branch_min: 4,
-                initial_branch_variants: 3,
-                branch_length_scale: 0.85,
-                growth_speed: 8.0,
-                min_fork_angle_degrees: 8.0,
-                max_fork_angle_degrees: 24.0,
-                min_children: 1,
-                max_children: 2,
-                pulse_gain: 0.4,
-            },
-            Self::GraphiteFocus => GrowthProfile {
-                initial_branch_min: 4,
-                initial_branch_variants: 2,
-                branch_length_scale: 0.65,
-                growth_speed: 4.0,
-                min_fork_angle_degrees: 18.0,
-                max_fork_angle_degrees: 32.0,
-                min_children: 1,
-                max_children: 1,
-                pulse_gain: 0.2,
-            },
-            Self::VerdantRecovery => GrowthProfile {
-                initial_branch_min: 3,
-                initial_branch_variants: 3,
-                branch_length_scale: 0.7,
-                growth_speed: 6.0,
-                min_fork_angle_degrees: 12.0,
-                max_fork_angle_degrees: 28.0,
-                min_children: 1,
-                max_children: 2,
-                pulse_gain: 0.25,
-            },
-            Self::CivicDawn => GrowthProfile {
-                initial_branch_min: 7,
-                initial_branch_variants: 3,
-                branch_length_scale: 1.0,
-                growth_speed: 16.0,
-                min_fork_angle_degrees: 18.0,
-                max_fork_angle_degrees: 48.0,
-                min_children: 1,
-                max_children: 2,
-                pulse_gain: 0.5,
-            },
-        }
+    /// Bounded procedural-growth controls generated from the manifest.
+    pub fn growth_profile(self) -> GrowthProfile {
+        self.contract().growth_profile
     }
 }
 

@@ -210,11 +210,11 @@ jobs:
             and $c.unique_source_sampled_pixels == ($m.frames_examined * $m.resolution.width * $m.resolution.height)
             and $c.audit_sampled_pixels_processed >= $c.unique_source_sampled_pixels
             and $c.redundant_overlap_pixels == ($c.audit_sampled_pixels_processed - $c.unique_source_sampled_pixels)
-            and $b[0].schema == "chunked-capture-benchmark-v1"
-            and $b[0].elapsed_wall_ms >= 0
-            and $b[0].unique_source_sampled_pixels == $c.unique_source_sampled_pixels
-            and $b[0].audit_sampled_pixels_processed == $c.audit_sampled_pixels_processed
-            and $b[0].redundant_overlap_pixels == $c.redundant_overlap_pixels
+            and $b.schema == "chunked-capture-benchmark-v1"
+            and $b.elapsed_wall_ms >= 0
+            and $b.unique_source_sampled_pixels == $c.unique_source_sampled_pixels
+            and $b.audit_sampled_pixels_processed == $c.audit_sampled_pixels_processed
+            and $b.redundant_overlap_pixels == $c.redundant_overlap_pixels
             and $c.resolution == $m.resolution
             and $c.timeline.start_ns == $m.timeline.start_ns
             and $c.timeline.end_ns == $m.timeline.end_ns
@@ -399,9 +399,25 @@ jobs:
               and (.density.max_particles >= 0 and .density.max_particles <= 1024)
               and all(.motion[]; . >= 0 and . <= 1)
             )' themes/visual-genome-v1.json
-          manifest_ids="$(jq -r '.themes[].id' themes/visual-genome-v1.json | sort)"
-          rust_ids="$(sed -nE '/^impl Theme \{/,/^}/s/^[[:space:]]*"([a-z-]+)" => Some\(Self::.*$/\1/p' crates/quicken-fb/src/theme.rs | sort)"
-          diff -u <(printf '%s\n' "$manifest_ids") <(printf '%s\n' "$rust_ids")
+          # The checked-in Rust data is generated from the manifest. Re-generation must be byte-identical.
+          generated="$RUNNER_TEMP/visual-genome-generated.rs"
+          jq -r -f validation/visual-genome-rust.jq themes/visual-genome-v1.json > "$generated"
+          diff -u crates/quicken-fb/src/visual_genome_generated.rs "$generated"
+          jq '.themes[0].palette.background = "#12ZZ45"' themes/visual-genome-v1.json > "$RUNNER_TEMP/visual-genome-invalid-color.json"
+          if jq -r -f validation/visual-genome-rust.jq "$RUNNER_TEMP/visual-genome-invalid-color.json" > "$RUNNER_TEMP/visual-genome-invalid-color.rs" 2> "$RUNNER_TEMP/visual-genome-invalid-color.log"; then
+            echo "generator accepted a malformed palette color"
+            exit 1
+          fi
+          jq '.themes[1].id = .themes[0].id' themes/visual-genome-v1.json > "$RUNNER_TEMP/visual-genome-duplicate-id.json"
+          if jq -r -f validation/visual-genome-rust.jq "$RUNNER_TEMP/visual-genome-duplicate-id.json" > "$RUNNER_TEMP/visual-genome-duplicate-id.rs" 2> "$RUNNER_TEMP/visual-genome-duplicate-id.log"; then
+            echo "generator accepted a duplicate theme ID"
+            exit 1
+          fi
+          jq '.themes[0].growth_profile.pulse_gain = 1.5' themes/visual-genome-v1.json > "$RUNNER_TEMP/visual-genome-invalid-growth.json"
+          if jq -r -f validation/visual-genome-rust.jq "$RUNNER_TEMP/visual-genome-invalid-growth.json" > "$RUNNER_TEMP/visual-genome-invalid-growth.rs" 2> "$RUNNER_TEMP/visual-genome-invalid-growth.log"; then
+            echo "generator accepted an out-of-range growth parameter"
+            exit 1
+          fi
 
       - name: Materialize isolated renderer source
         run: |
