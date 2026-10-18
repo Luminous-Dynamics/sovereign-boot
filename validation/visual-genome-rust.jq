@@ -33,7 +33,7 @@ def valid_motion_profile:
     and ($profile.frame_interval_ms | uint_between(1; 1000))
     and ($profile.transition_durations_seconds | type == "array" and length == 3 and all(.[]; type == "number" and . >= 0 and . <= 10))
     and ($profile.transition_durations_seconds[2] > 0)
-    and ($profile.crossfade_ms | uint_between(1; 2000));
+    and ($profile.crossfade_ms | uint_between(50; 2000));
 def valid_motion_profiles:
   . as $profiles
   | ($profiles | type) == "object"

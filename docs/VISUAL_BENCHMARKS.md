@@ -312,3 +312,9 @@ The generated contract also contains motion scale, particle-budget scale, frame 
 contraction/hold/fade durations and crossfade duration for every motion mode. CI compares
 all eight public CLI fields against the source manifest and mutation-tests invalid motion
 scales in addition to malformed colors, duplicate IDs and invalid growth values.
+
+
+The scene-entry crossfade duration is sourced from the motion-mode manifest and applied to
+the CPU renderer; it is bounded to 50 ms–2 s, matching the generator validator. The default
+constructor retains the 400 ms compatibility value. Tests cover configured midpoint behavior,
+invalid duration fallback, and lower/upper bounds.

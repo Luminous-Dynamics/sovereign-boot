@@ -79,6 +79,7 @@ fn main() {
     let mut network =
         MycelialNetwork::new_with_theme(fb.width, fb.height, &args.visual_seed, args.theme);
     network.set_motion_scale(args.motion.scale());
+    network.set_scene_entry_fade_duration(args.motion.crossfade_ms() as f32 / 1_000.0);
     if args.motion == MotionMode::Reduced {
         // Enter directly at the still composition rather than playing the intro.
         network.elapsed = 8.0;

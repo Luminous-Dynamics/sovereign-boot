@@ -22,8 +22,12 @@ const MAX_DEPTH: u32 = 12;
 
 /// Start time for the bounded scene-entry crossfade, in simulation seconds.
 const SCENE_ENTRY_FADE_START: f32 = 1.0;
-/// Duration of the scene-entry crossfade, in simulation seconds.
-const SCENE_ENTRY_FADE_DURATION: f32 = 0.4;
+/// Default scene-entry crossfade used by the compatibility constructor, in seconds.
+const DEFAULT_SCENE_ENTRY_FADE_DURATION: f32 = 0.4;
+/// Minimum allowed configured scene-entry crossfade, in seconds.
+const MIN_DEFAULT_SCENE_ENTRY_FADE_DURATION: f32 = 0.05;
+/// Maximum allowed configured scene-entry crossfade, in seconds.
+const MAX_DEFAULT_SCENE_ENTRY_FADE_DURATION: f32 = 2.0;
 
 /// A single branch of the mycelial network.
 #[derive(Debug, Clone)]
@@ -97,6 +101,8 @@ pub struct MycelialNetwork {
     pub contraction: f32,
     /// Continuous fade from the current scene to black (0.0 = visible, 1.0 = black).
     pub exit_fade: f32,
+    /// Per-mode scene-entry crossfade; configured from the visual manifest.
+    scene_entry_fade_duration: f32,
     /// Theme palette used for every rendered pixel.
     pub palette: Palette,
     /// Theme-specific but bounded growth and pulse controls.
@@ -153,6 +159,7 @@ impl MycelialNetwork {
             global_pulse: 0.0,
             contraction: 0.0,
             exit_fade: 0.0,
+            scene_entry_fade_duration: DEFAULT_SCENE_ENTRY_FADE_DURATION,
             palette,
             growth_profile,
             motion_scale: 1.0,
@@ -178,6 +185,21 @@ impl MycelialNetwork {
             scale.clamp(0.0, 1.0)
         } else {
             0.0
+        };
+    }
+
+    /// Configure the entry crossfade duration in seconds.
+    ///
+    /// Non-finite values restore the compatibility default; finite values are
+    /// clamped to a deliberately bounded 50 ms–2 s interval.
+    pub fn set_scene_entry_fade_duration(&mut self, duration_seconds: f32) {
+        self.scene_entry_fade_duration = if duration_seconds.is_finite() {
+            duration_seconds.clamp(
+                MIN_DEFAULT_SCENE_ENTRY_FADE_DURATION,
+                MAX_DEFAULT_SCENE_ENTRY_FADE_DURATION,
+            )
+        } else {
+            DEFAULT_SCENE_ENTRY_FADE_DURATION
         };
     }
 
@@ -1062,14 +1084,14 @@ impl MycelialNetwork {
     /// Blend newly introduced scene detail over the already-visible theme background.
     ///
     /// The one-second intro deliberately draws only the background and seed. Once
-    /// the full scene is eligible, reveal it over 400 ms instead of making a hard
+    /// the full scene is eligible, reveal it over the configured duration instead of making a hard
     /// composition cut. Reduced mode sets elapsed beyond this interval, so its
     /// fixed composition is not faded on every frame.
     fn apply_scene_entry_fade(&self, buffer: &mut [u32]) {
         if !self.elapsed.is_finite() {
             return;
         }
-        let progress = ((self.elapsed - SCENE_ENTRY_FADE_START) / SCENE_ENTRY_FADE_DURATION)
+        let progress = ((self.elapsed - SCENE_ENTRY_FADE_START) / self.scene_entry_fade_duration)
             .clamp(0.0, 1.0);
         // Smoothstep has zero slope at both endpoints, avoiding a velocity snap
         // when the composition first appears and when the crossfade completes.
@@ -1577,6 +1599,36 @@ mod tests {
     }
 
     #[test]
+    fn scene_entry_fade_duration_is_configurable_and_bounded() {
+        let mut network = MycelialNetwork::new(4, 4, "parameterized-entry-fade");
+        let background = network.palette.background.to_xrgb8888();
+        let mut frame = vec![0x00ff_ffff; 16];
+
+        network.set_scene_entry_fade_duration(0.75);
+        network.elapsed = SCENE_ENTRY_FADE_START + 0.375;
+        network.apply_scene_entry_fade(&mut frame);
+        // Midpoint of the configured 750 ms duration is the smoothstep midpoint.
+        assert_eq!(frame[0], {
+            let red_bg = ((background >> 16) & 0xff) as f32;
+            let green_bg = ((background >> 8) & 0xff) as f32;
+            let blue_bg = (background & 0xff) as f32;
+            let red = (red_bg * 0.5 + 255.0 * 0.5).round() as u32;
+            let green = (green_bg * 0.5 + 255.0 * 0.5).round() as u32;
+            let blue = (blue_bg * 0.5 + 255.0 * 0.5).round() as u32;
+            (red << 16) | (green << 8) | blue
+        });
+
+        network.set_scene_entry_fade_duration(f32::NAN);
+        assert_eq!(network.scene_entry_fade_duration, DEFAULT_SCENE_ENTRY_FADE_DURATION);
+        network.set_scene_entry_fade_duration(0.001);
+        assert_eq!(network.scene_entry_fade_duration, MIN_SCENE_ENTRY_FADE_DURATION);
+        network.set_scene_entry_fade_duration(f32::INFINITY);
+        assert_eq!(network.scene_entry_fade_duration, DEFAULT_SCENE_ENTRY_FADE_DURATION);
+        network.set_scene_entry_fade_duration(3.0);
+        assert_eq!(network.scene_entry_fade_duration, MAX_SCENE_ENTRY_FADE_DURATION);
+    }
+
+    #[test]
     fn test_scene_entry_fade_blends_detail_in_and_finishes_without_changing_static_output() {
         let mut net = MycelialNetwork::new(4, 4, "entry-fade-test");
         let background = net.palette.background.to_xrgb8888();
@@ -1588,7 +1640,7 @@ mod tests {
         assert!(frame.iter().all(|pixel| *pixel == background));
 
         // The middle of the transition blends, without snapping to either endpoint.
-        net.elapsed = SCENE_ENTRY_FADE_START + SCENE_ENTRY_FADE_DURATION * 0.5;
+        net.elapsed = SCENE_ENTRY_FADE_START + DEFAULT_SCENE_ENTRY_FADE_DURATION * 0.5;
         frame.fill(0x00ff_ffff);
         net.apply_scene_entry_fade(&mut frame);
         let midpoint = frame[0];
@@ -1596,7 +1648,7 @@ mod tests {
         assert_ne!(midpoint, 0x00ff_ffff);
 
         // Smoothstep keeps the early reveal closer to background than a linear 25% mix.
-        net.elapsed = SCENE_ENTRY_FADE_START + SCENE_ENTRY_FADE_DURATION * 0.25;
+        net.elapsed = SCENE_ENTRY_FADE_START + DEFAULT_SCENE_ENTRY_FADE_DURATION * 0.25;
         frame.fill(0x00ff_ffff);
         net.apply_scene_entry_fade(&mut frame);
         let early = frame[0];
@@ -1611,7 +1663,7 @@ mod tests {
         assert!(frame.iter().all(|pixel| *pixel != 0x00ff_ffff));
         assert!(frame.iter().all(|pixel| *pixel != background));
 
-        net.elapsed = SCENE_ENTRY_FADE_START + SCENE_ENTRY_FADE_DURATION;
+        net.elapsed = SCENE_ENTRY_FADE_START + DEFAULT_SCENE_ENTRY_FADE_DURATION;
         frame.fill(0x00ff_ffff);
         net.apply_scene_entry_fade(&mut frame);
         assert!(frame.iter().all(|pixel| *pixel == 0x00ff_ffff));
