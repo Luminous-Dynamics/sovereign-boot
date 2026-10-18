@@ -120,14 +120,15 @@ fn fs_main(@builtin(position) pixel_position: vec4<f32>) -> @location(0) vec4<f3
                 particle_budget = 1.0;
             }
             let star_cell = floor(uv * vec2<f32>(160.0, 90.0));
-            let star_hash = hash21(star_cell + vec2<f32>(23.0, 79.0));
+            let cell_index = u32(star_cell.x) + u32(star_cell.y) * 160u;
+            let budget_percent = u32(round(particle_budget * 100.0));
             var stars = 0.0;
-            if particle_budget >= 0.999 {
+            // The modulo mask gates the expensive hash/smoothstep work, not only its
+            // final alpha: 25% / 60% budgets evaluate one quarter / three fifths of cells.
+            if budget_percent >= 100u
+                || (budget_percent > 0u && (cell_index % 100u) < budget_percent) {
+                let star_hash = hash21(star_cell + vec2<f32>(23.0, 79.0));
                 stars = smoothstep(0.994, 0.999, star_hash);
-            } else if particle_budget > 0.0 {
-                let threshold_low = 1.0 - 0.006 * particle_budget;
-                let threshold_high = 1.0 - 0.001 * particle_budget;
-                stars = smoothstep(threshold_low, threshold_high, star_hash);
             }
             scene_glow = clamp(contours * 0.7 + stars * 0.9, 0.0, 1.0);
             scene_nodes = stars;

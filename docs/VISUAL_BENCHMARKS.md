@@ -351,8 +351,10 @@ does not substitute for physical-display captures or real-device power measureme
 
 The WGPU reference passes the manifest's particle-budget scale through the existing
 `style.y` uniform slot, preserving the 28-float / 112-byte ABI. Both baseline and
-specialized shaders use that value to scale cosmic star density in animated modes; zero
-motion retains the complete static star field. A GPU test renders the cosmic family at
+specialized shaders use that value to gate expensive star-hash evaluations by a deterministic
+cell mask in animated modes: a 25% or 60% budget evaluates that fraction of cells, while
+100% evaluates all cells. Zero motion retains the complete static star field. This establishes
+a workload-control path; realized GPU time savings still require measurement on a real adapter. A GPU test renders the cosmic family at
 time zero for Low Power, Balanced and Cinematic so motion amplitude is held constant at
 zero effective phase, making image differences evidence of the budget field rather than
 scene-time animation. Receipts record the selected budget and explicitly say that the
