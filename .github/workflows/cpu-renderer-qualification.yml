@@ -277,6 +277,7 @@ jobs:
           duplicate_status=$?
           set -e
           test "$duplicate_status" -eq 2
+          grep -q "timestamps must be strictly increasing" "$RUNNER_TEMP/chunked-audit-duplicate.stdout"
           test ! -e "$duplicate_output/audit.json"
 
       - name: Test independent external-frame audit
