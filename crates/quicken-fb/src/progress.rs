@@ -422,10 +422,20 @@ mod diskstats_tests {
 
     #[test]
     fn diskstats_byte_arithmetic_saturates_instead_of_panicking() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock after epoch")
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "quicken-diskstats-overflow-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::create_dir_all(root.join("8:0")).expect("create whole-device sysfs entry");
         let sample = "8 0 sda 0 0 0 0 0 0 18446744073709551615 0\n";
         assert_eq!(
-            ProgressMonitor::sum_diskstats_write_bytes(sample, Path::new("/nonexistent/sysfs")),
+            ProgressMonitor::sum_diskstats_write_bytes(sample, &root),
             u64::MAX,
         );
+        fs::remove_dir_all(root).expect("remove fake sysfs tree");
     }
 }
