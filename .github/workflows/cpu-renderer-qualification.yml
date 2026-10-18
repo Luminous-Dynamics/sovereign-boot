@@ -846,7 +846,7 @@ jobs:
               }' > "$RUNNER_TEMP/wgpu-reference-shader-ab-$theme.json"
           done
           test "$(wc -l < "$RUNNER_TEMP/wgpu-reference-shader-ab-hashes.txt")" -eq 20
-          sha256sum "$RUNNER_TEMP/wgpu-reference-shader-ab-"*.json "$RUNNER_TEMP/wgpu-reference-shader-ab-"*.ppm \
+          sha256sum "$RUNNER_TEMP/wgpu-reference-ab-"*.json "$RUNNER_TEMP/wgpu-reference-ab-"*.ppm "$RUNNER_TEMP/wgpu-reference-shader-ab-"*.json "$RUNNER_TEMP/wgpu-reference-shader-ab-hashes.txt" \
             > "$RUNNER_TEMP/wgpu-reference-shader-ab-sha256.txt"
 
           # Verify identical pixels across repeated renders of one fixed scene state.

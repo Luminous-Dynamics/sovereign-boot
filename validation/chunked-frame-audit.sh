@@ -234,7 +234,7 @@ while ((emit_start < frame_count)); do
 
   printf -v chunk_name '%05d' "$chunk_index"
   full_receipt="$output_dir/chunks/full-$chunk_name.json"
-  full_sidecar="$temporary_cargo_target/timestamps-full-$chunk_name.txt"
+  full_sidecar="$CARGO_TARGET_DIR/timestamps-full-$chunk_name.txt"
   run_audit "$chunk_start" "$chunk_end" "$full_receipt" "$full_sidecar"
   full_hash="$(sha256sum -- "$full_receipt" | awk '{print $1}')"
 
@@ -242,7 +242,7 @@ while ((emit_start < frame_count)); do
   prefix_receipt=""
   if ((emit_start > 0)); then
     prefix_receipt="$output_dir/chunks/prefix-$chunk_name.json"
-    prefix_sidecar="$temporary_cargo_target/timestamps-prefix-$chunk_name.txt"
+    prefix_sidecar="$CARGO_TARGET_DIR/timestamps-prefix-$chunk_name.txt"
     run_audit "$chunk_start" "$emit_start" "$prefix_receipt" "$prefix_sidecar"
     prefix_hash="$(sha256sum -- "$prefix_receipt" | awk '{print $1}')"
     jq -cn \
