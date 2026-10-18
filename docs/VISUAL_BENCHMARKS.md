@@ -198,6 +198,11 @@ Do not treat the 60-second target as achieved by increasing a frame limit. This 
 - **Owner visual review** evaluates composition and meaning; structural colour-bin and luminance statistics are only blank/degenerate-image alarms.
 
 Flash-frequency guidance should be read from the [W3C WCAG 2.2 SC 2.3.1 explanation](https://www.w3.org/WAI/WCAG22/Understanding/three-flashes-or-below-threshold.html). Our Rust auditor is deliberately non-normative; a passing receipt is not certification, and a sampling-gap pass is not proof that no unobserved event occurred.
+## Visual Genome manifest parity
+
+The JSON manifest is still not loaded at early-boot runtime. To avoid silently divergent duplicate definitions, qualification now asks the typed Rust theme inventory to emit a stable TSV contract and diffs it against the normalized manifest. The parity contract includes all ten stable IDs, scene-family identifiers, all five RGB palette roles, and all nine growth-profile parameters per theme. This is stronger than checking the ID inventory alone, but it is a consistency gate, not yet a true single source of truth.
+
+The next architectural step is build-time generation: make the JSON manifest the human-edited design source, generate boot-safe Rust constants from the bounded schema, and validate the generated artifact deterministically. Early boot must continue to compile palette/geometry constants into the executable; it should not parse JSON, allocate general-purpose schema objects, or access the desktop shader or any network asset. The generator acceptance gate should require: byte-reproducible generation; diff-clean generated code; manifest rejection for unknown fields/schema versions, duplicate IDs, invalid colors and out-of-range budgets; complete typed-contract coverage; and no new early-boot runtime dependency.
 ## Human-quality evaluation
 
 Use a small, blinded study with identical display hardware and lighting. Ask participants to rank coherence, beauty, legibility, motion comfort, and perceived system-state clarity separately.
