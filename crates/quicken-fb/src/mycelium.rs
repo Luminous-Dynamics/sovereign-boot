@@ -928,7 +928,24 @@ impl MycelialNetwork {
                     buffer, w, h,
                     nodes[node].0.round() as i32, nodes[node].1.round() as i32,
                     if node == 0 { 3 } else { 2 },
-                    if (node + cluster) % 4 == 0 { self.palette.node } else { self.palette.primary },
+                    {
+                        let base = if (node + cluster) % 4 == 0 {
+                            self.palette.node
+                        } else {
+                            self.palette.primary
+                        };
+                        // Civic Commons is spatially stable, but its peer nodes gently
+                        // breathe in animated modes. The elapsed clock already incorporates
+                        // the selected motion scale, so Reduced remains a true static frame.
+                        let phase = 0.5 + 0.5 * (self.elapsed * 2.0
+                            + node as f32 * 0.43
+                            + cluster as f32 * 0.29).sin();
+                        Rgba::lerp(
+                            base,
+                            self.palette.convergence,
+                            phase * 0.28 * self.theme_motion.pulse,
+                        )
+                    },
                 );
             }
 
@@ -1590,6 +1607,31 @@ mod tests {
                 "theme {} rendered a flat frame", theme.id()
             );
         }
+    }
+
+    #[test]
+    fn civic_commons_has_motion_only_when_motion_is_enabled() {
+        let mut network = MycelialNetwork::new_with_theme(
+            160, 90, "civic-motion-regression", Theme::CivicDawn,
+        );
+        network.set_motion_scale(0.25);
+        network.elapsed = 8.0;
+        let mut earlier = vec![0u32; 160 * 90];
+        network.render(&mut earlier);
+
+        network.elapsed = 8.25;
+        let mut later = vec![0u32; 160 * 90];
+        network.render(&mut later);
+        assert_ne!(earlier, later, "animated Civic Commons must not freeze in Low Power mode");
+
+        network.set_motion_scale(0.0);
+        network.elapsed = 8.0;
+        let mut reduced_earlier = vec![0u32; 160 * 90];
+        network.render(&mut reduced_earlier);
+        network.elapsed = 8.25;
+        let mut reduced_later = vec![0u32; 160 * 90];
+        network.render(&mut reduced_later);
+        assert_eq!(reduced_earlier, reduced_later, "Reduced Civic Commons must remain static");
     }
 
     #[test]

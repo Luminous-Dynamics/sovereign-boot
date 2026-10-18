@@ -34,6 +34,7 @@ These are engineering targets for qualification, not claims about the current re
 | Boot impact | No dependency on renderer success; service failure never prevents login or recovery | Inject missing device, mapping/copy failure, crash, timeout, malformed state | Any login/recovery dependency is a blocker |
 | Shutdown transition | Continuous theme-specific fade; no single full-screen white frame or abrupt white-to-black cut | Capture at ≥60 samples/s; inspect luminance series | Accessibility gate fails |
 | CPU determinism | Identical capture hash for same build, theme, seed, fixed inputs, and resolution | Golden framebuffer test | Explain intentional versioned differences |
+| Animated-theme coverage | Every theme changes pixels between fixed-time captures in Low Power, Balanced and Cinematic; Reduced remains pixel-identical | 10/30-frame per-theme hash comparison plus direct fixed-time regression tests | Fix frozen scene motion; never weaken the movement gate to hide it |
 | Cross-backend appearance | SSIM ≥0.99 for approved reference scenes, after documented color conversion | CPU reference vs GPU output | Perceptual mismatch must be reviewed |
 | Privacy | Zero network requests and zero identity-bearing values in captured lock screens | Network namespace trace + screenshot scan/review | Any leak blocks release |
 | Resource bounds | Manifest limits are enforced even for malformed data | Property/fuzz tests | Reject invalid manifest, don't try to render |
