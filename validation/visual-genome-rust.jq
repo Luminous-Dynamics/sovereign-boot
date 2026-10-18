@@ -113,6 +113,8 @@ def contract($theme):
   + "        scene_kind: SceneKind::" + ($theme.scene_family | pascal) + ",\n"
   + "        scene_family_id: " + ($theme.scene_family | tojson) + ",\n"
   + "        boot_allowed: " + ($theme.surfaces | if index("boot") == null then "false" else "true" end) + ",\n"
+  + "        desktop_allowed: " + ($theme.surfaces | if index("desktop") == null then "false" else "true" end) + ",\n"
+  + "        lockscreen_allowed: " + ($theme.surfaces | if index("lockscreen") == null then "false" else "true" end) + ",\n"
   + "        palette: Palette {\n"
   + "            background: " + rgb($theme.palette.background) + ",\n"
   + "            primary: " + rgb($theme.palette.primary) + ",\n"

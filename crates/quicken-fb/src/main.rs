@@ -25,7 +25,7 @@ use std::time::{Duration, Instant};
 use symthaea_quicken_fb::framebuffer::DrmFramebuffer;
 use symthaea_quicken_fb::mycelium::MycelialNetwork;
 use symthaea_quicken_fb::progress::{ProgressEvent, ProgressMonitor};
-use symthaea_quicken_fb::theme::{MotionMode, Theme};
+use symthaea_quicken_fb::theme::{MotionMode, Theme, ThemeSurface};
 
 /// Target frame rate for the animation.
 const TARGET_FPS: u32 = 30;
@@ -359,7 +359,7 @@ fn parse_args() -> Args {
                             "#{:02x}{:02x}{:02x}\t",
                             "#{:02x}{:02x}{:02x}\t",
                             "#{:02x}{:02x}{:02x}\t",
-                            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}"
+                            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}"
                         ),
                         theme.id(),
                         theme.scene_kind().id(),
@@ -381,7 +381,10 @@ fn parse_args() -> Args {
                         max_particles,
                         growth_motion,
                         pulse_motion,
-                        parallax_motion
+                        parallax_motion,
+                        theme.supports_surface(ThemeSurface::Boot),
+                        theme.supports_surface(ThemeSurface::Desktop),
+                        theme.supports_surface(ThemeSurface::LockScreen)
                     );
                 }
                 std::process::exit(0);
@@ -507,7 +510,7 @@ fn validate_state_artifact(path: &str) -> bool {
 }
 
 fn print_usage() {
-    eprintln!("Usage: quicken-fb [OPTIONS]\n  --theme <ID>             Theme ID (default: mycelial-genesis)\n  --list-themes            List supported theme IDs and exit\n  --list-theme-scenes     List theme-to-scene mappings\n  --list-theme-contracts   Print palette and growth values as TSV\n  --list-motion-modes    List motion budgets and transition timings\n  --motion <MODE>          reduced|low-power|balanced|cinematic\n  --seed <VALUE>           Public visual seed, not a secret (max 256 bytes)\n  --genesis-phrase <VALUE> Legacy alias for --seed\n  --receipt <PATH>         Optional boot-state artifact (presence only)\n  --lineage <PATH>         Optional lineage artifact (presence only)\n  --handoff-path <PATH>    Exit when the compositor marker appears\n  --progress-pipe <PATH>  Optional installer progress FIFO\n  --device <PATH>         DRM device (default: /dev/dri/card0)\n  --help                  Show this help");
+    eprintln!("Usage: quicken-fb [OPTIONS]\n  --theme <ID>             Theme ID (default: mycelial-genesis)\n  --list-themes            List supported theme IDs and exit\n  --list-theme-scenes     List theme-to-scene mappings\n  --list-theme-contracts   Print palettes, budgets and surface permissions as TSV\n  --list-motion-modes    List motion budgets and transition timings\n  --motion <MODE>          reduced|low-power|balanced|cinematic\n  --seed <VALUE>           Public visual seed, not a secret (max 256 bytes)\n  --genesis-phrase <VALUE> Legacy alias for --seed\n  --receipt <PATH>         Optional boot-state artifact (presence only)\n  --lineage <PATH>         Optional lineage artifact (presence only)\n  --handoff-path <PATH>    Exit when the compositor marker appears\n  --progress-pipe <PATH>  Optional installer progress FIFO\n  --device <PATH>         DRM device (default: /dev/dri/card0)\n  --help                  Show this help");
 }
 
 /// Install SIGTERM and SIGINT handlers for clean shutdown.

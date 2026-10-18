@@ -21,6 +21,8 @@ const GENERATED_THEME_CONTRACTS: [ThemeContract; 10] = [
         scene_kind: SceneKind::MycelialNetwork,
         scene_family_id: "mycelial-network",
         boot_allowed: true,
+        desktop_allowed: true,
+        lockscreen_allowed: true,
         palette: Palette {
             background: Rgba(0x10, 0x26, 0x1e, 0xff),
             primary: Rgba(0x7e, 0xc8, 0xa0, 0xff),
@@ -55,6 +57,8 @@ const GENERATED_THEME_CONTRACTS: [ThemeContract; 10] = [
         scene_kind: SceneKind::SolarCanopy,
         scene_family_id: "solar-canopy",
         boot_allowed: true,
+        desktop_allowed: true,
+        lockscreen_allowed: true,
         palette: Palette {
             background: Rgba(0x20, 0x18, 0x0f, 0xff),
             primary: Rgba(0xf6, 0xbd, 0x60, 0xff),
@@ -89,6 +93,8 @@ const GENERATED_THEME_CONTRACTS: [ThemeContract; 10] = [
         scene_kind: SceneKind::CosmicCartography,
         scene_family_id: "cosmic-cartography",
         boot_allowed: false,
+        desktop_allowed: true,
+        lockscreen_allowed: true,
         palette: Palette {
             background: Rgba(0x07, 0x0b, 0x1e, 0xff),
             primary: Rgba(0x7a, 0xa2, 0xf7, 0xff),
@@ -123,6 +129,8 @@ const GENERATED_THEME_CONTRACTS: [ThemeContract; 10] = [
         scene_kind: SceneKind::OceanWaves,
         scene_family_id: "ocean-waves",
         boot_allowed: false,
+        desktop_allowed: true,
+        lockscreen_allowed: true,
         palette: Palette {
             background: Rgba(0x03, 0x1f, 0x2d, 0xff),
             primary: Rgba(0x4d, 0xd0, 0xe1, 0xff),
@@ -157,6 +165,8 @@ const GENERATED_THEME_CONTRACTS: [ThemeContract; 10] = [
         scene_kind: SceneKind::EpistemicLattice,
         scene_family_id: "epistemic-lattice",
         boot_allowed: false,
+        desktop_allowed: true,
+        lockscreen_allowed: false,
         palette: Palette {
             background: Rgba(0x11, 0x18, 0x27, 0xff),
             primary: Rgba(0x7d, 0xd3, 0xfc, 0xff),
@@ -191,6 +201,8 @@ const GENERATED_THEME_CONTRACTS: [ThemeContract; 10] = [
         scene_kind: SceneKind::QuantumInterference,
         scene_family_id: "quantum-interference",
         boot_allowed: false,
+        desktop_allowed: true,
+        lockscreen_allowed: true,
         palette: Palette {
             background: Rgba(0x11, 0x13, 0x1d, 0xff),
             primary: Rgba(0x80, 0xcb, 0xc4, 0xff),
@@ -225,6 +237,8 @@ const GENERATED_THEME_CONTRACTS: [ThemeContract; 10] = [
         scene_kind: SceneKind::AuroraRibbons,
         scene_family_id: "aurora-ribbons",
         boot_allowed: true,
+        desktop_allowed: true,
+        lockscreen_allowed: true,
         palette: Palette {
             background: Rgba(0x11, 0x1c, 0x2c, 0xff),
             primary: Rgba(0x9b, 0xd9, 0xce, 0xff),
@@ -259,6 +273,8 @@ const GENERATED_THEME_CONTRACTS: [ThemeContract; 10] = [
         scene_kind: SceneKind::GraphiteMinimal,
         scene_family_id: "graphite-minimal",
         boot_allowed: true,
+        desktop_allowed: true,
+        lockscreen_allowed: true,
         palette: Palette {
             background: Rgba(0x15, 0x17, 0x1a, 0xff),
             primary: Rgba(0xb8, 0xc0, 0xcc, 0xff),
@@ -293,6 +309,8 @@ const GENERATED_THEME_CONTRACTS: [ThemeContract; 10] = [
         scene_kind: SceneKind::VerdantRecovery,
         scene_family_id: "verdant-recovery",
         boot_allowed: true,
+        desktop_allowed: true,
+        lockscreen_allowed: true,
         palette: Palette {
             background: Rgba(0x0c, 0x21, 0x1e, 0xff),
             primary: Rgba(0x69, 0xb9, 0x9f, 0xff),
@@ -327,6 +345,8 @@ const GENERATED_THEME_CONTRACTS: [ThemeContract; 10] = [
         scene_kind: SceneKind::CivicCommons,
         scene_family_id: "civic-commons",
         boot_allowed: true,
+        desktop_allowed: true,
+        lockscreen_allowed: true,
         palette: Palette {
             background: Rgba(0x17, 0x25, 0x36, 0xff),
             primary: Rgba(0x6f, 0xc7, 0xb6, 0xff),

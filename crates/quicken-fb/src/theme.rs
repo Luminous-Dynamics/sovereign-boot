@@ -123,6 +123,14 @@ pub enum Theme {
     CivicDawn,
 }
 
+/// Renderer surfaces declared by the Visual Genome manifest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ThemeSurface {
+    Boot,
+    Desktop,
+    LockScreen,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ThemeDensity {
     pub(crate) max_branches: usize,
@@ -190,7 +198,17 @@ impl Theme {
 
     /// Whether the Visual Genome manifest permits this theme on the early-boot surface.
     pub fn boot_allowed(self) -> bool {
-        self.contract().boot_allowed
+        self.supports_surface(ThemeSurface::Boot)
+    }
+
+    /// Whether the Visual Genome contract permits this theme on the requested surface.
+    pub fn supports_surface(self, surface: ThemeSurface) -> bool {
+        let contract = self.contract();
+        match surface {
+            ThemeSurface::Boot => contract.boot_allowed,
+            ThemeSurface::Desktop => contract.desktop_allowed,
+            ThemeSurface::LockScreen => contract.lockscreen_allowed,
+        }
     }
 
     /// Select a bounded procedural geometry family generated from the manifest.
@@ -398,23 +416,23 @@ mod public_contract_tests {
 
 #[cfg(test)]
 mod boot_surface_tests {
-    use super::Theme;
+    use super::{Theme, ThemeSurface};
 
     #[test]
-    fn boot_surface_allowlist_matches_visual_genome_policy() {
-        let disallowed = [
-            Theme::CosmicAtlas,
-            Theme::OceanicIntelligence,
-            Theme::PrismOfEvidence,
-            Theme::QuantumGarden,
+    fn all_surface_allowlists_match_visual_genome_policy() {
+        let boot_allowed = [
+            Theme::MycelialGenesis,
+            Theme::SolarCommons,
+            Theme::AuroraSanctuary,
+            Theme::GraphiteFocus,
+            Theme::VerdantRecovery,
+            Theme::CivicDawn,
         ];
+        let lockscreen_disallowed = [Theme::PrismOfEvidence];
         for theme in Theme::ALL {
-            assert_eq!(
-                theme.boot_allowed(),
-                !disallowed.contains(&theme),
-                "unexpected boot surface policy for {}",
-                theme.id(),
-            );
+            assert_eq!(theme.boot_allowed(), boot_allowed.contains(&theme), "boot policy: {}", theme.id());
+            assert_eq!(theme.supports_surface(ThemeSurface::Desktop), true, "desktop policy: {}", theme.id());
+            assert_eq!(theme.supports_surface(ThemeSurface::LockScreen), !lockscreen_disallowed.contains(&theme), "lockscreen policy: {}", theme.id());
         }
     }
 }

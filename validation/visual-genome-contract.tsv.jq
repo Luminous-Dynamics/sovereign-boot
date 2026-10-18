@@ -20,6 +20,9 @@
     .density.max_particles,
     .motion.growth,
     .motion.pulse,
-    .motion.parallax
+    .motion.parallax,
+    (.surfaces | index("boot") != null),
+    (.surfaces | index("desktop") != null),
+    (.surfaces | index("lockscreen") != null)
   ]
 | @tsv

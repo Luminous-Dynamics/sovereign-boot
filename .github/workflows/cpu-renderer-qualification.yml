@@ -492,7 +492,7 @@ jobs:
           jq -r -f validation/visual-genome-contract.tsv.jq themes/visual-genome-v1.json \
             | sort > "$RUNNER_TEMP/manifest-theme-contracts.tsv"
           for contract_file in "$RUNNER_TEMP/manifest-theme-contracts.tsv" "$RUNNER_TEMP/rust-theme-contracts.tsv"; do
-            awk -F '\t' 'NF != 21 { exit 1 } END { if (NR != 10) exit 1 }' "$contract_file"
+            awk -F '\t' 'NF != 24 { exit 1 } END { if (NR != 10) exit 1 }' "$contract_file"
           done
           diff -u "$RUNNER_TEMP/manifest-theme-contracts.tsv" "$RUNNER_TEMP/rust-theme-contracts.tsv"
 
@@ -527,6 +527,15 @@ jobs:
             | sort > "$RUNNER_TEMP/manifest-mutated-theme-motion.tsv"
           if cmp -s "$RUNNER_TEMP/manifest-mutated-theme-motion.tsv" "$RUNNER_TEMP/rust-theme-contracts.tsv"; then
             echo "theme contract gate missed a deliberately changed per-theme motion value"
+            exit 1
+          fi
+
+          jq '.themes[0].surfaces |= map(select(. != "boot"))' themes/visual-genome-v1.json \
+            > "$RUNNER_TEMP/manifest-mutated-surfaces.json"
+          jq -r -f validation/visual-genome-contract.tsv.jq "$RUNNER_TEMP/manifest-mutated-surfaces.json" \
+            | sort > "$RUNNER_TEMP/manifest-mutated-surfaces.tsv"
+          if cmp -s "$RUNNER_TEMP/manifest-mutated-surfaces.tsv" "$RUNNER_TEMP/rust-theme-contracts.tsv"; then
+            echo "theme contract gate missed a deliberately changed surface permission"
             exit 1
           fi
 
