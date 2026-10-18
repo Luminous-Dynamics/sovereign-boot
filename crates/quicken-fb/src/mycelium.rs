@@ -399,6 +399,19 @@ impl MycelialNetwork {
         self.contraction = progress.clamp(0.0, 1.0);
     }
 
+    /// Resolve the visual clock separately from the simulation clock.
+    ///
+    /// Reduced motion freezes simulation state, but must still produce the fully
+    /// composed still image rather than freezing on the boot intro's black frame.
+    /// Time-driven decorative effects use a fixed terminal phase in Reduced mode.
+    fn visual_time(&self) -> f32 {
+        if self.motion_scale <= 0.0 || !self.elapsed.is_finite() {
+            SCENE_ENTRY_FADE_START + self.scene_entry_fade_duration
+        } else {
+            self.elapsed
+        }
+    }
+
     /// Render the network to a pixel buffer (XRGB8888 format, row-major).
     /// The buffer must be `width * height` u32 values.
     pub fn render(&self, buffer: &mut [u32]) {
@@ -406,10 +419,11 @@ impl MycelialNetwork {
         let h = self.height as usize;
         assert!(buffer.len() >= w * h, "buffer too small");
 
-        // Fade the theme background in from black; the exit transition is
-        // applied to the completed frame so every pixel follows one luminance curve.
-        let bg = if self.elapsed < 1.0 {
-            Rgba::lerp(crate::color::BLACK, self.palette.background, self.elapsed)
+        // Simulation time can be frozen independently from presentation time.
+        // Reduced mode uses the terminal visual phase to show a complete still frame.
+        let visual_time = self.visual_time();
+        let bg = if visual_time < 1.0 {
+            Rgba::lerp(crate::color::BLACK, self.palette.background, visual_time)
         } else {
             self.palette.background
         };
@@ -418,9 +432,10 @@ impl MycelialNetwork {
             *pixel = bg.to_xrgb8888();
         }
 
-        // Keep the first second calm, then introduce a small theme-colored seed.
-        if self.elapsed < 1.0 {
-            if self.elapsed >= 0.9 {
+        // Keep the first second calm for animated modes; Reduced skips directly
+        // to the final still composition so it cannot freeze on the intro.
+        if visual_time < 1.0 {
+            if visual_time >= 0.9 {
                 let cx = self.center.0 as usize;
                 let cy = self.center.1 as usize;
                 if cx < w && cy < h {
@@ -669,7 +684,7 @@ impl MycelialNetwork {
         let sun = (width * 0.5, height * 0.72);
         let radius = (height * 0.11).max(4.0);
         let motion = (self.growth_profile.growth_speed / 30.0).clamp(0.0, 1.0);
-        let pulse = 0.5 + 0.5 * (self.elapsed * 0.08 * motion).sin();
+        let pulse = 0.5 + 0.5 * (self.visual_time() * 0.08 * motion).sin();
 
         for ray in 0..33 {
             let angle = std::f32::consts::PI
@@ -772,7 +787,7 @@ impl MycelialNetwork {
         let height = h as f32;
         let step = (w / 640).max(1) as i32;
         let motion = (self.growth_profile.growth_speed / 30.0).clamp(0.0, 1.0);
-        let phase = self.elapsed * 0.11 * motion;
+        let phase = self.visual_time() * 0.11 * motion;
 
         for family in 0..3 {
             let family_f = family as f32;
@@ -843,7 +858,7 @@ impl MycelialNetwork {
         let h = self.height as usize;
         let center = (self.center.0.round() as i32, self.center.1.round() as i32);
         let unit = (w.min(h) as f32 * 0.07).max(3.0);
-        let pulse = 0.5 + 0.5 * (self.elapsed * 0.035).sin();
+        let pulse = 0.5 + 0.5 * (self.visual_time() * 0.035).sin();
 
         for ring in 1..=4 {
             let radius = (unit * ring as f32 * (1.0 + pulse * 0.025)).round() as i32;
@@ -937,7 +952,7 @@ impl MycelialNetwork {
                         // Civic Commons is spatially stable, but its peer nodes gently
                         // breathe in animated modes. The elapsed clock already incorporates
                         // the selected motion scale, so Reduced remains a true static frame.
-                        let phase = 0.5 + 0.5 * (self.elapsed * 2.0
+                        let phase = 0.5 + 0.5 * (self.visual_time() * 2.0
                             + node as f32 * 0.43
                             + cluster as f32 * 0.29).sin();
                         Rgba::lerp(
@@ -1009,7 +1024,7 @@ impl MycelialNetwork {
                 star.position.0 + (self.center.0 - star.position.0) * contraction,
                 star.position.1 + (self.center.1 - star.position.1) * contraction,
             );
-            let twinkle = 0.58 + 0.32 * ((self.elapsed * 0.7 + star.phase).sin() * 0.5 + 0.5);
+            let twinkle = 0.58 + 0.32 * ((self.visual_time() * 0.7 + star.phase).sin() * 0.5 + 0.5);
             let color = Rgba::lerp(self.palette.primary, self.palette.convergence, contraction)
                 .brighten(twinkle + self.global_pulse * 0.25 * self.theme_motion.pulse);
             draw_filled_circle(
@@ -1040,7 +1055,7 @@ impl MycelialNetwork {
             let frequency = 0.75 + layer_f * 0.19;
             let amplitude = height * (0.016 + layer_f * 0.006);
             let baseline = height * (0.28 + layer_f * 0.105);
-            let phase = self.elapsed * (0.12 + layer_f * 0.035) * motion;
+            let phase = self.visual_time() * (0.12 + layer_f * 0.035) * motion;
             let base_color = match layer % 3 {
                 0 => self.palette.secondary,
                 1 => self.palette.primary,
@@ -1097,7 +1112,7 @@ impl MycelialNetwork {
             let frequency = 0.42 + band_f * 0.12;
             let amplitude = height * (0.035 + band_f * 0.006);
             let baseline = height * (0.2 + band_f * 0.17);
-            let phase = self.elapsed * 0.12 * motion + band_f * 1.13;
+            let phase = self.visual_time() * 0.12 * motion + band_f * 1.13;
             let base_color = if band % 2 == 0 {
                 self.palette.primary
             } else {
@@ -1146,10 +1161,11 @@ impl MycelialNetwork {
     /// composition cut. Reduced mode sets elapsed beyond this interval, so its
     /// fixed composition is not faded on every frame.
     fn apply_scene_entry_fade(&self, buffer: &mut [u32]) {
-        if !self.elapsed.is_finite() {
+        let visual_time = self.visual_time();
+        if !visual_time.is_finite() {
             return;
         }
-        let progress = ((self.elapsed - SCENE_ENTRY_FADE_START) / self.scene_entry_fade_duration)
+        let progress = ((visual_time - SCENE_ENTRY_FADE_START) / self.scene_entry_fade_duration)
             .clamp(0.0, 1.0);
         // Smoothstep has zero slope at both endpoints, avoiding a velocity snap
         // when the composition first appears and when the crossfade completes.
@@ -1571,7 +1587,7 @@ mod tests {
             let mut a = MycelialNetwork::new_with_theme(160, 90, "still-preview-v1", theme);
             let mut b = MycelialNetwork::new_with_theme(160, 90, "still-preview-v1", theme);
             a.elapsed = 8.0;
-            b.elapsed = 8.0;
+            b.elapsed = 8.25;
             a.set_motion_scale(0.0);
             b.set_motion_scale(0.0);
             let mut first = vec![0u32; 160 * 90];
@@ -1583,6 +1599,20 @@ mod tests {
                 first.iter().any(|pixel| *pixel != first[0]),
                 "static theme {} rendered a flat frame", theme.id()
             );
+        }
+    }
+
+    #[test]
+    fn reduced_motion_skips_intro_and_renders_a_visible_still_at_startup() {
+        for theme in Theme::ALL {
+            let mut scene = MycelialNetwork::new_with_theme(
+                160, 90, "reduced-startup-still-v1", theme,
+            );
+            scene.set_motion_scale(0.0);
+            let mut frame = vec![0u32; 160 * 90];
+            scene.render(&mut frame);
+            assert!(frame.iter().any(|pixel| *pixel != frame[0]),
+                "Reduced theme {} should be visible on the first frame", theme.id());
         }
     }
 
