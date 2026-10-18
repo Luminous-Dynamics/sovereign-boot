@@ -48,7 +48,7 @@ Theme names should describe a visual mood and information design—not make unve
 | verdant-recovery | Calm resilience | Muted green-blue, simple concentric growth, no bright flash | Recovery, rollback, troubleshooting |
 | civic-dawn | Shared flourishing | Multiple organic clusters linked without hierarchy, warm horizon light | Mycelix / Commons identity |
 
-Current implementation status: all ten IDs have a palette, bounded growth profile, and distinct CPU scene family, with deterministic capture and hash support in the benchmark. The JSON manifest is aligned design data but is not yet the runtime source of truth; generated captures still require human quality review.
+Current implementation status: all ten IDs have a palette, bounded growth profile, and distinct CPU scene family, with deterministic capture and hash support in the benchmark. The Visual Genome generator also compiles an explicit `boot_allowed` bit from each theme's declared surfaces; the boot CLI rejects desktop-only themes before evidence checks or DRM acquisition. This makes surface permission executable policy rather than descriptive metadata. Generated captures still require human quality review.
 
 ## Three distinct experience contracts
 

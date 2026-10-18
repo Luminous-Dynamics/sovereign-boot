@@ -568,6 +568,17 @@ jobs:
           test "$status" -eq 2
           grep -q "unknown motion mode" "$RUNNER_TEMP/unknown-motion.stderr"
 
+          # The manifest's boot surface allowlist must reject desktop-only themes
+          # before the renderer attempts to open the requested DRM device.
+          set +e
+          cargo run --manifest-path "$RUNNER_TEMP/quicken-fb/Cargo.toml" --locked -- \
+            --theme cosmic-atlas --device "$RUNNER_TEMP/nonexistent-drm-device" \
+            > /dev/null 2> "$RUNNER_TEMP/desktop-theme-on-boot.stderr"
+          status=$?
+          set -e
+          test "$status" -eq 2
+          grep -q "not permitted on the boot surface" "$RUNNER_TEMP/desktop-theme-on-boot.stderr"
+
       - name: Parse and semantically validate WGSL without a GPU
         shell: bash
         run: |

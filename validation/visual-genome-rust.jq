@@ -112,6 +112,7 @@ def contract($theme):
   + "        id: " + ($theme.id | tojson) + ",\n"
   + "        scene_kind: SceneKind::" + ($theme.scene_family | pascal) + ",\n"
   + "        scene_family_id: " + ($theme.scene_family | tojson) + ",\n"
+  + "        boot_allowed: " + ($theme.surfaces | if index("boot") == null then "false" else "true" end) + ",\n"
   + "        palette: Palette {\n"
   + "            background: " + rgb($theme.palette.background) + ",\n"
   + "            primary: " + rgb($theme.palette.primary) + ",\n"

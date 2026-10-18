@@ -144,6 +144,7 @@ struct ThemeContract {
     id: &'static str,
     scene_kind: SceneKind,
     scene_family_id: &'static str,
+    boot_allowed: bool,
     palette: Palette,
     growth_profile: GrowthProfile,
     density: ThemeDensity,
@@ -185,6 +186,11 @@ impl Theme {
     /// Canonical, locale-independent ID generated from the manifest.
     pub fn id(self) -> &'static str {
         self.contract().id
+    }
+
+    /// Whether the Visual Genome manifest permits this theme on the early-boot surface.
+    pub fn boot_allowed(self) -> bool {
+        self.contract().boot_allowed
     }
 
     /// Select a bounded procedural geometry family generated from the manifest.
@@ -385,6 +391,30 @@ mod public_contract_tests {
             assert!((0.0..=1.0).contains(&growth));
             assert!((0.0..=1.0).contains(&pulse));
             assert!((0.0..=1.0).contains(&parallax));
+        }
+    }
+}
+
+
+#[cfg(test)]
+mod boot_surface_tests {
+    use super::Theme;
+
+    #[test]
+    fn boot_surface_allowlist_matches_visual_genome_policy() {
+        let disallowed = [
+            Theme::CosmicAtlas,
+            Theme::OceanicIntelligence,
+            Theme::PrismOfEvidence,
+            Theme::QuantumGarden,
+        ];
+        for theme in Theme::ALL {
+            assert_eq!(
+                theme.boot_allowed(),
+                !disallowed.contains(&theme),
+                "unexpected boot surface policy for {}",
+                theme.id(),
+            );
         }
     }
 }

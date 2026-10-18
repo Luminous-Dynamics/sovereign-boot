@@ -52,6 +52,16 @@ fn frame_wait_before_deadline(
 fn main() {
     let args = parse_args();
 
+    // The same manifest owns theme availability on each surface. Reject a desktop-only
+    // theme before reading boot evidence, opening DRM, or taking any display resources.
+    if !args.theme.boot_allowed() {
+        eprintln!(
+            "quicken-fb: theme '{}' is not permitted on the boot surface",
+            args.theme.id(),
+        );
+        std::process::exit(2);
+    }
+
     // This process is decorative, so unavailable state evidence skips the
     // animation rather than holding up boot. Contents are deliberately not read.
     match (&args.receipt_path, &args.lineage_path) {
