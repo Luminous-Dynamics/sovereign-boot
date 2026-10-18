@@ -232,10 +232,10 @@ impl ProgressMonitor {
             ) else {
                 continue;
             };
-            let partition_marker = sysfs_dev_block
-                .join(format!("{major}:{minor}"))
-                .join("partition");
-            if partition_marker.exists() {
+            let device_entry = sysfs_dev_block.join(format!("{major}:{minor}"));
+            // Unknown devices are omitted rather than risking partition double-counting.
+            // A present partition marker identifies a partition regardless of naming.
+            if !device_entry.exists() || device_entry.join("partition").exists() {
                 continue;
             }
             total = total.saturating_add(sectors.saturating_mul(512));
@@ -385,10 +385,13 @@ mod diskstats_tests {
             "quicken-diskstats-{}-{nonce}",
             std::process::id()
         ));
+        for device in ["8:0", "259:0"] {
+            fs::create_dir_all(root.join(device)).expect("create fake whole-device sysfs entry");
+        }
         for device in ["8:1", "259:1"] {
             let partition = root.join(device).join("partition");
             fs::create_dir_all(partition.parent().expect("partition parent"))
-                .expect("create fake sysfs entry");
+                .expect("create fake partition sysfs entry");
             fs::write(partition, b"1").expect("write partition marker");
         }
 
@@ -406,6 +409,15 @@ mod diskstats_tests {
         );
 
         fs::remove_dir_all(root).expect("remove fake sysfs tree");
+    }
+
+    #[test]
+    fn diskstats_omits_devices_when_sysfs_cannot_classify_them() {
+        let sample = "8 0 sda 1 0 1 0 2 0 4 0\n";
+        assert_eq!(
+            ProgressMonitor::sum_diskstats_write_bytes(sample, Path::new("/missing/sysfs")),
+            0,
+        );
     }
 
     #[test]
