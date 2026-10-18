@@ -15,6 +15,11 @@ use drm::control::{self, Device as ControlDevice, Mode, ResourceHandles};
 use std::fs::{File, OpenOptions};
 use std::os::unix::io::{AsFd, BorrowedFd};
 
+/// Maximum width or height accepted from a reported DRM mode.
+const MAX_FRAMEBUFFER_DIMENSION: u32 = 16_384;
+/// Bound CPU and DRM pixel buffers to about 144 MB each at 32 bpp.
+const MAX_FRAMEBUFFER_PIXELS: u64 = 36_000_000;
+
 /// A DRM card device wrapper implementing the drm traits.
 struct Card(File);
 
@@ -46,6 +51,7 @@ pub enum DrmError {
     NoMode,
     NoEncoder,
     NoCrtc,
+    InvalidModeDimensions { width: u32, height: u32 },
     ResourceQuery(std::io::Error),
     BufferCreate(std::io::Error),
     BufferMap(std::io::Error),
@@ -61,6 +67,10 @@ impl std::fmt::Display for DrmError {
             Self::NoMode => write!(f, "no display mode available"),
             Self::NoEncoder => write!(f, "no encoder for connector"),
             Self::NoCrtc => write!(f, "no CRTC available"),
+            Self::InvalidModeDimensions { width, height } => write!(
+                f,
+                "display mode {width}x{height} exceeds the bounded framebuffer budget"
+            ),
             Self::ResourceQuery(e) => write!(f, "DRM resource query failed: {e}"),
             Self::BufferCreate(e) => write!(f, "dumb buffer creation failed: {e}"),
             Self::BufferMap(e) => write!(f, "dumb buffer map failed: {e}"),
@@ -81,6 +91,8 @@ pub struct DrmFramebuffer {
     pub width: u32,
     /// Display height in pixels.
     pub height: u32,
+    /// Validated row-major pixel count for the CPU render buffer.
+    pub pixel_count: usize,
     /// Stride in bytes (may be > width * 4 due to alignment).
     pub stride: u32,
     /// The display mode being used.
@@ -92,6 +104,24 @@ pub struct DrmFramebuffer {
 }
 
 impl DrmFramebuffer {
+    /// Validate a display mode before allocating its DRM or CPU pixel buffers.
+    fn checked_pixel_count(width: u32, height: u32) -> Result<usize, DrmError> {
+        let invalid = DrmError::InvalidModeDimensions { width, height };
+        let pixels = u64::from(width)
+            .checked_mul(u64::from(height))
+            .ok_or(invalid)?;
+        if width == 0
+            || height == 0
+            || width > MAX_FRAMEBUFFER_DIMENSION
+            || height > MAX_FRAMEBUFFER_DIMENSION
+            || pixels > MAX_FRAMEBUFFER_PIXELS
+        {
+            return Err(DrmError::InvalidModeDimensions { width, height });
+        }
+        usize::try_from(pixels)
+            .map_err(|_| DrmError::InvalidModeDimensions { width, height })
+    }
+
     /// Open a DRM device at the given path (e.g., "/dev/dri/card0"),
     /// find the first connected display, set up a framebuffer.
     pub fn open(device_path: &str) -> Result<Self, DrmError> {
@@ -115,6 +145,8 @@ impl DrmFramebuffer {
 
         let width = mode.size().0 as u32;
         let height = mode.size().1 as u32;
+        // Validate before asking the DRM driver for a potentially large allocation.
+        let pixel_count = Self::checked_pixel_count(width, height)?;
 
         // Create dumb buffer (32bpp XRGB8888)
         let db = card
@@ -137,6 +169,7 @@ impl DrmFramebuffer {
             fb,
             width,
             height,
+            pixel_count,
             stride,
             mode,
             dumb_buffer: db,
@@ -245,3 +278,25 @@ impl Drop for DrmFramebuffer {
 // SAFETY: The dumb buffer is tied to the Card file descriptor lifetime.
 // Access is single-threaded (animation loop).
 unsafe impl Send for DrmFramebuffer {}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accepts_bounded_hd_4k_and_8k_modes() {
+        assert_eq!(DrmFramebuffer::checked_pixel_count(1920, 1080).unwrap(), 2_073_600);
+        assert_eq!(DrmFramebuffer::checked_pixel_count(3840, 2160).unwrap(), 8_294_400);
+        assert_eq!(DrmFramebuffer::checked_pixel_count(7680, 4320).unwrap(), 33_177_600);
+        assert_eq!(DrmFramebuffer::checked_pixel_count(8192, 4320).unwrap(), 35_389_440);
+    }
+
+    #[test]
+    fn rejects_zero_axes_and_oversized_dimensions() {
+        assert!(DrmFramebuffer::checked_pixel_count(0, 1080).is_err());
+        assert!(DrmFramebuffer::checked_pixel_count(1920, 0).is_err());
+        assert!(DrmFramebuffer::checked_pixel_count(MAX_FRAMEBUFFER_DIMENSION + 1, 1).is_err());
+        assert!(DrmFramebuffer::checked_pixel_count(16_384, 2_198).is_err());
+    }
+}

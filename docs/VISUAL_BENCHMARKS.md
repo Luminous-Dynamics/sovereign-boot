@@ -41,6 +41,10 @@ These are engineering targets for qualification, not claims about the current re
 
 The RTX 2070 Laptop GPU is the initial desktop reference only if the machine is available for local measurement. Do not claim that target passed from CI on a different device. GPU telemetry is vendor-dependent; when unavailable, label power and utilization unmeasured instead of estimating them.
 
+## Bounded early-boot framebuffer allocation
+
+The DRM mode is checked before creating the dumb buffer: width and height must each be at most 16,384 pixels, and the total must not exceed 36,000,000 pixels. The validated pixel count is then reused for the CPU render buffer, avoiding a second unchecked u32 width × height multiplication. This admits common 4K and 8K modes while rejecting zero-sized and pathological modes before large display allocations. At the cap, each 32-bpp pixel buffer is approximately 144 MB (about 137 MiB); that is a buffer-size bound, not a claim that total process RSS is bounded to the same amount. No host boot-time or real hardware performance claim follows from these unit tests.
+
 ## GPU CI throughput baseline
 
 In addition to the ten low-resolution theme-identity captures, CI runs a 60-pass, 320×180 offscreen Vulkan workload on the installed Mesa software adapter. The receipt reports CPU command recording/submission, end-to-end readback, setup, and optional timestamp-query distributions with both the reviewed source-head SHA and the actual build SHA. This is a workload/receipt integration baseline, not a 1080p frame-rate claim and not a discrete-GPU measurement. Use the same command at increasing resolutions on the target GPU before applying the proposed desktop targets.

@@ -92,8 +92,7 @@ fn main() {
     let mut progress = ProgressMonitor::new(args.progress_pipe.as_deref());
 
     // Allocate render buffer (row-major, no stride padding)
-    let buf_size = (fb.width * fb.height) as usize;
-    let mut render_buf = vec![0u32; buf_size];
+    let mut render_buf = vec![0u32; fb.pixel_count];
 
     let frame_duration = Duration::from_millis(args.motion.frame_interval_ms());
     // SIGTERM handoff must stay below systemd's 750 ms stop deadline even when
