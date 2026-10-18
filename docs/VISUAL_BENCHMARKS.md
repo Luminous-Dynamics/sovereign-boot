@@ -373,3 +373,9 @@ parameter ranges before emitting Rust. New fields therefore require an intention
 revision rather than silently disappearing from generated code. CI includes negative
 controls for an undeclared theme field and invalid shader variant as well as malformed
 colors, duplicate IDs and out-of-range profile parameters.
+
+
+Additional adversarial generator fixtures prove fail-closed handling of a missing required
+palette role, an attempt to enable remote renderer assets, and a non-monotonic low-power
+budget. These are schema/contract tests; they do not imply the current manifests have been
+visually qualified or that the budgets have measured energy savings.

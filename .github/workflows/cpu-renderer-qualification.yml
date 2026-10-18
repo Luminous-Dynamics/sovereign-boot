@@ -433,6 +433,21 @@ jobs:
             echo "generator accepted an out-of-range shader variant"
             exit 1
           fi
+          jq '.themes[0].palette |= del(.primary)' themes/visual-genome-v1.json > "$RUNNER_TEMP/visual-genome-missing-palette-role.json"
+          if jq -r -f validation/visual-genome-rust.jq "$RUNNER_TEMP/visual-genome-missing-palette-role.json" > "$RUNNER_TEMP/visual-genome-missing-palette-role.rs" 2> "$RUNNER_TEMP/visual-genome-missing-palette-role.log"; then
+            echo "generator accepted a missing required palette role"
+            exit 1
+          fi
+          jq '.renderer_policy.remote_assets = true' themes/visual-genome-v1.json > "$RUNNER_TEMP/visual-genome-unsafe-renderer-policy.json"
+          if jq -r -f validation/visual-genome-rust.jq "$RUNNER_TEMP/visual-genome-unsafe-renderer-policy.json" > "$RUNNER_TEMP/visual-genome-unsafe-renderer-policy.rs" 2> "$RUNNER_TEMP/visual-genome-unsafe-renderer-policy.log"; then
+            echo "generator accepted an unsafe renderer policy"
+            exit 1
+          fi
+          jq '.motion_profiles["low-power"].particle_budget_scale = 0.9' themes/visual-genome-v1.json > "$RUNNER_TEMP/visual-genome-nonmonotonic-budget.json"
+          if jq -r -f validation/visual-genome-rust.jq "$RUNNER_TEMP/visual-genome-nonmonotonic-budget.json" > "$RUNNER_TEMP/visual-genome-nonmonotonic-budget.rs" 2> "$RUNNER_TEMP/visual-genome-nonmonotonic-budget.log"; then
+            echo "generator accepted a non-monotonic motion/particle budget ladder"
+            exit 1
+          fi
 
       - name: Materialize isolated renderer source
         run: |

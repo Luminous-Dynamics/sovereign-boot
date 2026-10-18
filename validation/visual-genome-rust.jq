@@ -44,7 +44,7 @@ def valid_surfaces:
   type == "array"
     and length >= 1 and length <= 3
     and all(.[]; . == "boot" or . == "desktop" or . == "lockscreen")
-    and (unique | length) == length;
+    and ((unique | length) == length);
 def valid_theme:
   . as $theme
   | ($theme | exact_keys(["art_direction", "density", "growth_profile", "id", "implementation_status", "live_data", "motion", "name", "palette", "reduced_motion_variant", "scene_family", "shader_variant", "surfaces"]))
