@@ -92,9 +92,23 @@ async fn render(config: Config) -> Result<(), String> {
     } else {
         parsed_palette
     };
-    let motion = manifest["motion_profiles"][&config.motion]["motion_scale"]
+    let motion_profile = &manifest["motion_profiles"][&config.motion];
+    let motion = motion_profile["motion_scale"]
         .as_f64()
         .ok_or_else(|| format!("unknown motion profile '{}'", config.motion))? as f32;
+    let particle_budget_scale = motion_profile["particle_budget_scale"]
+        .as_f64()
+        .ok_or_else(|| format!("motion profile '{}' has no particle budget", config.motion))? as f32;
+    let crossfade_ms = motion_profile["crossfade_ms"]
+        .as_u64()
+        .ok_or_else(|| format!("motion profile '{}' has no crossfade duration", config.motion))?;
+    if !motion.is_finite() || !(0.0..=1.0).contains(&motion)
+        || !particle_budget_scale.is_finite()
+        || !(0.0..=1.0).contains(&particle_budget_scale)
+        || !(50..=2000).contains(&crossfade_ms)
+    {
+        return Err(format!("motion profile '{}' is outside the renderer's bounded contract", config.motion));
+    }
 
     let setup_started = std::time::Instant::now();
     let backends = match config.backend {
@@ -178,7 +192,14 @@ async fn render(config: Config) -> Result<(), String> {
         multiview_mask: None,
         cache: None,
     });
-    let uniform_values = uniform_values(config.width, config.height, config.time, motion, palette);
+    let uniform_values = uniform_values(
+        config.width,
+        config.height,
+        config.time,
+        motion,
+        particle_budget_scale,
+        palette,
+    );
     let uniform_bytes = floats_as_le_bytes(&uniform_values);
     if uniform_values.len() != 28 || uniform_bytes.len() != 112 {
         return Err("host uniform layout must be exactly 28 float32 values (112 bytes)".to_string());
@@ -387,6 +408,10 @@ async fn render(config: Config) -> Result<(), String> {
         "scene_family_index": palette.scene_family_index,
         "neutral_palette": config.neutral_palette,
         "motion_mode": config.motion,
+        "motion_scale": motion,
+        "particle_budget_scale": particle_budget_scale,
+        "crossfade_ms": crossfade_ms,
+        "crossfade_applied": false,
         "time_seconds": config.time,
         "output_format": "P6 PPM decoded from an Rgba8UnormSrgb offscreen texture",
         "capture_structure": capture_structure,
@@ -507,7 +532,14 @@ fn linear(channel: u8) -> f32 {
     if v <= 0.04045 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
 }
 
-fn uniform_values(w: u32, h: u32, time: f32, motion: f32, p: Palette) -> Vec<f32> {
+fn uniform_values(
+    w: u32,
+    h: u32,
+    time: f32,
+    motion: f32,
+    particle_budget_scale: f32,
+    p: Palette,
+) -> Vec<f32> {
     let mut v = Vec::with_capacity(28);
     v.extend([w as f32, h as f32, time, motion]);
     v.extend(p.background);
@@ -515,8 +547,8 @@ fn uniform_values(w: u32, h: u32, time: f32, motion: f32, p: Palette) -> Vec<f32
     v.extend(p.secondary);
     v.extend(p.node);
     v.extend(p.convergence);
-    // A final vec4 keeps WGSL uniform alignment stable at 112 bytes.
-    v.extend([p.scene_family_index as f32, 0.0, 0.0, 0.0]);
+    // Keep the 112-byte vec4-aligned ABI; y carries the particle budget.
+    v.extend([p.scene_family_index as f32, particle_budget_scale, 0.0, 0.0]);
     v
 }
 
@@ -660,6 +692,30 @@ mod tests {
         assert_eq!(p.background[3],1.0);
         assert_eq!(p.convergence[3],0.0);
         assert_eq!(m["motion_profiles"]["reduced"]["motion_scale"].as_f64(),Some(0.0));
+        assert_eq!(m["motion_profiles"]["reduced"]["particle_budget_scale"].as_f64(),Some(0.0));
+        assert_eq!(m["motion_profiles"]["low-power"]["particle_budget_scale"].as_f64(),Some(0.25));
+        assert_eq!(m["motion_profiles"]["balanced"]["particle_budget_scale"].as_f64(),Some(0.6));
+        assert_eq!(m["motion_profiles"]["cinematic"]["particle_budget_scale"].as_f64(),Some(1.0));
+    }
+
+    #[test]
+    fn budget_uniform_preserves_layout_and_is_bounded_by_manifest_profiles() {
+        let manifest: Value = serde_json::from_str(MANIFEST).unwrap();
+        for (mode, expected) in [
+            ("reduced", 0.0),
+            ("low-power", 0.25),
+            ("balanced", 0.6),
+            ("cinematic", 1.0),
+        ] {
+            let actual = manifest["motion_profiles"][mode]["particle_budget_scale"]
+                .as_f64().expect("budget scale") as f32;
+            assert_eq!(actual, expected);
+            let palette = palette_for_theme(&manifest, "cosmic-atlas").unwrap();
+            let values = uniform_values(160, 90, 0.0, 0.0, actual, palette);
+            assert_eq!(values.len(), 28);
+            assert_eq!(values[25], expected);
+            assert_eq!(floats_as_le_bytes(&values).len(), 112);
+        }
     }
 
     #[test]
@@ -672,10 +728,11 @@ mod tests {
     fn uniform_layout_is_exactly_one_hundred_twelve_bytes() {
         let m: Value = serde_json::from_str(MANIFEST).unwrap();
         let p=palette_for_theme(&m,"mycelial-genesis").unwrap();
-        let vals=uniform_values(640,360,0.5,0.65,p);
+        let vals=uniform_values(640,360,0.5,0.65,0.25,p);
         assert_eq!(vals.len(),28);
         assert_eq!(floats_as_le_bytes(&vals).len(),112);
         assert_eq!(vals[24], p.scene_family_index as f32);
+        assert_eq!(vals[25], 0.25);
     }
 
     #[test]

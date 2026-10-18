@@ -938,6 +938,23 @@ jobs:
             exit 1
           fi
 
+          # Neutralize time-driven motion so differences isolate manifest particle budgets.
+          : > "$RUNNER_TEMP/wgpu-particle-budget-hashes.txt"
+          for motion in low-power balanced cinematic; do
+            capture="$RUNNER_TEMP/wgpu-particle-budget-$motion.ppm"
+            receipt="$RUNNER_TEMP/wgpu-particle-budget-$motion.json"
+            expected_budget="$(jq -r --arg motion "$motion" '.motion_profiles[$motion].particle_budget_scale' themes/visual-genome-v1.json)"
+            cargo run --manifest-path validation/wgpu-reference/Cargo.toml --locked --release -- \
+              --backend vulkan --force-fallback --theme cosmic-atlas --motion "$motion" --time 0 \
+              --width 128 --height 72 --frames 1 --output "$capture" > "$receipt"
+            jq -e --arg motion "$motion" --argjson budget "$expected_budget" \
+              '.motion_mode == $motion and .time_seconds == 0 and .particle_budget_scale == $budget and .crossfade_applied == false' "$receipt"
+            printf '%s %s %s\n' "$motion" "$expected_budget" "$(sha256sum "$capture" | awk '{print $1}')" >> "$RUNNER_TEMP/wgpu-particle-budget-hashes.txt"
+          done
+          test "$(wc -l < "$RUNNER_TEMP/wgpu-particle-budget-hashes.txt")" -eq 3
+          test "$(awk '{print $3}' "$RUNNER_TEMP/wgpu-particle-budget-hashes.txt" | sort -u | wc -l)" -eq 3
+          sha256sum "$RUNNER_TEMP/wgpu-particle-budget-"*.json "$RUNNER_TEMP/wgpu-particle-budget-"*.ppm >> "$RUNNER_TEMP/wgpu-reference-shader-ab-sha256.txt"
+
           # Higher-workload software-adapter throughput sample; this is not a
           # substitute for the same protocol on the laptop's discrete GPU.
           cargo run --manifest-path validation/wgpu-reference/Cargo.toml --locked --release -- \

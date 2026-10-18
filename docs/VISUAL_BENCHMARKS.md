@@ -345,3 +345,15 @@ behavior from only the slowest and fastest endpoints.
 Each benchmark helper applies the same generated particle-budget and crossfade contracts
 as the early-boot binary. Current CI evidence is still a CPU reference measurement; it
 does not substitute for physical-display captures or real-device power measurement.
+
+
+### GPU reference budget parity
+
+The WGPU reference passes the manifest's particle-budget scale through the existing
+`style.y` uniform slot, preserving the 28-float / 112-byte ABI. Both baseline and
+specialized shaders use that value to scale cosmic star density in animated modes; zero
+motion retains the complete static star field. A GPU test renders the cosmic family at
+time zero for Low Power, Balanced and Cinematic so motion amplitude is held constant at
+zero effective phase, making image differences evidence of the budget field rather than
+scene-time animation. Receipts record the selected budget and explicitly say that the
+single-frame offscreen tool does not apply the boot-entry crossfade lifecycle.
