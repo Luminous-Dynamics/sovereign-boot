@@ -36,6 +36,19 @@ const MAX_BOOT_EVIDENCE_BYTES: u64 = 64 * 1024;
 /// Global flag set by signal handler.
 static SHUTDOWN: AtomicBool = AtomicBool::new(false);
 
+/// Time to sleep before the frame deadline, leaving a small scheduler-jitter margin.
+/// None means the frame deadline has arrived or passed.
+fn frame_wait_before_deadline(
+    elapsed: Duration,
+    frame_interval: Duration,
+    scheduling_margin: Duration,
+) -> Option<Duration> {
+    if elapsed >= frame_interval {
+        return None;
+    }
+    Some((frame_interval - elapsed).saturating_sub(scheduling_margin))
+}
+
 fn main() {
     let args = parse_args();
 
@@ -138,16 +151,18 @@ fn main() {
             frame_duration
         };
         let elapsed_since_frame = now.duration_since(last_frame);
-        if elapsed_since_frame < current_frame_duration {
-            // Sleep to just before the deadline instead of waking every 500 us.
-            // The small margin absorbs timer jitter; the next iteration rechecks
-            // signals and the actual elapsed time before rendering.
-            let remaining = current_frame_duration - elapsed_since_frame;
-            let scheduling_margin = Duration::from_millis(1);
-            if remaining > scheduling_margin {
-                std::thread::sleep(remaining - scheduling_margin);
-            } else {
+        let scheduling_margin = Duration::from_millis(1);
+        if let Some(wait) = frame_wait_before_deadline(
+            elapsed_since_frame,
+            current_frame_duration,
+            scheduling_margin,
+        ) {
+            // Sleep close to the frame deadline instead of waking every 500 us.
+            // Recheck signals and actual elapsed time before rendering.
+            if wait.is_zero() {
                 std::thread::yield_now();
+            } else {
+                std::thread::sleep(wait);
             }
             continue;
         }
@@ -505,6 +520,46 @@ mod tests {
     use super::*;
     use std::os::unix::fs::symlink;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn frame_wait_sleeps_to_within_margin_of_deadline() {
+        assert_eq!(
+            frame_wait_before_deadline(
+                Duration::from_millis(10),
+                Duration::from_millis(33),
+                Duration::from_millis(1),
+            ),
+            Some(Duration::from_millis(22)),
+        );
+    }
+
+    #[test]
+    fn frame_wait_yields_near_deadline_and_stops_waiting_after_deadline() {
+        assert_eq!(
+            frame_wait_before_deadline(
+                Duration::from_millis(32),
+                Duration::from_millis(33),
+                Duration::from_millis(1),
+            ),
+            Some(Duration::ZERO),
+        );
+        assert_eq!(
+            frame_wait_before_deadline(
+                Duration::from_millis(33),
+                Duration::from_millis(33),
+                Duration::from_millis(1),
+            ),
+            None,
+        );
+        assert_eq!(
+            frame_wait_before_deadline(
+                Duration::from_millis(250),
+                Duration::from_millis(67),
+                Duration::from_millis(1),
+            ),
+            None,
+        );
+    }
 
     #[test]
     fn boot_state_artifact_check_rejects_symlinks_and_oversized_files() {
