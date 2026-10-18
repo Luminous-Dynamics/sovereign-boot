@@ -25,9 +25,9 @@ const SCENE_ENTRY_FADE_START: f32 = 1.0;
 /// Default scene-entry crossfade used by the compatibility constructor, in seconds.
 const DEFAULT_SCENE_ENTRY_FADE_DURATION: f32 = 0.4;
 /// Minimum allowed configured scene-entry crossfade, in seconds.
-const MIN_DEFAULT_SCENE_ENTRY_FADE_DURATION: f32 = 0.05;
+const MIN_SCENE_ENTRY_FADE_DURATION: f32 = 0.05;
 /// Maximum allowed configured scene-entry crossfade, in seconds.
-const MAX_DEFAULT_SCENE_ENTRY_FADE_DURATION: f32 = 2.0;
+const MAX_SCENE_ENTRY_FADE_DURATION: f32 = 2.0;
 
 /// A single branch of the mycelial network.
 #[derive(Debug, Clone)]
@@ -109,6 +109,8 @@ pub struct MycelialNetwork {
     pub growth_profile: GrowthProfile,
     /// Motion multiplier shared by growth, scene time and accessibility modes.
     pub motion_scale: f32,
+    /// Animated star/constellation work budget in [0, 1].
+    pub particle_budget_scale: f32,
 }
 
 impl MycelialNetwork {
@@ -133,7 +135,11 @@ impl MycelialNetwork {
         let star_seed = *blake3::hash(&star_seed_input).as_bytes();
         let mut star_rng = StdRng::from_seed(star_seed);
         let area = (width.max(1) as u64).saturating_mul(height.max(1) as u64);
-        let star_count = (area / 25_000).clamp(32, 160) as usize;
+        let star_count = if theme.scene_kind() == SceneKind::CosmicCartography {
+            (area / 25_000).clamp(32, 160) as usize
+        } else {
+            0
+        };
         let safe_width = width.max(1) as f32;
         let safe_height = height.max(1) as f32;
         let stars = (0..star_count)
@@ -163,6 +169,7 @@ impl MycelialNetwork {
             palette,
             growth_profile,
             motion_scale: 1.0,
+            particle_budget_scale: 1.0,
         };
 
         // Seed a bounded theme-specific number of branches around the center.
@@ -188,6 +195,27 @@ impl MycelialNetwork {
         };
     }
 
+    /// Scale cosmic star and constellation rendering work for animated modes.
+    ///
+    /// When motion is fully reduced, the renderer preserves the complete deterministic
+    /// still composition; this budget governs animation workload, not theme identity.
+    pub fn set_particle_budget_scale(&mut self, scale: f32) {
+        self.particle_budget_scale = if scale.is_finite() {
+            scale.clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+    }
+
+    fn rendered_star_count(&self) -> usize {
+        if self.motion_scale <= 0.0 {
+            self.stars.len()
+        } else {
+            ((self.stars.len() as f32 * self.particle_budget_scale).ceil() as usize)
+                .min(self.stars.len())
+        }
+    }
+
     /// Configure the entry crossfade duration in seconds.
     ///
     /// Non-finite values restore the compatibility default; finite values are
@@ -195,8 +223,8 @@ impl MycelialNetwork {
     pub fn set_scene_entry_fade_duration(&mut self, duration_seconds: f32) {
         self.scene_entry_fade_duration = if duration_seconds.is_finite() {
             duration_seconds.clamp(
-                MIN_DEFAULT_SCENE_ENTRY_FADE_DURATION,
-                MAX_DEFAULT_SCENE_ENTRY_FADE_DURATION,
+                MIN_SCENE_ENTRY_FADE_DURATION,
+                MAX_SCENE_ENTRY_FADE_DURATION,
             )
         } else {
             DEFAULT_SCENE_ENTRY_FADE_DURATION
@@ -911,10 +939,12 @@ impl MycelialNetwork {
         let contraction = ((self.contraction - 0.65) / 0.35).clamp(0.0, 1.0);
 
         // Connect only nearby neighbors: a loose atlas, never a dense wireframe.
-        for (index, star) in self.stars.iter().enumerate() {
+        let visible_star_count = self.rendered_star_count();
+        let visible_stars = &self.stars[..visible_star_count];
+        for (index, star) in visible_stars.iter().enumerate() {
             let candidates = [index + 1, index + 3];
             for next_index in candidates {
-                let Some(next) = self.stars.get(next_index) else {
+                let Some(next) = visible_stars.get(next_index) else {
                     continue;
                 };
                 let dx = star.position.0 - next.position.0;
@@ -946,7 +976,7 @@ impl MycelialNetwork {
             }
         }
 
-        for star in &self.stars {
+        for star in visible_stars {
             let position = (
                 star.position.0 + (self.center.0 - star.position.0) * contraction,
                 star.position.1 + (self.center.1 - star.position.1) * contraction,
@@ -1596,6 +1626,44 @@ mod tests {
             default.growth_profile.growth_speed,
             themed_a.growth_profile.growth_speed
         );
+    }
+
+    #[test]
+    fn particle_budget_bounds_animated_star_work_but_preserves_reduced_still_scene() {
+        let mut network = MycelialNetwork::new_with_theme(
+            320,
+            180,
+            "particle-budget",
+            Theme::CosmicAtlas,
+        );
+        let total_stars = network.stars.len();
+        assert!(total_stars >= 32);
+
+        network.set_motion_scale(1.0);
+        network.set_particle_budget_scale(0.25);
+        assert_eq!(
+            network.rendered_star_count(),
+            ((total_stars as f32) * 0.25).ceil() as usize
+        );
+
+        network.set_particle_budget_scale(f32::NAN);
+        assert_eq!(network.particle_budget_scale, 0.0);
+        assert_eq!(network.rendered_star_count(), 0);
+
+        network.set_motion_scale(0.0);
+        assert_eq!(
+            network.rendered_star_count(),
+            total_stars,
+            "reduced motion should preserve the complete deterministic still composition"
+        );
+
+        let non_cosmic = MycelialNetwork::new_with_theme(
+            320,
+            180,
+            "no-unneeded-stars",
+            Theme::MycelialGenesis,
+        );
+        assert!(non_cosmic.stars.is_empty());
     }
 
     #[test]

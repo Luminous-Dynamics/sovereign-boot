@@ -318,3 +318,15 @@ The scene-entry crossfade duration is sourced from the motion-mode manifest and 
 the CPU renderer; it is bounded to 50 ms–2 s, matching the generator validator. The default
 constructor retains the 400 ms compatibility value. Tests cover configured midpoint behavior,
 invalid duration fallback, and lower/upper bounds.
+
+
+### CPU motion-budget semantics
+
+The CPU renderer consumes each motion-mode field that it can currently execute.
+The scene-entry crossfade duration configures the actual smoothstep transition and is
+bounded to 50 ms–2 s. The particle-budget scale limits cosmic star and constellation
+draw work for animated modes; at zero motion, the complete deterministic still scene is
+retained so an accessibility mode does not erase the theme's identity. Themes outside
+the cosmic-cartography family no longer allocate an unused star field. This current
+particle budget is scoped to the CPU renderer's star/constellation elements; it is not
+a general claim that every procedural line/shape is throttled by that value.
