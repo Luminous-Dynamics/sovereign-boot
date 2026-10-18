@@ -99,10 +99,6 @@ fn main() {
     network.set_motion_scale(args.motion.scale());
     network.set_scene_entry_fade_duration(args.motion.crossfade_ms() as f32 / 1_000.0);
     network.set_particle_budget_scale(args.motion.particle_budget_scale());
-    if args.motion == MotionMode::Reduced {
-        // Enter directly at the still composition rather than playing the intro.
-        network.elapsed = 8.0;
-    }
     let (contraction_duration, convergence_hold, fade_duration) =
         args.motion.transition_durations();
 

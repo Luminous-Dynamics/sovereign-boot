@@ -1611,6 +1611,7 @@ mod tests {
             scene.set_motion_scale(0.0);
             let mut frame = vec![0u32; 160 * 90];
             scene.render(&mut frame);
+            assert_eq!(scene.elapsed, 0.0, "Reduced theme {} must not mutate simulation time", theme.id());
             assert!(frame.iter().any(|pixel| *pixel != frame[0]),
                 "Reduced theme {} should be visible on the first frame", theme.id());
         }
