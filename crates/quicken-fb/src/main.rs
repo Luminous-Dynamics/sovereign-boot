@@ -298,7 +298,7 @@ fn parse_args() -> Args {
     let args: Vec<String> = std::env::args().collect();
     let mut visual_seed = "symthaea-visual-seed-v1".to_string();
     let mut progress_pipe = None;
-    let mut device = "/dev/dri/card0".to_string();
+    let mut device = "auto".to_string();
     let mut theme = Theme::MycelialGenesis;
     let mut motion = MotionMode::Cinematic;
     let mut receipt_path = None;
@@ -510,7 +510,7 @@ fn validate_state_artifact(path: &str) -> bool {
 }
 
 fn print_usage() {
-    eprintln!("Usage: quicken-fb [OPTIONS]\n  --theme <ID>             Theme ID (default: mycelial-genesis)\n  --list-themes            List supported theme IDs and exit\n  --list-theme-scenes     List theme-to-scene mappings\n  --list-theme-contracts   Print palettes, budgets and surface permissions as TSV\n  --list-motion-modes    List motion budgets and transition timings\n  --motion <MODE>          reduced|low-power|balanced|cinematic\n  --seed <VALUE>           Public visual seed, not a secret (max 256 bytes)\n  --genesis-phrase <VALUE> Legacy alias for --seed\n  --receipt <PATH>         Optional boot-state artifact (presence only)\n  --lineage <PATH>         Optional lineage artifact (presence only)\n  --handoff-path <PATH>    Exit when the compositor marker appears\n  --progress-pipe <PATH>  Optional installer progress FIFO\n  --device <PATH>         DRM device (default: /dev/dri/card0)\n  --help                  Show this help");
+    eprintln!("Usage: quicken-fb [OPTIONS]\n  --theme <ID>             Theme ID (default: mycelial-genesis)\n  --list-themes            List supported theme IDs and exit\n  --list-theme-scenes     List theme-to-scene mappings\n  --list-theme-contracts   Print palettes, budgets and surface permissions as TSV\n  --list-motion-modes    List motion budgets and transition timings\n  --motion <MODE>          reduced|low-power|balanced|cinematic\n  --seed <VALUE>           Public visual seed, not a secret (max 256 bytes)\n  --genesis-phrase <VALUE> Legacy alias for --seed\n  --receipt <PATH>         Optional boot-state artifact (presence only)\n  --lineage <PATH>         Optional lineage artifact (presence only)\n  --handoff-path <PATH>    Exit when the compositor marker appears\n  --progress-pipe <PATH>  Optional installer progress FIFO\n  --device <PATH>         DRM device (default: auto; picks first usable /dev/dri/cardN)\n  --help                  Show this help");
 }
 
 /// Install SIGTERM and SIGINT handlers for clean shutdown.
