@@ -330,3 +330,18 @@ retained so an accessibility mode does not erase the theme's identity. Themes ou
 the cosmic-cartography family no longer allocate an unused star field. This current
 particle budget is scoped to the CPU renderer's star/constellation elements; it is not
 a general claim that every procedural line/shape is throttled by that value.
+
+
+### Four-mode, ten-theme qualification matrix
+
+CI captures and repeats every one of the 40 theme–motion combinations at 640×360 for
+30 measured frames. The matrix asserts ten distinct per-theme framebuffer hashes within
+each motion profile and exactly 40 unique `theme × motion` pairs—missing combinations
+fail closed. Reduced mode must render identical still frames at 10 and 30 steps; Low Power,
+Balanced and Cinematic must advance. Frame-sequence and opposing-transition audits also
+exercise all four modes across all ten themes, rather than extrapolating accessibility
+behavior from only the slowest and fastest endpoints.
+
+Each benchmark helper applies the same generated particle-budget and crossfade contracts
+as the early-boot binary. Current CI evidence is still a CPU reference measurement; it
+does not substitute for physical-display captures or real-device power measurement.

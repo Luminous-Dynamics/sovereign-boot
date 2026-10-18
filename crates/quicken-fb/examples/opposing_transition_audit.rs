@@ -73,6 +73,8 @@ fn main() {
         theme,
     );
     scene.set_motion_scale(motion.scale());
+    scene.set_scene_entry_fade_duration(motion.crossfade_ms() as f32 / 1_000.0);
+    scene.set_particle_budget_scale(motion.particle_budget_scale());
     if motion == MotionMode::Reduced {
         scene.elapsed = 8.0;
     }

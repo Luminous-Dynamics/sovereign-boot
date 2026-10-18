@@ -549,12 +549,12 @@ jobs:
           echo "=== WGSL_CHECK_LOCKFILE_DIFF_END ==="
           cargo run --manifest-path validation/wgsl-check/Cargo.toml --locked -- renderers/wgpu/shaders/mycelial_field.wgsl
 
-      - name: Smoke benchmark all ten scenes in cinematic and reduced modes
+      - name: Smoke benchmark all 40 theme–motion combinations
         run: |
           set -euo pipefail
           : > "$RUNNER_TEMP/visual-artifact-sha256.txt"
           : > "$RUNNER_TEMP/visual-frame-hashes.txt"
-          for motion in cinematic reduced; do
+          for motion in reduced low-power balanced cinematic; do
             for theme in $(jq -r '.themes[].id' themes/visual-genome-v1.json | sort); do
               receipt="$RUNNER_TEMP/cpu-render-benchmark-$motion-$theme.json"
               capture="$RUNNER_TEMP/cpu-scene-$motion-$theme.ppm"
@@ -588,6 +588,9 @@ jobs:
             # Every theme must have distinct pixels within each motion profile.
             test "$(awk -v motion="$motion" '$1 == motion {print $3}' "$RUNNER_TEMP/visual-frame-hashes.txt" | sort -u | wc -l)" -eq 10
           done
+          # Fail closed if any profile/theme pair was skipped.
+          test "$(wc -l < "$RUNNER_TEMP/visual-frame-hashes.txt")" -eq 40
+          test "$(awk '{print $1 " " $2}' "$RUNNER_TEMP/visual-frame-hashes.txt" | sort -u | wc -l)" -eq 40
 
           # Isolate simulation-update cost from pixel rendering and exercise the
           # spatial index at each intended node-count scale.
@@ -597,10 +600,10 @@ jobs:
           sha256sum "$RUNNER_TEMP/cpu-growth-benchmark.json" >> "$RUNNER_TEMP/visual-artifact-sha256.txt"
 
           # Reduced mode must be still even when more simulation steps are requested.
-          # Cinematic mode must advance; this negative control prevents a renderer
-          # that silently freezes every theme from passing the accessibility gate.
+          # Every animated profile must advance; this negative control prevents a
+          # renderer that silently freezes a theme or drops its motion budget.
           for theme in $(jq -r '.themes[].id' themes/visual-genome-v1.json | sort); do
-            for motion in reduced cinematic; do
+            for motion in reduced low-power balanced cinematic; do
               for frames in 10 30; do
                 receipt="$RUNNER_TEMP/motion-check-$motion-$theme-$frames.json"
                 capture="$RUNNER_TEMP/motion-check-$motion-$theme-$frames.ppm"
@@ -623,7 +626,7 @@ jobs:
           # Audit complete sampled frame sequences, not just the final image.
           # The area-change gate is a conservative heuristic; the receipt itself
           # explicitly disclaims normative WCAG flash conformance.
-          for motion in reduced cinematic; do
+          for motion in reduced low-power balanced cinematic; do
             for theme in $(jq -r '.themes[].id' themes/visual-genome-v1.json | sort); do
               receipt="$RUNNER_TEMP/motion-audit-$motion-$theme.json"
               cargo run --manifest-path "$RUNNER_TEMP/quicken-fb/Cargo.toml" --locked --release --example motion_audit -- \
@@ -653,7 +656,7 @@ jobs:
 
           # Pair-aware flash-screen proxy: both transitions in a three-frame window
           # must oppose before an area event is counted. This is not WCAG certification.
-          for motion in reduced cinematic; do
+          for motion in reduced low-power balanced cinematic; do
             for theme in $(jq -r '.themes[].id' themes/visual-genome-v1.json | sort); do
               receipt="$RUNNER_TEMP/opposing-transition-audit-$motion-$theme.json"
               cargo run --manifest-path "$RUNNER_TEMP/quicken-fb/Cargo.toml" --locked --release --example opposing_transition_audit -- --width 160 --height 90 --frames 60 --theme "$theme" --motion "$motion" > "$receipt"
@@ -683,7 +686,7 @@ jobs:
           done
 
           # Determinism control for sequence-level output (two themes/modes).
-          for motion in reduced cinematic; do
+          for motion in reduced low-power balanced cinematic; do
             first="$RUNNER_TEMP/motion-audit-$motion-mycelial-genesis.json"
             repeat="$RUNNER_TEMP/motion-audit-repeat-$motion-mycelial-genesis.json"
             cargo run --manifest-path "$RUNNER_TEMP/quicken-fb/Cargo.toml" --locked --release --example motion_audit -- \
