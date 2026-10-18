@@ -6,7 +6,7 @@
 /// Generates deterministic procedural mycelial growth from a public visual seed.
 /// Renders to a raw pixel buffer using Bresenham's line algorithm — no GPU required.
 use crate::color::Rgba;
-use crate::theme::{GrowthProfile, Palette, SceneKind, Theme};
+use crate::theme::{GrowthProfile, Palette, SceneKind, Theme, ThemeDensity, ThemeMotion};
 use std::collections::HashMap;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -111,6 +111,10 @@ pub struct MycelialNetwork {
     pub motion_scale: f32,
     /// Animated star/constellation work budget in [0, 1].
     pub particle_budget_scale: f32,
+    /// Compiled per-theme density caps.
+    density: ThemeDensity,
+    /// Per-theme growth and pulse intensity, compiled from the manifest.
+    theme_motion: ThemeMotion,
 }
 
 impl MycelialNetwork {
@@ -127,6 +131,8 @@ impl MycelialNetwork {
         let center = (width as f32 / 2.0, height as f32 / 2.0);
         let palette = theme.palette();
         let growth_profile = theme.growth_profile();
+        let density = theme.density();
+        let theme_motion = theme.motion_tuning();
 
         // Stars use a separate deterministic stream so changing scene geometry
         // never perturbs the growth network's random sequence.
@@ -136,7 +142,7 @@ impl MycelialNetwork {
         let mut star_rng = StdRng::from_seed(star_seed);
         let area = (width.max(1) as u64).saturating_mul(height.max(1) as u64);
         let star_count = if theme.scene_kind() == SceneKind::CosmicCartography {
-            (area / 25_000).clamp(32, 160) as usize
+            ((area / 25_000).clamp(32, 768) as usize).min(density.max_particles)
         } else {
             0
         };
@@ -170,6 +176,8 @@ impl MycelialNetwork {
             growth_profile,
             motion_scale: 1.0,
             particle_budget_scale: 1.0,
+            density,
+            theme_motion,
         };
 
         // Seed a bounded theme-specific number of branches around the center.
@@ -208,11 +216,12 @@ impl MycelialNetwork {
     }
 
     fn rendered_star_count(&self) -> usize {
+        let available = self.stars.len().min(self.density.max_particles);
         if self.motion_scale <= 0.0 {
-            self.stars.len()
+            available
         } else {
-            ((self.stars.len() as f32 * self.particle_budget_scale).ceil() as usize)
-                .min(self.stars.len())
+            ((available as f32 * self.particle_budget_scale).ceil() as usize)
+                .min(available)
         }
     }
 
@@ -256,7 +265,9 @@ impl MycelialNetwork {
             }
         }
 
-        let growth_speed = self.growth_profile.growth_speed * io_rate.max(0.05);
+        let growth_speed = self.growth_profile.growth_speed
+            * self.theme_motion.growth
+            * io_rate.max(0.05);
 
         // Grow existing branches and detect the one-time child decisions in
         // the same pass. This avoids a second full-vector scan at every frame.
@@ -319,7 +330,7 @@ impl MycelialNetwork {
                 continue;
             }
 
-            if total_branches + new_branches.len() >= MAX_BRANCHES {
+            if total_branches + new_branches.len() >= self.density.max_branches.min(MAX_BRANCHES) {
                 // No branch can ever be added after the cap is reached. Close all
                 // pending spawn decisions so a saturated network stays allocation-free.
                 for branch in &mut self.branches {
@@ -351,7 +362,7 @@ impl MycelialNetwork {
             let n_children = self.growth_profile.min_children as u32
                 + self.rng.gen_range(0u32..child_variants);
             for _ in 0..n_children {
-                if total_branches + new_branches.len() >= MAX_BRANCHES {
+                if total_branches + new_branches.len() >= self.density.max_branches.min(MAX_BRANCHES) {
                     break;
                 }
                 let fork_angle = self
@@ -545,7 +556,7 @@ impl MycelialNetwork {
 
             // Brightness boost during global pulse
             let color = if self.global_pulse > 0.0 {
-                color.brighten(1.0 + self.global_pulse * self.growth_profile.pulse_gain)
+                color.brighten(1.0 + self.global_pulse * self.growth_profile.pulse_gain * self.theme_motion.pulse)
             } else {
                 color
             };
@@ -730,7 +741,7 @@ impl MycelialNetwork {
                     let edge = Rgba::lerp(
                         self.palette.secondary.with_opacity(alpha),
                         self.palette.primary.with_opacity(alpha + 0.08),
-                        self.global_pulse.clamp(0.0, 1.0),
+                        (self.global_pulse * self.theme_motion.pulse).clamp(0.0, 1.0),
                     );
                     draw_line(
                         buffer, w, h,
@@ -983,7 +994,7 @@ impl MycelialNetwork {
             );
             let twinkle = 0.58 + 0.32 * ((self.elapsed * 0.7 + star.phase).sin() * 0.5 + 0.5);
             let color = Rgba::lerp(self.palette.primary, self.palette.convergence, contraction)
-                .brighten(twinkle + self.global_pulse * 0.25);
+                .brighten(twinkle + self.global_pulse * 0.25 * self.theme_motion.pulse);
             draw_filled_circle(
                 buffer, w, h,
                 position.0.round() as i32,
@@ -1629,6 +1640,43 @@ mod tests {
     }
 
     #[test]
+    fn theme_density_cap_is_enforced_before_branch_creation() {
+        let mut network = MycelialNetwork::new(640, 360, "theme-density-cap");
+        let initial_count = network.branches.len();
+        network.density.max_branches = initial_count;
+
+        for branch in &mut network.branches {
+            branch.growing = false;
+            branch.has_node = true;
+            branch.children_spawned = false;
+            branch.growth_progress = 1.0;
+            branch.end = (branch.start.0 + 10.0, branch.start.1);
+        }
+
+        network.grow(0.25, 1.0);
+        assert_eq!(network.branches.len(), initial_count);
+        assert!(network.branches.len() <= network.density.max_branches);
+    }
+
+    #[test]
+    fn per_theme_growth_multiplier_changes_growth_without_changing_seed() {
+        let mut slow = MycelialNetwork::new_with_theme(
+            320, 180, "theme-motion-contract", Theme::CosmicAtlas
+        );
+        let mut fast = MycelialNetwork::new_with_theme(
+            320, 180, "theme-motion-contract", Theme::CosmicAtlas
+        );
+        slow.theme_motion.growth = 0.2;
+        fast.theme_motion.growth = 1.0;
+        slow.grow(0.1, 1.0);
+        fast.grow(0.1, 1.0);
+        let slow_progress: f32 = slow.branches.iter().map(|branch| branch.growth_progress).sum();
+        let fast_progress: f32 = fast.branches.iter().map(|branch| branch.growth_progress).sum();
+        assert!(fast_progress > slow_progress);
+        assert_eq!(Theme::CosmicAtlas.motion_tuning().pulse, 0.5);
+    }
+
+    #[test]
     fn particle_budget_bounds_animated_star_work_but_preserves_reduced_still_scene() {
         let mut network = MycelialNetwork::new_with_theme(
             320,
@@ -1638,6 +1686,9 @@ mod tests {
         );
         let total_stars = network.stars.len();
         assert!(total_stars >= 32);
+        network.density.max_particles = 3;
+        assert_eq!(network.rendered_star_count(), 3);
+        network.density.max_particles = total_stars;
 
         network.set_motion_scale(1.0);
         network.set_particle_budget_scale(0.25);

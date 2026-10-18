@@ -379,3 +379,18 @@ Additional adversarial generator fixtures prove fail-closed handling of a missin
 palette role, an attempt to enable remote renderer assets, and a non-monotonic low-power
 budget. These are schema/contract tests; they do not imply the current manifests have been
 visually qualified or that the budgets have measured energy savings.
+
+
+### Per-theme runtime contract and honest field scope
+
+The generated Rust contract now includes per-theme `max_branches`, `max_particles`,
+`motion.growth`, `motion.pulse` and `motion.parallax`. CPU growth applies the theme
+growth multiplier; pulse rendering applies its pulse multiplier; branch creation obeys
+the minimum of the per-theme cap and the hard boot safety ceiling; cosmic star allocation
+and rendered-star count obey the per-theme particle cap. The CLI/CI parity receipt is
+expanded to 21 fields and mutation-tests density and theme-motion drift.
+
+The boot renderer has no pointer/camera displacement input, so the compiled parallax
+value is a typed contract for a future input-aware desktop adapter, not an active CPU
+effect today. Art direction, display name, surfaces and implementation status remain
+design/qualification metadata rather than executable boot settings.

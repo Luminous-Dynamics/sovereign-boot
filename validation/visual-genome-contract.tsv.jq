@@ -15,6 +15,11 @@
     .growth_profile.max_fork_angle_degrees,
     .growth_profile.min_children,
     .growth_profile.max_children,
-    .growth_profile.pulse_gain
+    .growth_profile.pulse_gain,
+    .density.max_branches,
+    .density.max_particles,
+    .motion.growth,
+    .motion.pulse,
+    .motion.parallax
   ]
 | @tsv

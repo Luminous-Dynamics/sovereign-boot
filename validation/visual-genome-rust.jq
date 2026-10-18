@@ -130,6 +130,15 @@ def contract($theme):
   + "            max_children: " + ($theme.growth_profile.max_children | tostring) + ",\n"
   + "            pulse_gain: " + f32lit($theme.growth_profile.pulse_gain) + ",\n"
   + "        },\n"
+  + "        density: ThemeDensity {\n"
+  + "            max_branches: " + ($theme.density.max_branches | tostring) + ",\n"
+  + "            max_particles: " + ($theme.density.max_particles | tostring) + ",\n"
+  + "        },\n"
+  + "        motion: ThemeMotion {\n"
+  + "            growth: " + f32lit($theme.motion.growth) + ",\n"
+  + "            pulse: " + f32lit($theme.motion.pulse) + ",\n"
+  + "            parallax: " + f32lit($theme.motion.parallax) + ",\n"
+  + "        },\n"
   + "    }";
 def motion_contract($entry):
   "    MotionModeContract {\n"

@@ -308,6 +308,8 @@ fn parse_args() -> Args {
                 for theme in Theme::ALL {
                     let palette = theme.palette();
                     let growth = theme.growth_profile();
+                    let density = theme.density();
+                    let motion = theme.motion_tuning();
                     println!(
                         concat!(
                             "{}\t{}\t",
@@ -316,7 +318,7 @@ fn parse_args() -> Args {
                             "#{:02x}{:02x}{:02x}\t",
                             "#{:02x}{:02x}{:02x}\t",
                             "#{:02x}{:02x}{:02x}\t",
-                            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}"
+                            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}"
                         ),
                         theme.id(),
                         theme.scene_kind().id(),
@@ -333,7 +335,12 @@ fn parse_args() -> Args {
                         growth.max_fork_angle_degrees,
                         growth.min_children,
                         growth.max_children,
-                        growth.pulse_gain
+                        growth.pulse_gain,
+                        density.max_branches,
+                        density.max_particles,
+                        motion.growth,
+                        motion.pulse,
+                        motion.parallax
                     );
                 }
                 std::process::exit(0);

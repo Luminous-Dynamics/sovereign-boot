@@ -38,6 +38,15 @@ const GENERATED_THEME_CONTRACTS: [ThemeContract; 10] = [
             max_children: 3,
             pulse_gain: 0.8,
         },
+        density: ThemeDensity {
+            max_branches: 8192,
+            max_particles: 0,
+        },
+        motion: ThemeMotion {
+            growth: 1.0,
+            pulse: 0.8,
+            parallax: 0.0,
+        },
     },
     ThemeContract {
         theme: Theme::SolarCommons,
@@ -61,6 +70,15 @@ const GENERATED_THEME_CONTRACTS: [ThemeContract; 10] = [
             min_children: 1,
             max_children: 2,
             pulse_gain: 0.7,
+        },
+        density: ThemeDensity {
+            max_branches: 8192,
+            max_particles: 128,
+        },
+        motion: ThemeMotion {
+            growth: 0.87,
+            pulse: 0.7,
+            parallax: 0.1,
         },
     },
     ThemeContract {
@@ -86,6 +104,15 @@ const GENERATED_THEME_CONTRACTS: [ThemeContract; 10] = [
             max_children: 2,
             pulse_gain: 0.5,
         },
+        density: ThemeDensity {
+            max_branches: 8192,
+            max_particles: 512,
+        },
+        motion: ThemeMotion {
+            growth: 0.57,
+            pulse: 0.5,
+            parallax: 0.15,
+        },
     },
     ThemeContract {
         theme: Theme::OceanicIntelligence,
@@ -109,6 +136,15 @@ const GENERATED_THEME_CONTRACTS: [ThemeContract; 10] = [
             min_children: 1,
             max_children: 2,
             pulse_gain: 0.65,
+        },
+        density: ThemeDensity {
+            max_branches: 8192,
+            max_particles: 768,
+        },
+        motion: ThemeMotion {
+            growth: 0.47,
+            pulse: 0.65,
+            parallax: 0.08,
         },
     },
     ThemeContract {
@@ -134,6 +170,15 @@ const GENERATED_THEME_CONTRACTS: [ThemeContract; 10] = [
             max_children: 2,
             pulse_gain: 0.45,
         },
+        density: ThemeDensity {
+            max_branches: 8192,
+            max_particles: 256,
+        },
+        motion: ThemeMotion {
+            growth: 0.53,
+            pulse: 0.45,
+            parallax: 0.0,
+        },
     },
     ThemeContract {
         theme: Theme::QuantumGarden,
@@ -157,6 +202,15 @@ const GENERATED_THEME_CONTRACTS: [ThemeContract; 10] = [
             min_children: 1,
             max_children: 3,
             pulse_gain: 0.95,
+        },
+        density: ThemeDensity {
+            max_branches: 8192,
+            max_particles: 384,
+        },
+        motion: ThemeMotion {
+            growth: 0.73,
+            pulse: 0.95,
+            parallax: 0.12,
         },
     },
     ThemeContract {
@@ -182,6 +236,15 @@ const GENERATED_THEME_CONTRACTS: [ThemeContract; 10] = [
             max_children: 2,
             pulse_gain: 0.4,
         },
+        density: ThemeDensity {
+            max_branches: 8192,
+            max_particles: 192,
+        },
+        motion: ThemeMotion {
+            growth: 0.27,
+            pulse: 0.4,
+            parallax: 0.03,
+        },
     },
     ThemeContract {
         theme: Theme::GraphiteFocus,
@@ -205,6 +268,15 @@ const GENERATED_THEME_CONTRACTS: [ThemeContract; 10] = [
             min_children: 1,
             max_children: 1,
             pulse_gain: 0.2,
+        },
+        density: ThemeDensity {
+            max_branches: 8192,
+            max_particles: 0,
+        },
+        motion: ThemeMotion {
+            growth: 0.13,
+            pulse: 0.2,
+            parallax: 0.0,
         },
     },
     ThemeContract {
@@ -230,6 +302,15 @@ const GENERATED_THEME_CONTRACTS: [ThemeContract; 10] = [
             max_children: 2,
             pulse_gain: 0.25,
         },
+        density: ThemeDensity {
+            max_branches: 8192,
+            max_particles: 0,
+        },
+        motion: ThemeMotion {
+            growth: 0.2,
+            pulse: 0.25,
+            parallax: 0.0,
+        },
     },
     ThemeContract {
         theme: Theme::CivicDawn,
@@ -254,6 +335,15 @@ const GENERATED_THEME_CONTRACTS: [ThemeContract; 10] = [
             max_children: 2,
             pulse_gain: 0.5,
         },
+        density: ThemeDensity {
+            max_branches: 8192,
+            max_particles: 192,
+        },
+        motion: ThemeMotion {
+            growth: 0.53,
+            pulse: 0.5,
+            parallax: 0.04,
+        },
     }
 ];
 
@@ -266,39 +356,11 @@ const GENERATED_MOTION_MODE_ALL: [MotionMode; 4] = [
 
 const GENERATED_MOTION_MODE_CONTRACTS: [MotionModeContract; 4] = [
     MotionModeContract {
-        mode: MotionMode::Reduced,
-        id: "reduced",
-        motion_scale: 0.0,
-        particle_budget_scale: 0.0,
-        frame_interval_ms: 250,
-        transition_durations_seconds: (0.0, 0.0, 0.25),
-        crossfade_ms: 250,
-    },
+NaNNaNNaNNaNNaNNaNNaNNaN,
     MotionModeContract {
-        mode: MotionMode::LowPower,
-        id: "low-power",
-        motion_scale: 0.25,
-        particle_budget_scale: 0.25,
-        frame_interval_ms: 67,
-        transition_durations_seconds: (2.0, 0.2, 0.75),
-        crossfade_ms: 400,
-    },
+NaNNaNNaNNaNNaNNaNNaNNaN,
     MotionModeContract {
-        mode: MotionMode::Balanced,
-        id: "balanced",
-        motion_scale: 0.65,
-        particle_budget_scale: 0.6,
-        frame_interval_ms: 33,
-        transition_durations_seconds: (2.5, 0.35, 1.0),
-        crossfade_ms: 550,
-    },
+NaNNaNNaNNaNNaNNaNNaNNaN,
     MotionModeContract {
-        mode: MotionMode::Cinematic,
-        id: "cinematic",
-        motion_scale: 1.0,
-        particle_budget_scale: 1.0,
-        frame_interval_ms: 33,
-        transition_durations_seconds: (3.0, 0.5, 1.5),
-        crossfade_ms: 750,
-    }
+NaNNaNNaNNaNNaNNaNNaNNaN
 ];

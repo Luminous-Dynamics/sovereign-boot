@@ -492,7 +492,7 @@ jobs:
           jq -r -f validation/visual-genome-contract.tsv.jq themes/visual-genome-v1.json \
             | sort > "$RUNNER_TEMP/manifest-theme-contracts.tsv"
           for contract_file in "$RUNNER_TEMP/manifest-theme-contracts.tsv" "$RUNNER_TEMP/rust-theme-contracts.tsv"; do
-            awk -F '\t' 'NF != 16 { exit 1 } END { if (NR != 10) exit 1 }' "$contract_file"
+            awk -F '\t' 'NF != 21 { exit 1 } END { if (NR != 10) exit 1 }' "$contract_file"
           done
           diff -u "$RUNNER_TEMP/manifest-theme-contracts.tsv" "$RUNNER_TEMP/rust-theme-contracts.tsv"
 
@@ -511,6 +511,22 @@ jobs:
             | sort > "$RUNNER_TEMP/manifest-mutated-growth.tsv"
           if cmp -s "$RUNNER_TEMP/manifest-mutated-growth.tsv" "$RUNNER_TEMP/rust-theme-contracts.tsv"; then
             echo "theme contract gate missed a deliberately changed growth parameter"
+            exit 1
+          fi
+          jq '.themes[0].density.max_particles += 1' themes/visual-genome-v1.json \
+            > "$RUNNER_TEMP/manifest-mutated-density.json"
+          jq -r -f validation/visual-genome-contract.tsv.jq "$RUNNER_TEMP/manifest-mutated-density.json" \
+            | sort > "$RUNNER_TEMP/manifest-mutated-density.tsv"
+          if cmp -s "$RUNNER_TEMP/manifest-mutated-density.tsv" "$RUNNER_TEMP/rust-theme-contracts.tsv"; then
+            echo "theme contract gate missed a deliberately changed density cap"
+            exit 1
+          fi
+          jq '.themes[0].motion.growth *= 0.5' themes/visual-genome-v1.json \
+            > "$RUNNER_TEMP/manifest-mutated-theme-motion.json"
+          jq -r -f validation/visual-genome-contract.tsv.jq "$RUNNER_TEMP/manifest-mutated-theme-motion.json" \
+            | sort > "$RUNNER_TEMP/manifest-mutated-theme-motion.tsv"
+          if cmp -s "$RUNNER_TEMP/manifest-mutated-theme-motion.tsv" "$RUNNER_TEMP/rust-theme-contracts.tsv"; then
+            echo "theme contract gate missed a deliberately changed per-theme motion value"
             exit 1
           fi
 

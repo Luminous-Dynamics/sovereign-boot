@@ -123,6 +123,21 @@ pub enum Theme {
     CivicDawn,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ThemeDensity {
+    pub max_branches: usize,
+    pub max_particles: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ThemeMotion {
+    pub growth: f32,
+    pub pulse: f32,
+    /// Retained for future input-aware desktop rendering. The CPU boot renderer
+    /// has no pointer/camera displacement input and therefore applies no parallax.
+    pub parallax: f32,
+}
+
 #[derive(Debug, Clone, Copy)]
 struct ThemeContract {
     theme: Theme,
@@ -131,6 +146,8 @@ struct ThemeContract {
     scene_family_id: &'static str,
     palette: Palette,
     growth_profile: GrowthProfile,
+    density: ThemeDensity,
+    motion: ThemeMotion,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -183,6 +200,16 @@ impl Theme {
     /// Bounded procedural-growth controls generated from the manifest.
     pub fn growth_profile(self) -> GrowthProfile {
         self.contract().growth_profile
+    }
+
+    /// Per-theme safety caps generated from the manifest.
+    pub fn density(self) -> ThemeDensity {
+        self.contract().density
+    }
+
+    /// Per-theme growth/pulse tuning generated from the manifest.
+    pub fn motion_tuning(self) -> ThemeMotion {
+        self.contract().motion
     }
 }
 
