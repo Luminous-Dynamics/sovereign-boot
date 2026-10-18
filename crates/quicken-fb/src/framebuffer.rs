@@ -43,6 +43,46 @@ impl Card {
     }
 }
 
+/// Copy a row-major frame into a possibly padded scanout buffer.
+///
+/// Returns false and leaves the destination unchanged if geometry or either
+/// slice is insufficient. This also makes the stride path testable without DRM.
+fn copy_frame_to_stride(
+    dst: &mut [u32],
+    src: &[u32],
+    width: usize,
+    height: usize,
+    stride_pixels: usize,
+) -> bool {
+    if width == 0 || height == 0 || stride_pixels < width {
+        return false;
+    }
+    let Some(source_len) = width.checked_mul(height) else {
+        return false;
+    };
+    let Some(destination_len) = (height - 1)
+        .checked_mul(stride_pixels)
+        .and_then(|row_start| row_start.checked_add(width))
+    else {
+        return false;
+    };
+    if src.len() < source_len || dst.len() < destination_len {
+        return false;
+    }
+
+    if stride_pixels == width {
+        dst[..source_len].copy_from_slice(&src[..source_len]);
+    } else {
+        for y in 0..height {
+            let source_start = y * width;
+            let destination_start = y * stride_pixels;
+            dst[destination_start..destination_start + width]
+                .copy_from_slice(&src[source_start..source_start + width]);
+        }
+    }
+    true
+}
+
 /// Errors from framebuffer operations.
 #[derive(Debug)]
 pub enum DrmError {
@@ -228,22 +268,8 @@ impl DrmFramebuffer {
             std::slice::from_raw_parts_mut(dst_bytes.as_mut_ptr() as *mut u32, dst_bytes.len() / 4)
         };
 
-        if stride_pixels == w {
-            // Fast path: no padding
-            let copy_len = (w * h).min(dst.len()).min(src.len());
-            dst[..copy_len].copy_from_slice(&src[..copy_len]);
-        } else {
-            // Stride-aware copy
-            for y in 0..h {
-                let src_start = y * w;
-                let dst_start = y * stride_pixels;
-                let row_end = src_start + w;
-                if row_end > src.len() || dst_start + w > dst.len() {
-                    break;
-                }
-                dst[dst_start..dst_start + w].copy_from_slice(&src[src_start..row_end]);
-            }
-        }
+        // Reject an undersized mapping instead of displaying a partially copied frame.
+        let _ = copy_frame_to_stride(dst, src, w, h, stride_pixels);
         // mapping is dropped here, which flushes/unmaps
     }
 
@@ -283,6 +309,41 @@ unsafe impl Send for DrmFramebuffer {}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tight_stride_copies_a_complete_frame() {
+        let src = [1, 2, 3, 4, 5, 6];
+        let mut dst = [0; 6];
+        assert!(copy_frame_to_stride(&mut dst, &src, 3, 2, 3));
+        assert_eq!(dst, src);
+    }
+
+    #[test]
+    fn padded_stride_preserves_row_padding() {
+        let src = [1, 2, 3, 4];
+        let mut dst = [0xdead_beefu32; 8];
+        assert!(copy_frame_to_stride(&mut dst, &src, 2, 2, 4));
+        assert_eq!(dst, [1, 2, 0xdead_beef, 0xdead_beef, 3, 4, 0xdead_beef, 0xdead_beef]);
+    }
+
+    #[test]
+    fn undersized_buffers_are_rejected_without_partial_writes() {
+        let src = [1, 2, 3, 4];
+        let mut dst = [0xdead_beefu32; 5];
+        assert!(!copy_frame_to_stride(&mut dst, &src, 2, 2, 4));
+        assert_eq!(dst, [0xdead_beef; 5]);
+        let mut full_dst = [0xdead_beefu32; 6];
+        assert!(!copy_frame_to_stride(&mut full_dst, &src[..3], 2, 2, 3));
+        assert_eq!(full_dst, [0xdead_beef; 6]);
+    }
+
+    #[test]
+    fn invalid_stride_and_overflowing_geometry_are_rejected() {
+        let mut dst = [];
+        let src = [];
+        assert!(!copy_frame_to_stride(&mut dst, &src, 2, 1, 1));
+        assert!(!copy_frame_to_stride(&mut dst, &src, usize::MAX, 2, usize::MAX));
+    }
 
     #[test]
     fn accepts_bounded_hd_4k_and_8k_modes() {
