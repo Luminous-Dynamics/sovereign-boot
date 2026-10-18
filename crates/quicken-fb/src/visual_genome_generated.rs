@@ -256,3 +256,49 @@ pub(super) const GENERATED_THEME_CONTRACTS: [ThemeContract; 10] = [
         },
     }
 ];
+
+pub(super) const GENERATED_MOTION_MODE_ALL: [MotionMode; 4] = [
+    MotionMode::Reduced,
+    MotionMode::LowPower,
+    MotionMode::Balanced,
+    MotionMode::Cinematic,
+];
+
+pub(super) const GENERATED_MOTION_MODE_CONTRACTS: [MotionModeContract; 4] = [
+    MotionModeContract {
+        mode: MotionMode::Reduced,
+        id: "reduced",
+        motion_scale: 0.0,
+        particle_budget_scale: 0.0,
+        frame_interval_ms: 250,
+        transition_durations_seconds: (0.0, 0.0, 0.25),
+        crossfade_ms: 250,
+    },
+    MotionModeContract {
+        mode: MotionMode::LowPower,
+        id: "low-power",
+        motion_scale: 0.25,
+        particle_budget_scale: 0.25,
+        frame_interval_ms: 67,
+        transition_durations_seconds: (2.0, 0.2, 0.75),
+        crossfade_ms: 400,
+    },
+    MotionModeContract {
+        mode: MotionMode::Balanced,
+        id: "balanced",
+        motion_scale: 0.65,
+        particle_budget_scale: 0.6,
+        frame_interval_ms: 33,
+        transition_durations_seconds: (2.5, 0.35, 1.0),
+        crossfade_ms: 550,
+    },
+    MotionModeContract {
+        mode: MotionMode::Cinematic,
+        id: "cinematic",
+        motion_scale: 1.0,
+        particle_budget_scale: 1.0,
+        frame_interval_ms: 33,
+        transition_durations_seconds: (3.0, 0.5, 1.5),
+        crossfade_ms: 750,
+    }
+];

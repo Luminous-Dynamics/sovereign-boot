@@ -49,58 +49,51 @@ pub enum MotionMode {
 }
 
 impl MotionMode {
-    pub const ALL: [Self; 4] = [
-        Self::Reduced,
-        Self::LowPower,
-        Self::Balanced,
-        Self::Cinematic,
-    ];
+    /// All motion modes in increasing motion-scale order from the visual manifest.
+    pub const ALL: [Self; 4] = GENERATED_MOTION_MODE_ALL;
 
+    /// Resolve an exact stable ID; unknown modes fail closed.
     pub fn from_id(id: &str) -> Option<Self> {
-        match id {
-            "reduced" => Some(Self::Reduced),
-            "low-power" => Some(Self::LowPower),
-            "balanced" => Some(Self::Balanced),
-            "cinematic" => Some(Self::Cinematic),
-            _ => None,
-        }
+        GENERATED_MOTION_MODE_CONTRACTS
+            .iter()
+            .find(|contract| contract.id == id)
+            .map(|contract| contract.mode)
     }
 
-    pub const fn id(self) -> &'static str {
-        match self {
-            Self::Reduced => "reduced",
-            Self::LowPower => "low-power",
-            Self::Balanced => "balanced",
-            Self::Cinematic => "cinematic",
-        }
+    fn contract(self) -> &'static MotionModeContract {
+        GENERATED_MOTION_MODE_CONTRACTS
+            .iter()
+            .find(|contract| contract.mode == self)
+            .expect("every MotionMode variant must have a generated Visual Genome contract")
     }
 
-    pub const fn scale(self) -> f32 {
-        match self {
-            Self::Reduced => 0.0,
-            Self::LowPower => 0.25,
-            Self::Balanced => 0.65,
-            Self::Cinematic => 1.0,
-        }
+    pub fn id(self) -> &'static str {
+        self.contract().id
+    }
+
+    /// Normalized motion amplitude, in [0, 1].
+    pub fn scale(self) -> f32 {
+        self.contract().motion_scale
+    }
+
+    /// Normalized particle budget, in [0, 1].
+    pub fn particle_budget_scale(self) -> f32 {
+        self.contract().particle_budget_scale
     }
 
     /// Minimum wall-clock interval between scene updates and progress polls.
-    pub const fn frame_interval_ms(self) -> u64 {
-        match self {
-            Self::Reduced => 250,
-            Self::LowPower => 67,
-            Self::Balanced | Self::Cinematic => 33,
-        }
+    pub fn frame_interval_ms(self) -> u64 {
+        self.contract().frame_interval_ms
     }
 
     /// (contraction seconds, convergence hold seconds, final fade seconds).
-    pub const fn transition_durations(self) -> (f32, f32, f32) {
-        match self {
-            Self::Reduced => (0.0, 0.0, 0.25),
-            Self::LowPower => (2.0, 0.2, 0.75),
-            Self::Balanced => (2.5, 0.35, 1.0),
-            Self::Cinematic => (3.0, 0.5, 1.5),
-        }
+    pub fn transition_durations(self) -> (f32, f32, f32) {
+        self.contract().transition_durations_seconds
+    }
+
+    /// Scene-entry crossfade budget in milliseconds.
+    pub fn crossfade_ms(self) -> u64 {
+        self.contract().crossfade_ms
     }
 }
 
@@ -138,6 +131,17 @@ struct ThemeContract {
     scene_family_id: &'static str,
     palette: Palette,
     growth_profile: GrowthProfile,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct MotionModeContract {
+    mode: MotionMode,
+    id: &'static str,
+    motion_scale: f32,
+    particle_budget_scale: f32,
+    frame_interval_ms: u64,
+    transition_durations_seconds: (f32, f32, f32),
+    crossfade_ms: u64,
 }
 
 include!("visual_genome_generated.rs");

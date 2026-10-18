@@ -293,7 +293,7 @@ A visual release may be called qualified only when focused tests and benchmark a
 ## Manifest as the generated boot contract
 
 The file themes/visual-genome-v1.json is now the single editable source for stable theme
-IDs, scene-family identifiers, palette bytes and bounded procedural-growth parameters.
+IDs, scene-family identifiers, palette bytes, bounded procedural-growth parameters, and all four motion-mode budgets.
 The jq generator at validation/visual-genome-rust.jq validates these fields and emits
 crates/quicken-fb/src/visual_genome_generated.rs; the renderer consumes that file through
 include!. The early-boot binary therefore carries typed constants only: no runtime JSON
@@ -307,3 +307,8 @@ independently maintained tables. A manifest change becomes typed compile input a
 reviewable generated diff. This is a source-generation contract, not proof that a given
 theme is visually good; capture, accessibility and hardware benchmarks remain separate
 qualification gates.
+
+The generated contract also contains motion scale, particle-budget scale, frame interval,
+contraction/hold/fade durations and crossfade duration for every motion mode. CI compares
+all eight public CLI fields against the source manifest and mutation-tests invalid motion
+scales in addition to malformed colors, duplicate IDs and invalid growth values.

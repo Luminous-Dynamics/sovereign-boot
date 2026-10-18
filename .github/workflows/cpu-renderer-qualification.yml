@@ -418,6 +418,11 @@ jobs:
             echo "generator accepted an out-of-range growth parameter"
             exit 1
           fi
+          jq '.motion_profiles.reduced.motion_scale = 1.5' themes/visual-genome-v1.json > "$RUNNER_TEMP/visual-genome-invalid-motion.json"
+          if jq -r -f validation/visual-genome-rust.jq "$RUNNER_TEMP/visual-genome-invalid-motion.json" > "$RUNNER_TEMP/visual-genome-invalid-motion.rs" 2> "$RUNNER_TEMP/visual-genome-invalid-motion.log"; then
+            echo "generator accepted an out-of-range motion scale"
+            exit 1
+          fi
 
       - name: Materialize isolated renderer source
         run: |
@@ -487,7 +492,7 @@ jobs:
           cargo run --manifest-path "$RUNNER_TEMP/quicken-fb/Cargo.toml" --locked -- --list-motion-modes \
             > "$RUNNER_TEMP/cli-motion-modes.txt"
           diff -u \
-            <(jq -r '.motion_profiles | to_entries[] | "\(.key) \(.value.motion_scale) \(.value.frame_interval_ms) \(.value.transition_durations_seconds[0]) \(.value.transition_durations_seconds[1]) \(.value.transition_durations_seconds[2])"' themes/visual-genome-v1.json | sort) \
+            <(jq -r '.motion_profiles | to_entries[] | "\(.key) \(.value.motion_scale) \(.value.particle_budget_scale) \(.value.frame_interval_ms) \(.value.transition_durations_seconds[0]) \(.value.transition_durations_seconds[1]) \(.value.transition_durations_seconds[2]) \(.value.crossfade_ms)"' themes/visual-genome-v1.json | sort) \
             <(sort "$RUNNER_TEMP/cli-motion-modes.txt")
 
           # Missing boot-state artifacts must skip decoration before DRM is opened.

@@ -340,13 +340,15 @@ fn parse_args() -> Args {
                 for mode in MotionMode::ALL {
                     let (contraction, hold, fade) = mode.transition_durations();
                     println!(
-                        "{} {} {} {} {} {}",
+                        "{} {} {} {} {} {} {} {}",
                         mode.id(),
                         mode.scale(),
+                        mode.particle_budget_scale(),
                         mode.frame_interval_ms(),
                         contraction,
                         hold,
-                        fade
+                        fade,
+                        mode.crossfade_ms()
                     );
                 }
                 std::process::exit(0);
