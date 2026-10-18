@@ -108,16 +108,16 @@ else
   | $manifest.motion_profiles as $motions
   | "// @generated from themes/visual-genome-v1.json by validation/visual-genome-rust.jq.\n"
     + "// Do not edit by hand; regenerate and commit this file with manifest changes.\n\n"
-    + "pub(super) const GENERATED_THEME_ALL: [Theme; 10] = [\n"
+    + "const GENERATED_THEME_ALL: [Theme; 10] = [\n"
     + ($themes | map("    Theme::" + (.id | pascal) + ",") | join("\n"))
     + "\n];\n\n"
-    + "pub(super) const GENERATED_THEME_CONTRACTS: [ThemeContract; 10] = [\n"
+    + "const GENERATED_THEME_CONTRACTS: [ThemeContract; 10] = [\n"
     + ($themes | map(. as $theme | contract($theme)) | join(",\n"))
     + "\n];\n\n"
-    + "pub(super) const GENERATED_MOTION_MODE_ALL: [MotionMode; 4] = [\n"
+    + "const GENERATED_MOTION_MODE_ALL: [MotionMode; 4] = [\n"
     + ($motions | to_entries | sort_by(.value.motion_scale) | map("    MotionMode::" + (.key | pascal) + ",") | join("\n"))
     + "\n];\n\n"
-    + "pub(super) const GENERATED_MOTION_MODE_CONTRACTS: [MotionModeContract; 4] = [\n"
+    + "const GENERATED_MOTION_MODE_CONTRACTS: [MotionModeContract; 4] = [\n"
     + ($motions | to_entries | sort_by(.value.motion_scale) | map(. as $entry | motion_contract($entry)) | join(",\n"))
     + "\n];\n"
 end

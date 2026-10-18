@@ -1,7 +1,7 @@
 // @generated from themes/visual-genome-v1.json by validation/visual-genome-rust.jq.
 // Do not edit by hand; regenerate and commit this file with manifest changes.
 
-pub(super) const GENERATED_THEME_ALL: [Theme; 10] = [
+const GENERATED_THEME_ALL: [Theme; 10] = [
     Theme::MycelialGenesis,
     Theme::SolarCommons,
     Theme::CosmicAtlas,
@@ -14,7 +14,7 @@ pub(super) const GENERATED_THEME_ALL: [Theme; 10] = [
     Theme::CivicDawn,
 ];
 
-pub(super) const GENERATED_THEME_CONTRACTS: [ThemeContract; 10] = [
+const GENERATED_THEME_CONTRACTS: [ThemeContract; 10] = [
     ThemeContract {
         theme: Theme::MycelialGenesis,
         id: "mycelial-genesis",
@@ -257,14 +257,14 @@ pub(super) const GENERATED_THEME_CONTRACTS: [ThemeContract; 10] = [
     }
 ];
 
-pub(super) const GENERATED_MOTION_MODE_ALL: [MotionMode; 4] = [
+const GENERATED_MOTION_MODE_ALL: [MotionMode; 4] = [
     MotionMode::Reduced,
     MotionMode::LowPower,
     MotionMode::Balanced,
     MotionMode::Cinematic,
 ];
 
-pub(super) const GENERATED_MOTION_MODE_CONTRACTS: [MotionModeContract; 4] = [
+const GENERATED_MOTION_MODE_CONTRACTS: [MotionModeContract; 4] = [
     MotionModeContract {
         mode: MotionMode::Reduced,
         id: "reduced",

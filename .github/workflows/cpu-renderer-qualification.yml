@@ -491,6 +491,7 @@ jobs:
 
           cargo run --manifest-path "$RUNNER_TEMP/quicken-fb/Cargo.toml" --locked -- --list-motion-modes \
             > "$RUNNER_TEMP/cli-motion-modes.txt"
+          awk 'NF != 8 { exit 1 } END { if (NR != 4) exit 1 }' "$RUNNER_TEMP/cli-motion-modes.txt"
           diff -u \
             <(jq -r '.motion_profiles | to_entries[] | "\(.key) \(.value.motion_scale) \(.value.particle_budget_scale) \(.value.frame_interval_ms) \(.value.transition_durations_seconds[0]) \(.value.transition_durations_seconds[1]) \(.value.transition_durations_seconds[2]) \(.value.crossfade_ms)"' themes/visual-genome-v1.json | sort) \
             <(sort "$RUNNER_TEMP/cli-motion-modes.txt")
