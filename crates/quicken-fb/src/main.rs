@@ -302,6 +302,40 @@ fn parse_args() -> Args {
                 }
                 std::process::exit(0);
             }
+            "--list-theme-contracts" => {
+                for theme in Theme::ALL {
+                    let palette = theme.palette();
+                    let growth = theme.growth_profile();
+                    println!(
+                        concat!(
+                            "{}\t{}\t",
+                            "#{:02x}{:02x}{:02x}\t",
+                            "#{:02x}{:02x}{:02x}\t",
+                            "#{:02x}{:02x}{:02x}\t",
+                            "#{:02x}{:02x}{:02x}\t",
+                            "#{:02x}{:02x}{:02x}\t",
+                            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}"
+                        ),
+                        theme.id(),
+                        theme.scene_kind().id(),
+                        palette.background.0, palette.background.1, palette.background.2,
+                        palette.primary.0, palette.primary.1, palette.primary.2,
+                        palette.secondary.0, palette.secondary.1, palette.secondary.2,
+                        palette.node.0, palette.node.1, palette.node.2,
+                        palette.convergence.0, palette.convergence.1, palette.convergence.2,
+                        growth.initial_branch_min,
+                        growth.initial_branch_variants,
+                        growth.branch_length_scale,
+                        growth.growth_speed,
+                        growth.min_fork_angle_degrees,
+                        growth.max_fork_angle_degrees,
+                        growth.min_children,
+                        growth.max_children,
+                        growth.pulse_gain
+                    );
+                }
+                std::process::exit(0);
+            }
             "--list-motion-modes" => {
                 for mode in MotionMode::ALL {
                     let (contraction, hold, fade) = mode.transition_durations();
@@ -421,7 +455,7 @@ fn validate_state_artifact(path: &str) -> bool {
 }
 
 fn print_usage() {
-    eprintln!("Usage: quicken-fb [OPTIONS]\n  --theme <ID>             Theme ID (default: mycelial-genesis)\n  --list-themes            List supported theme IDs and exit\n  --list-theme-scenes     List theme-to-scene mappings\n  --list-motion-modes    List motion budgets and transition timings\n  --motion <MODE>          reduced|low-power|balanced|cinematic\n  --seed <VALUE>           Public visual seed, not a secret (max 256 bytes)\n  --genesis-phrase <VALUE> Legacy alias for --seed\n  --receipt <PATH>         Optional boot-state artifact (presence only)\n  --lineage <PATH>         Optional lineage artifact (presence only)\n  --handoff-path <PATH>    Exit when the compositor marker appears\n  --progress-pipe <PATH>  Optional installer progress FIFO\n  --device <PATH>         DRM device (default: /dev/dri/card0)\n  --help                  Show this help");
+    eprintln!("Usage: quicken-fb [OPTIONS]\n  --theme <ID>             Theme ID (default: mycelial-genesis)\n  --list-themes            List supported theme IDs and exit\n  --list-theme-scenes     List theme-to-scene mappings\n  --list-theme-contracts   Print palette and growth values as TSV\n  --list-motion-modes    List motion budgets and transition timings\n  --motion <MODE>          reduced|low-power|balanced|cinematic\n  --seed <VALUE>           Public visual seed, not a secret (max 256 bytes)\n  --genesis-phrase <VALUE> Legacy alias for --seed\n  --receipt <PATH>         Optional boot-state artifact (presence only)\n  --lineage <PATH>         Optional lineage artifact (presence only)\n  --handoff-path <PATH>    Exit when the compositor marker appears\n  --progress-pipe <PATH>  Optional installer progress FIFO\n  --device <PATH>         DRM device (default: /dev/dri/card0)\n  --help                  Show this help");
 }
 
 /// Install SIGTERM and SIGINT handlers for clean shutdown.
