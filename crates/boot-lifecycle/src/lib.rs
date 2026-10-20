@@ -738,7 +738,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn option_parser_rejects_duplicates_missing_values_and_unknown_shape() {
         let duplicate = vec!["--x".to_owned(), "1".to_owned(), "--x".to_owned(), "2".to_owned()];
         assert!(parse_options(&duplicate, &[]).is_err());
