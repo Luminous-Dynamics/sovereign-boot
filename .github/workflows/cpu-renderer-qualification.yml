@@ -11,6 +11,7 @@ on:
       - "themes/visual-genome-v1.json"
       - "flake.nix"
       - "flake.lock"
+      - "tests/module-smoke.nix"
       - "Cargo.toml"
       - "renderers/wgpu/**"
       - "validation/wgsl-check/**"
@@ -1125,6 +1126,15 @@ jobs:
           test -x "$tools_path/bin/quicken-fb"
           "$lifecycle_path/bin/spore-boot-state" --help
           "$lifecycle_path/bin/spore-recovery-linux" --help
+
+          module_receipt="$RUNNER_TEMP/module-smoke.json"
+          nix eval --impure --show-trace --json --file tests/module-smoke.nix > "$module_receipt"
+          jq -e '
+            (.prepareExecStart | tostring | contains("spore-recovery-linux"))
+            and (.animationExecStart | tostring | contains("quicken-fb"))
+            and .lkgTimerUnit == "spore-boot-lkg-promote.service"
+          ' "$module_receipt"
+          sha256sum "$module_receipt"
           printf 'flake_lock_sha256=%s\n' "$(sha256sum flake.lock | cut -d ' ' -f 1)"
           printf 'lifecycle_output=%s\n' "$lifecycle_path"
           printf 'tool_bundle_output=%s\n' "$tools_path"
