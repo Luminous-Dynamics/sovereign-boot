@@ -1,5 +1,5 @@
 {
-  description = "Sovereign Boot Ecology — deterministic DRM/KMS boot-renderer prototype and optional NixOS lifecycle-integration module";
+  description = "Sovereign Boot Ecology — optional DRM/KMS renderer with standalone fail-open lifecycle tools";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -8,7 +8,12 @@
 
   outputs = { self, nixpkgs, flake-utils }:
     let
-      nixosModule = import ./nix/modules/sovereign-boot.nix;
+      nixosModule = { config, pkgs, lib, ... }@args:
+        import ./nix/modules/sovereign-boot.nix (args // {
+          inputs = (args.inputs or { }) // {
+            sovereignBootTools = self.packages.${pkgs.system}.spore-boot-tools;
+          };
+        });
     in
     {
       nixosModules = {
@@ -27,16 +32,34 @@
             version = "0.3.4";
             src = ./crates/quicken-fb;
             cargoLock.lockFile = ./crates/quicken-fb/Cargo.lock;
-            # The renderer is intentionally packaged as an isolated CPU/DRM crate.
-            # Exercise its library tests and the self-contained benchmark example;
-            # neither requires a DRM device or a live desktop.
+            # Renderer correctness is tested without requiring a live DRM device.
             doCheck = true;
             cargoTestFlags = [ "--all-targets" ];
             meta = with pkgs.lib; {
-              description = "DRM/KMS bare-metal boot animation renderer";
+              description = "Optional DRM/KMS procedural boot renderer";
               license = licenses.agpl3Plus;
               platforms = platforms.linux;
             };
+          };
+
+          boot-lifecycle = pkgs.rustPlatform.buildRustPackage {
+            pname = "sovereign-boot-lifecycle";
+            version = "0.1.0";
+            src = ./crates/boot-lifecycle;
+            cargoLock.lockFile = ./crates/boot-lifecycle/Cargo.lock;
+            doCheck = true;
+            meta = with pkgs.lib; {
+              description = "Standalone fail-open boot-state receipts and Last Known Good GC roots";
+              license = licenses.agpl3Plus;
+              platforms = platforms.linux;
+            };
+          };
+
+          # The module expects these binaries under one package by default;
+          # consumers may still override renderer and statePackage independently.
+          spore-boot-tools = pkgs.buildEnv {
+            name = "spore-boot-tools";
+            paths = [ quicken-fb boot-lifecycle ];
           };
 
           default = quicken-fb;
