@@ -112,13 +112,19 @@ fn validate_store_generation(value: &str) -> Result<PathBuf, String> {
             "deployment store object must contain a hash/name separator",
         ));
     };
-    if separator == 0
-        || name.len() <= separator + 1
-        || !name
+    let hash = &name[..separator];
+    let store_name = &name[separator + 1..];
+    const NIX_BASE32: &[u8] = b"0123456789abcdfghijklmnpqrsvwxyz";
+    if hash.len() != 32
+        || !hash.bytes().all(|byte| NIX_BASE32.contains(&byte))
+        || store_name.is_empty()
+        || !store_name
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || b"+._?=-".contains(&byte))
     {
-        return Err(error("deployment store object contains invalid characters"));
+        return Err(error(
+            "deployment store object must use a 32-character Nix base32 hash and valid name",
+        ));
     }
     Ok(path.to_path_buf())
 }
@@ -415,8 +421,10 @@ fn shutdown(args: &[String]) -> Result<(), String> {
         json_optional_string(generation),
         json_optional_string(hardware),
     );
-    atomic_write(&state_dir.join("clean-shutdown.json"), document.as_bytes())?;
+    // The persistent marker is authoritative. Write the volatile diagnostic
+    // first so a failure there cannot leave a clean-shutdown marker behind.
     atomic_write(&runtime_dir.join("last-shutdown.json"), document.as_bytes())?;
+    atomic_write(&state_dir.join("clean-shutdown.json"), document.as_bytes())?;
     Ok(())
 }
 
@@ -780,7 +788,12 @@ mod tests {
             validate_store_generation("/nix/store/00000000000000000000000000000000-test-system")
                 .is_ok()
         );
-        assert!(validate_store_generation("/nix/store/abc123-nixos-system").is_ok());
+        assert!(
+            validate_store_generation(
+                "/nix/store/0123456789abcdfghijklmnpqrsvwxyz-nixos-system"
+            )
+            .is_ok()
+        );
     }
 
     #[test]
@@ -793,6 +806,8 @@ mod tests {
             "/nix/store/-no-hash-name",
             "/nix/store/hash-",
             "/nix/store/hash-name/child",
+            "/nix/store/abc123-nixos-system",
+            "/nix/store/0000000000000000000000000000000o-test-system",
             "relative/system",
         ] {
             assert!(validate_store_generation(path).is_err(), "{path}");
