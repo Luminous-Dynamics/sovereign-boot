@@ -420,11 +420,10 @@ impl MycelialNetwork {
     /// composed still image rather than freezing on the boot intro's black frame.
     /// Time-driven decorative effects use a fixed terminal phase in Reduced mode.
     fn visual_time(&self) -> f32 {
-        if self.motion_scale <= 0.0 || !self.elapsed.is_finite() {
-            SCENE_ENTRY_FADE_START + self.scene_entry_fade_duration
-        } else {
-            self.elapsed
-        }
+        // Decorative motion follows presentation cadence; growth/state evolution
+        // alone uses the motion-scaled simulation clock. Reduced mode is handled
+        // by presentation_time() as a fixed, fully-composed still phase.
+        self.presentation_time()
     }
 
     /// Resolve presentation time independently from motion-scaled simulation time.
@@ -772,7 +771,7 @@ impl MycelialNetwork {
         let temporal_breathe = if self.motion_scale <= 0.0 {
             0.0
         } else {
-            (self.elapsed * self.theme_motion.pulse * 2.5).sin() * 0.07
+            (self.visual_time() * self.theme_motion.pulse * 2.5).sin() * 0.07
         };
 
         let point = |row: i32, col: i32| {
@@ -879,7 +878,7 @@ impl MycelialNetwork {
         let accent = if self.motion_scale <= 0.0 {
             self.palette.primary.with_opacity(0.35)
         } else {
-            let pulse = (self.elapsed * self.theme_motion.pulse * 2.0).sin();
+            let pulse = (self.visual_time() * self.theme_motion.pulse * 2.0).sin();
             self.palette.primary.with_opacity(0.42 + 0.20 * pulse)
         };
 
@@ -916,7 +915,7 @@ impl MycelialNetwork {
         let temporal_breathe = if self.motion_scale <= 0.0 {
             0.0
         } else {
-            (self.elapsed * 3.5).sin() * 0.07
+            (self.visual_time() * 3.5).sin() * 0.07
         };
         let pulse = 0.5 + 0.5 * (self.visual_time() * 0.035).sin();
 
@@ -968,8 +967,8 @@ impl MycelialNetwork {
             // Animated modes give each community a bounded, slow drift so Low
             // Power remains visibly alive at sampled frame rates without rapid flashing.
             // Reduced mode is an exact static layout with no time-dependent displacement.
-            let phase = self.elapsed * 3.0 + cluster as f32 * 0.73;
-            let (drift_x, drift_y) = if self.motion_scale > 0.0 && self.elapsed.is_finite() {
+            let phase = self.visual_time() * 3.0 + cluster as f32 * 0.73;
+            let (drift_x, drift_y) = if self.motion_scale > 0.0 && phase.is_finite() {
                 (phase.sin() * 1.25, phase.cos() * 0.5)
             } else {
                 (0.0, 0.0)
@@ -1704,8 +1703,8 @@ mod tests {
             "scene simulation time should remain scaled by Low Power"
         );
         assert!(
-            network.presentation_time() >= 1.0 && network.visual_time() < 1.0,
-            "presentation must leave the intro while the slower scene clock remains below one second"
+            network.presentation_time() >= 1.0 && network.elapsed < 1.0,
+            "presentation must leave the intro while the slower scene simulation remains below one second"
         );
 
         let mut frame = vec![0u32; 160 * 90];
