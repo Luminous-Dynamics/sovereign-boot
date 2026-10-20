@@ -16,7 +16,7 @@ The public Nix flake exports three packages:
 - `packages.<system>.boot-lifecycle` — the two lifecycle executables.
 - `packages.<system>.spore-boot-tools` — a bundle with all three executables, used by the module unless a consumer supplies explicit package overrides.
 
-The imported `crates/spore-kernel` directory is retained as legacy source material, but it has monorepo-relative Symthaea dependencies. It is **excluded from the public Cargo workspace and is not built or shipped as the lifecycle implementation**. The standalone binaries are now implemented in `crates/boot-lifecycle`; their existence is not by itself proof of safe deployment.
+The imported `crates/spore-kernel` directory is retained as legacy source material, but it has monorepo-relative Symthaea dependencies. It is **excluded from the public Cargo workspace and is not built or shipped as the lifecycle implementation**. The standalone binaries are now implemented in `crates/boot-lifecycle`; their existence is not by itself proof of safe deployment. The top-level `Cargo.toml` is an intentionally empty workspace boundary; `crates/quicken-fb` and `crates/boot-lifecycle` each have independent Cargo workspaces and lockfiles. Invoke Cargo with an explicit package manifest rather than `cargo test --workspace` at the repository root.
 
 ## Lifecycle contract
 
