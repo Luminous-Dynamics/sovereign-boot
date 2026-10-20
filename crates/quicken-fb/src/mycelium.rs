@@ -717,10 +717,18 @@ impl MycelialNetwork {
         let h = self.height as usize;
         let width = w as f32;
         let height = h as f32;
-        let sun = (width * 0.5, height * 0.72);
+        // A slow, bounded vertical drift keeps the canopy visibly alive even
+        // at Low Power sampling cadence; Reduced mode retains a fixed composition.
+        let presentation_phase = self.visual_time() * 0.8;
+        let solar_drift = if self.motion_scale > 0.0 && presentation_phase.is_finite() {
+            presentation_phase.sin() * 1.8
+        } else {
+            0.0
+        };
+        let sun = (width * 0.5, height * 0.72 + solar_drift);
         let radius = (height * 0.11).max(4.0);
         let motion = (self.growth_profile.growth_speed / 30.0).clamp(0.0, 1.0);
-        let pulse = 0.5 + 0.5 * (self.visual_time() * 0.08 * motion).sin();
+        let pulse = 0.5 + 0.5 * (self.visual_time() * 0.55 * motion).sin();
 
         for ray in 0..33 {
             let angle = std::f32::consts::PI
@@ -1833,6 +1841,45 @@ mod tests {
             reduced_earlier, reduced_later,
             "Reduced Verdant Recovery must remain pixel-identical"
         );
+    }
+
+    #[test]
+    fn solar_canopy_has_observable_motion_only_outside_reduced_mode() {
+        use crate::theme::MotionMode;
+
+        for mode in [MotionMode::LowPower, MotionMode::Balanced, MotionMode::Cinematic] {
+            let mut network = MycelialNetwork::new_with_theme(
+                160, 90, "solar-canopy-motion-regression", Theme::SolarCommons,
+            );
+            network.set_motion_scale(mode.scale());
+            let mut early = vec![0u32; 160 * 90];
+            let mut late = vec![0u32; 160 * 90];
+            for _ in 0..10 {
+                network.grow(1.0 / 30.0, 0.75);
+            }
+            network.render(&mut early);
+            for _ in 0..20 {
+                network.grow(1.0 / 30.0, 0.75);
+            }
+            network.render(&mut late);
+            assert_ne!(early, late, "Solar Canopy froze in {:?} mode", mode);
+        }
+
+        let mut reduced = MycelialNetwork::new_with_theme(
+            160, 90, "solar-canopy-motion-regression", Theme::SolarCommons,
+        );
+        reduced.set_motion_scale(MotionMode::Reduced.scale());
+        let mut early = vec![0u32; 160 * 90];
+        let mut late = vec![0u32; 160 * 90];
+        for _ in 0..10 {
+            reduced.grow(1.0 / 30.0, 0.75);
+        }
+        reduced.render(&mut early);
+        for _ in 0..20 {
+            reduced.grow(1.0 / 30.0, 0.75);
+        }
+        reduced.render(&mut late);
+        assert_eq!(early, late, "Reduced Solar Canopy must remain static");
     }
 
     #[test]
