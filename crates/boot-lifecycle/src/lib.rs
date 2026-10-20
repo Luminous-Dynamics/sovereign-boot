@@ -789,10 +789,8 @@ mod tests {
                 .is_ok()
         );
         assert!(
-            validate_store_generation(
-                "/nix/store/0123456789abcdfghijklmnpqrsvwxyz-nixos-system"
-            )
-            .is_ok()
+            validate_store_generation("/nix/store/0123456789abcdfghijklmnpqrsvwxyz-nixos-system")
+                .is_ok()
         );
     }
 
