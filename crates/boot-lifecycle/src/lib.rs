@@ -60,7 +60,10 @@ fn required<'a>(options: &'a Options, key: &str) -> Result<&'a str, String> {
 }
 
 fn optional<'a>(options: &'a Options, key: &str) -> Option<&'a str> {
-    options.get(key).map(String::as_str).filter(|value| !value.is_empty())
+    options
+        .get(key)
+        .map(String::as_str)
+        .filter(|value| !value.is_empty())
 }
 
 fn parse_u64(options: &Options, key: &str) -> Result<u64, String> {
@@ -96,14 +99,18 @@ fn validate_store_generation(value: &str) -> Result<PathBuf, String> {
         || components[1] != Component::Normal(OsStr::new("nix"))
         || components[2] != Component::Normal(OsStr::new("store"))
     {
-        return Err(error("deployment ID must be one canonical /nix/store/<hash>-<name> path"));
+        return Err(error(
+            "deployment ID must be one canonical /nix/store/<hash>-<name> path",
+        ));
     }
     let Some(Component::Normal(name)) = components.get(3) else {
         return Err(error("deployment ID lacks a store object name"));
     };
     let name = name.to_string_lossy();
     let Some(separator) = name.find('-') else {
-        return Err(error("deployment store object must contain a hash/name separator"));
+        return Err(error(
+            "deployment store object must contain a hash/name separator",
+        ));
     };
     if separator == 0
         || name.len() <= separator + 1
@@ -121,7 +128,9 @@ fn require_existing_generation(value: &str) -> Result<PathBuf, String> {
     let metadata = fs::symlink_metadata(&path)
         .map_err(|e| error(format!("deployment does not exist at {value}: {e}")))?;
     if metadata.file_type().is_symlink() || !metadata.is_dir() {
-        return Err(error(format!("deployment is not a real directory: {value}")));
+        return Err(error(format!(
+            "deployment is not a real directory: {value}"
+        )));
     }
     Ok(path)
 }
@@ -182,14 +191,23 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
         .ok_or_else(|| error(format!("path has no file name: {}", path.display())))?
         .to_string_lossy();
     let counter = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let temporary = parent.join(format!(".{basename}.tmp.{}.{}", std::process::id(), counter));
+    let temporary = parent.join(format!(
+        ".{basename}.tmp.{}.{}",
+        std::process::id(),
+        counter
+    ));
 
     let result = (|| {
         let mut file = OpenOptions::new()
             .write(true)
             .create_new(true)
             .open(&temporary)
-            .map_err(|e| error(format!("create temporary file {}: {e}", temporary.display())))?;
+            .map_err(|e| {
+                error(format!(
+                    "create temporary file {}: {e}",
+                    temporary.display()
+                ))
+            })?;
         file.write_all(bytes)
             .map_err(|e| error(format!("write temporary file {}: {e}", temporary.display())))?;
         file.sync_all()
@@ -220,17 +238,27 @@ fn read_root_target(root: &Path, name: &str) -> Result<Option<PathBuf>, String> 
             link.display()
         )));
     }
-    let target = fs::read_link(&link)
-        .map_err(|e| error(format!("read GC root {}: {e}", link.display())))?;
+    let target =
+        fs::read_link(&link).map_err(|e| error(format!("read GC root {}: {e}", link.display())))?;
     if !target.is_absolute() {
-        return Err(error(format!("GC root target must be absolute: {}", link.display())));
+        return Err(error(format!(
+            "GC root target must be absolute: {}",
+            link.display()
+        )));
     }
     let target_text = target.to_string_lossy();
     let target = validate_store_generation(&target_text)?;
-    let target_metadata = fs::symlink_metadata(&target)
-        .map_err(|e| error(format!("GC root target does not exist: {}", target.display())))?;
+    let target_metadata = fs::symlink_metadata(&target).map_err(|e| {
+        error(format!(
+            "GC root target does not exist: {}",
+            target.display()
+        ))
+    })?;
     if target_metadata.file_type().is_symlink() || !target_metadata.is_dir() {
-        return Err(error(format!("GC root target is not a real directory: {}", target.display())));
+        return Err(error(format!(
+            "GC root target is not a real directory: {}",
+            target.display()
+        )));
     }
     Ok(Some(target))
 }
@@ -251,31 +279,47 @@ fn atomic_symlink(root: &Path, name: &str, target: &Path) -> Result<(), String> 
     let scratch_name = format!(".{name}.tmp.{}.{}", std::process::id(), counter);
     let scratch_path = root.join(scratch_name);
     #[cfg(unix)]
-    std::os::unix::fs::symlink(target, &scratch_path)
-        .map_err(|e| error(format!("create temporary GC root {}: {e}", scratch_path.display())))?;
+    std::os::unix::fs::symlink(target, &scratch_path).map_err(|e| {
+        error(format!(
+            "create temporary GC root {}: {e}",
+            scratch_path.display()
+        ))
+    })?;
     #[cfg(not(unix))]
     return Err(error("GC-root symlink operations require a Unix host"));
 
     if let Err(e) = fs::rename(&scratch_path, &final_path) {
         let _ = fs::remove_file(&scratch_path);
-        return Err(error(format!("atomically replace GC root {}: {e}", final_path.display())));
+        return Err(error(format!(
+            "atomically replace GC root {}: {e}",
+            final_path.display()
+        )));
     }
     sync_directory(root)
 }
 
 fn clean_stale_root_scratch(root: &Path) -> Result<(), String> {
     ensure_directory(root)?;
-    for entry in fs::read_dir(root)
-        .map_err(|e| error(format!("list GC roots {}: {e}", root.display())))?
+    for entry in
+        fs::read_dir(root).map_err(|e| error(format!("list GC roots {}: {e}", root.display())))?
     {
         let entry = entry.map_err(|e| error(format!("read GC root entry: {e}")))?;
         let name = entry.file_name().to_string_lossy().into_owned();
         let owned_scratch = [".current.tmp.", ".previous.tmp.", ".last-known-good.tmp."]
             .iter()
             .any(|prefix| name.starts_with(prefix));
-        if owned_scratch && entry.file_type().map_err(|e| error(e.to_string()))?.is_symlink() {
-            fs::remove_file(entry.path())
-                .map_err(|e| error(format!("remove stale scratch root {}: {e}", entry.path().display())))?;
+        if owned_scratch
+            && entry
+                .file_type()
+                .map_err(|e| error(e.to_string()))?
+                .is_symlink()
+        {
+            fs::remove_file(entry.path()).map_err(|e| {
+                error(format!(
+                    "remove stale scratch root {}: {e}",
+                    entry.path().display()
+                ))
+            })?;
         }
     }
     sync_directory(root)
@@ -298,7 +342,10 @@ fn rotate_root_links(
     Ok(())
 }
 
-fn rotate_current_previous_roots(root: &Path, next_generation: &Path) -> Result<Option<PathBuf>, String> {
+fn rotate_current_previous_roots(
+    root: &Path,
+    next_generation: &Path,
+) -> Result<Option<PathBuf>, String> {
     ensure_directory(root)?;
     let previous_current = read_root_target(root, "current")?;
     rotate_root_links(root, next_generation, previous_current.as_deref())?;
@@ -306,7 +353,9 @@ fn rotate_current_previous_roots(root: &Path, next_generation: &Path) -> Result<
 }
 fn validate_hardware_fingerprint(value: &str) -> Result<(), String> {
     if !valid_hex_digest(value) {
-        return Err(error("hardware fingerprint must be a lowercase 64-character SHA-256 digest"));
+        return Err(error(
+            "hardware fingerprint must be a lowercase 64-character SHA-256 digest",
+        ));
     }
     Ok(())
 }
@@ -324,7 +373,9 @@ fn shutdown(args: &[String]) -> Result<(), String> {
     let runtime_dir = PathBuf::from(required(&options, "--runtime-dir")?);
     let kind = required(&options, "--kind")?;
     if !["reboot", "poweroff", "suspend", "hibernate"].contains(&kind) {
-        return Err(error("kind must be reboot, poweroff, suspend, or hibernate"));
+        return Err(error(
+            "kind must be reboot, poweroff, suspend, or hibernate",
+        ));
     }
     let uptime_secs = parse_u64(&options, "--uptime-secs")?;
     let boot_id = current_boot_id();
@@ -382,7 +433,9 @@ fn prepare(args: &[String]) -> Result<(), String> {
     validate_hardware_fingerprint(hardware)?;
     let storage_state = required(&options, "--storage-state")?;
     if !["unknown", "healthy", "degraded", "failed"].contains(&storage_state) {
-        return Err(error("storage-state must be unknown, healthy, degraded, or failed"));
+        return Err(error(
+            "storage-state must be unknown, healthy, degraded, or failed",
+        ));
     }
     for key in options.keys() {
         if ![
@@ -422,7 +475,9 @@ fn prepare(args: &[String]) -> Result<(), String> {
 
     let previous_generation = rotate_current_previous_roots(&roots_dir, &generation)?;
     let generation_string = generation.to_string_lossy();
-    let previous_string = previous_generation.as_ref().map(|path| path.to_string_lossy().into_owned());
+    let previous_string = previous_generation
+        .as_ref()
+        .map(|path| path.to_string_lossy().into_owned());
 
     let receipt = format!(
         "{{\n  \"schema\": {},\n  \"boot_id\": {},\n  \"booted_generation\": {},\n  \"hardware_fingerprint\": {},\n  \"storage_state\": {},\n  \"generation_source\": \"/run/booted-system\",\n  \"observation_authentication\": \"local-unsigned-diagnostic\"\n}}\n",
@@ -528,7 +583,9 @@ fn qualify(args: &[String]) -> Result<i32, String> {
     validate_boot_id(boot_id)?;
     let booted_text = required(&options, "--booted-generation")?;
     let booted_generation = require_existing_generation(booted_text)?;
-    let current_generation = optional(&options, "--current-generation").unwrap_or("").to_owned();
+    let current_generation = optional(&options, "--current-generation")
+        .unwrap_or("")
+        .to_owned();
     if !current_generation.is_empty() {
         require_existing_generation(&current_generation)?;
     }
@@ -611,7 +668,10 @@ fn qualify(args: &[String]) -> Result<i32, String> {
             &input,
             "pending",
             reason,
-            existing_lkg.as_ref().map(|path| path.to_string_lossy()).as_deref(),
+            existing_lkg
+                .as_ref()
+                .map(|path| path.to_string_lossy())
+                .as_deref(),
             false,
         )?;
         return Ok(NOT_READY_EXIT);
@@ -626,7 +686,10 @@ fn qualify(args: &[String]) -> Result<i32, String> {
         &input,
         "skipped",
         reason,
-        existing_lkg.as_ref().map(|path| path.to_string_lossy()).as_deref(),
+        existing_lkg
+            .as_ref()
+            .map(|path| path.to_string_lossy())
+            .as_deref(),
         true,
     )?;
     Ok(0)
@@ -639,13 +702,20 @@ where
     S: Into<String>,
 {
     let args: Vec<String> = arguments.into_iter().map(Into::into).collect();
-    if args.first().is_some_and(|arg| arg == "--help" || arg == "-h") {
-        println!("Usage: spore-boot-state shutdown --state-dir DIR --runtime-dir DIR --kind KIND --uptime-secs SECONDS [--generation PATH] [--hardware-fingerprint SHA256]");
+    if args
+        .first()
+        .is_some_and(|arg| arg == "--help" || arg == "-h")
+    {
+        println!(
+            "Usage: spore-boot-state shutdown --state-dir DIR --runtime-dir DIR --kind KIND --uptime-secs SECONDS [--generation PATH] [--hardware-fingerprint SHA256]"
+        );
         return Ok(());
     }
     match args.first().map(String::as_str) {
         Some("shutdown") => shutdown(&args[1..]),
-        _ => Err(error("expected subcommand: shutdown (use --help for usage)")),
+        _ => Err(error(
+            "expected subcommand: shutdown (use --help for usage)",
+        )),
     }
 }
 
@@ -657,26 +727,35 @@ where
     S: Into<String>,
 {
     let args: Vec<String> = arguments.into_iter().map(Into::into).collect();
-    if args.first().is_some_and(|arg| arg == "--help" || arg == "-h") {
+    if args
+        .first()
+        .is_some_and(|arg| arg == "--help" || arg == "-h")
+    {
         println!("Usage: spore-recovery-linux {prepare|qualify} ...");
         return Ok(0);
     }
     match args.first().map(String::as_str) {
         Some("prepare") => prepare(&args[1..]).map(|_| 0),
         Some("qualify") => qualify(&args[1..]),
-        _ => Err(error("expected subcommand: prepare or qualify (use --help for usage)")),
+        _ => Err(error(
+            "expected subcommand: prepare or qualify (use --help for usage)",
+        )),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-        fn temp_dir(label: &str) -> PathBuf {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    fn temp_dir(label: &str) -> PathBuf {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("clock")
             .as_nanos();
-        let path = std::env::temp_dir().join(format!("sovereign-boot-lifecycle-{label}-{}-{unique}", std::process::id()));
+        let path = std::env::temp_dir().join(format!(
+            "sovereign-boot-lifecycle-{label}-{}-{unique}",
+            std::process::id()
+        ));
         fs::create_dir_all(&path).expect("create test directory");
         path
     }
@@ -684,7 +763,8 @@ mod tests {
     fn healthy_input() -> HealthInput {
         HealthInput {
             booted_generation: "/nix/store/00000000000000000000000000000000-test-system".to_owned(),
-            current_generation: "/nix/store/00000000000000000000000000000000-test-system".to_owned(),
+            current_generation: "/nix/store/00000000000000000000000000000000-test-system"
+                .to_owned(),
             graphical_state: "active".to_owned(),
             display_state: "active".to_owned(),
             display_pid: 10,
@@ -696,7 +776,10 @@ mod tests {
 
     #[test]
     fn generation_validator_accepts_canonical_store_objects() {
-        assert!(validate_store_generation("/nix/store/00000000000000000000000000000000-test-system").is_ok());
+        assert!(
+            validate_store_generation("/nix/store/00000000000000000000000000000000-test-system")
+                .is_ok()
+        );
         assert!(validate_store_generation("/nix/store/abc123-nixos-system").is_ok());
     }
 
@@ -739,14 +822,25 @@ mod tests {
 
     #[test]
     fn option_parser_rejects_duplicates_missing_values_and_unknown_shape() {
-        let duplicate = vec!["--x".to_owned(), "1".to_owned(), "--x".to_owned(), "2".to_owned()];
+        let duplicate = vec![
+            "--x".to_owned(),
+            "1".to_owned(),
+            "--x".to_owned(),
+            "2".to_owned(),
+        ];
         assert!(parse_options(&duplicate, &[]).is_err());
         let missing = vec!["--x".to_owned()];
         assert!(parse_options(&missing, &[]).is_err());
         let stray = vec!["value".to_owned()];
         assert!(parse_options(&stray, &[]).is_err());
         let boolean = vec!["--flag".to_owned()];
-        assert_eq!(parse_options(&boolean, &["--flag"]).unwrap().get("--flag").unwrap(), "true");
+        assert_eq!(
+            parse_options(&boolean, &["--flag"])
+                .unwrap()
+                .get("--flag")
+                .unwrap(),
+            "true"
+        );
     }
 
     #[test]
@@ -777,7 +871,10 @@ mod tests {
         assert_eq!(fs::read_link(root.join("current")).unwrap(), two);
         fs::write(root.join("protected"), "do not overwrite").unwrap();
         assert!(atomic_symlink(&root, "protected", &two).is_err());
-        assert_eq!(fs::read_to_string(root.join("protected")).unwrap(), "do not overwrite");
+        assert_eq!(
+            fs::read_to_string(root.join("protected")).unwrap(),
+            "do not overwrite"
+        );
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -807,12 +904,19 @@ mod tests {
         assert_eq!(not_ready_reason(&ready), None);
 
         let mut drift = ready.clone();
-        drift.current_generation = "/nix/store/11111111111111111111111111111111-other-system".to_owned();
-        assert_eq!(not_ready_reason(&drift), Some("booted-userspace-deployment-mismatch"));
+        drift.current_generation =
+            "/nix/store/11111111111111111111111111111111-other-system".to_owned();
+        assert_eq!(
+            not_ready_reason(&drift),
+            Some("booted-userspace-deployment-mismatch")
+        );
 
         let mut graphical = ready.clone();
         graphical.graphical_state = "activating".to_owned();
-        assert_eq!(not_ready_reason(&graphical), Some("graphical-target-inactive"));
+        assert_eq!(
+            not_ready_reason(&graphical),
+            Some("graphical-target-inactive")
+        );
 
         let mut display = ready.clone();
         display.display_state = "failed".to_owned();
@@ -820,22 +924,35 @@ mod tests {
 
         let mut no_pid = ready.clone();
         no_pid.display_pid = 0;
-        assert_eq!(not_ready_reason(&no_pid), Some("display-manager-no-main-pid"));
+        assert_eq!(
+            not_ready_reason(&no_pid),
+            Some("display-manager-no-main-pid")
+        );
 
         let mut no_time = ready.clone();
         no_time.active_enter_usec = 0;
-        assert_eq!(not_ready_reason(&no_time), Some("display-manager-monotonic-start-time-missing"));
+        assert_eq!(
+            not_ready_reason(&no_time),
+            Some("display-manager-monotonic-start-time-missing")
+        );
 
         let mut too_early = ready;
         too_early.observed_usec = 9_999_999;
-        assert_eq!(not_ready_reason(&too_early), Some("stability-window-not-met"));
+        assert_eq!(
+            not_ready_reason(&too_early),
+            Some("stability-window-not-met")
+        );
     }
 
     #[test]
     fn not_ready_reason_prioritizes_live_switch_over_graphical_health() {
         let mut input = healthy_input();
-        input.current_generation = "/nix/store/11111111111111111111111111111111-other-system".to_owned();
+        input.current_generation =
+            "/nix/store/11111111111111111111111111111111-other-system".to_owned();
         input.display_state = "failed".to_owned();
-        assert_eq!(not_ready_reason(&input), Some("booted-userspace-deployment-mismatch"));
+        assert_eq!(
+            not_ready_reason(&input),
+            Some("booted-userspace-deployment-mismatch")
+        );
     }
 }
