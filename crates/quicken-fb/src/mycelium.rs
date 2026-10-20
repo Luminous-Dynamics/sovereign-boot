@@ -828,7 +828,15 @@ impl MycelialNetwork {
         let inset_x = (width / 8).max(1);
         let inset_y = (height / 8).max(1);
         let grid = self.palette.secondary.with_opacity(0.12);
-        let accent = self.palette.primary.with_opacity(0.35);
+        // Graphite's signature is a very slow breathing accent, not a moving
+        // grid. Reduced mode fixes this opacity so identical inputs remain
+        // pixel-identical even if an external caller advances elapsed time.
+        let accent = if self.motion_scale <= 0.0 {
+            self.palette.primary.with_opacity(0.35)
+        } else {
+            let pulse = (self.elapsed * self.theme_motion.pulse * 2.0).sin();
+            self.palette.primary.with_opacity(0.42 + 0.20 * pulse)
+        };
 
         for division in 1..8 {
             let x = inset_x + (width - 2 * inset_x) * division / 8;
@@ -1638,6 +1646,45 @@ mod tests {
                 "theme {} rendered a flat frame", theme.id()
             );
         }
+    }
+
+    #[test]
+    fn graphite_focus_has_motion_only_when_motion_is_enabled() {
+        use crate::theme::MotionMode;
+
+        for mode in [MotionMode::LowPower, MotionMode::Balanced, MotionMode::Cinematic] {
+            let mut network = MycelialNetwork::new_with_theme(
+                160, 90, "graphite-motion-regression", Theme::GraphiteFocus,
+            );
+            network.set_motion_scale(mode.scale());
+            network.elapsed = 8.0;
+            let mut earlier = vec![0u32; 160 * 90];
+            network.render(&mut earlier);
+
+            network.elapsed = 8.25;
+            let mut later = vec![0u32; 160 * 90];
+            network.render(&mut later);
+            assert_ne!(
+                earlier, later,
+                "Graphite Focus must respond to elapsed time in {:?} mode",
+                mode
+            );
+        }
+
+        let mut reduced = MycelialNetwork::new_with_theme(
+            160, 90, "graphite-motion-regression", Theme::GraphiteFocus,
+        );
+        reduced.set_motion_scale(MotionMode::Reduced.scale());
+        reduced.elapsed = 8.0;
+        let mut reduced_earlier = vec![0u32; 160 * 90];
+        reduced.render(&mut reduced_earlier);
+        reduced.elapsed = 8.25;
+        let mut reduced_later = vec![0u32; 160 * 90];
+        reduced.render(&mut reduced_later);
+        assert_eq!(
+            reduced_earlier, reduced_later,
+            "Reduced Graphite Focus must remain pixel-identical"
+        );
     }
 
     #[test]
