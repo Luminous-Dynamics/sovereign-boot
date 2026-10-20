@@ -953,9 +953,18 @@ impl MycelialNetwork {
         for cluster in 0..cluster_count {
             let angle = std::f32::consts::TAU * cluster as f32 / cluster_count as f32
                 - std::f32::consts::FRAC_PI_2;
+            // Animated modes give each community a bounded, slow drift so Low
+            // Power remains visibly alive at sampled frame rates without rapid flashing.
+            // Reduced mode is an exact static layout with no time-dependent displacement.
+            let phase = self.elapsed * 3.0 + cluster as f32 * 0.73;
+            let (drift_x, drift_y) = if self.motion_scale > 0.0 && self.elapsed.is_finite() {
+                (phase.sin() * 1.25, phase.cos() * 0.5)
+            } else {
+                (0.0, 0.0)
+            };
             centers.push((
-                width * 0.5 + angle.cos() * orbit,
-                height * 0.5 + angle.sin() * orbit * 0.72,
+                width * 0.5 + angle.cos() * orbit + drift_x,
+                height * 0.5 + angle.sin() * orbit * 0.72 + drift_y,
             ));
         }
 
