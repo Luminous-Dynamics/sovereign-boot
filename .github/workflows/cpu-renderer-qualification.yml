@@ -4,6 +4,10 @@ on:
   pull_request:
     paths:
       - "crates/quicken-fb/**"
+      - "crates/boot-lifecycle/**"
+      - "nix/modules/sovereign-boot.nix"
+      - "docs/BOOT_LIFECYCLE_TOOLS_V1.md"
+      - "README.md"
       - "themes/visual-genome-v1.json"
       - "flake.nix"
       - "Cargo.toml"
@@ -36,6 +40,17 @@ jobs:
 
       - name: Install stable Rust
         uses: dtolnay/rust-toolchain@stable
+
+
+      - name: Test standalone boot lifecycle package
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --manifest-path crates/boot-lifecycle/Cargo.toml -- --check
+          cargo test --manifest-path crates/boot-lifecycle/Cargo.toml --locked
+          cargo build --manifest-path crates/boot-lifecycle/Cargo.toml --locked --bins
+          cargo run --manifest-path crates/boot-lifecycle/Cargo.toml --locked --bin spore-boot-state -- --help
+          cargo run --manifest-path crates/boot-lifecycle/Cargo.toml --locked --bin spore-recovery-linux -- --help
 
       - name: Exercise capture provenance wrapper on synthetic frames
         shell: bash
