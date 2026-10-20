@@ -93,8 +93,11 @@ pub struct MycelialNetwork {
     center: (f32, f32),
     theme: Theme,
     stars: Vec<Star>,
-    /// Elapsed time in seconds (fractional).
+    /// Motion-scaled simulation time in seconds (fractional).
     pub elapsed: f32,
+    /// Unscaled presentation time; boot intro and scene-entry handoff must not
+    /// stretch merely because the selected motion mode slows scene simulation.
+    presentation_elapsed: f32,
     /// All nodes pulsing simultaneously (completion events).
     pub global_pulse: f32,
     /// Contraction progress (0.0 = normal, 1.0 = fully contracted to center).
@@ -168,6 +171,7 @@ impl MycelialNetwork {
             theme,
             stars,
             elapsed: 0.0,
+            presentation_elapsed: 0.0,
             global_pulse: 0.0,
             contraction: 0.0,
             exit_fade: 0.0,
@@ -242,12 +246,16 @@ impl MycelialNetwork {
 
     /// Advance the bounded simulation. Reduced motion performs no state updates.
     pub fn grow(&mut self, dt: f32, io_rate: f32) {
-        if self.motion_scale <= 0.0 || !dt.is_finite() || dt <= 0.0 {
+        if !dt.is_finite() || dt <= 0.0 || !self.motion_scale.is_finite() || self.motion_scale <= 0.0 {
             return;
         }
         // Bound recovery from long scheduling stalls; animation must not jump by
         // several seconds after a pause or a delayed framebuffer operation.
-        let dt = dt.clamp(0.0, 0.25) * self.motion_scale;
+        let presentation_dt = dt.clamp(0.0, 0.25);
+        self.presentation_elapsed += presentation_dt;
+        // The intro and scene handoff follow presentation time; scene evolution
+        // and growth still respect the selected motion scale.
+        let dt = presentation_dt * self.motion_scale.clamp(0.0, 1.0);
         if dt <= 0.0 {
             return;
         }
@@ -412,6 +420,23 @@ impl MycelialNetwork {
         }
     }
 
+    /// Resolve presentation time independently from motion-scaled simulation time.
+    ///
+    /// Low Power may slow scene evolution, but must not stretch the boot intro
+    /// or delay scene-entry handoff. Preserve compatibility with offline fixtures
+    /// that seed elapsed directly by taking the later finite clock.
+    fn presentation_time(&self) -> f32 {
+        if self.motion_scale <= 0.0
+            || !self.motion_scale.is_finite()
+            || !self.elapsed.is_finite()
+            || !self.presentation_elapsed.is_finite()
+        {
+            SCENE_ENTRY_FADE_START + self.scene_entry_fade_duration
+        } else {
+            self.presentation_elapsed.max(self.elapsed)
+        }
+    }
+
     /// Render the network to a pixel buffer (XRGB8888 format, row-major).
     /// The buffer must be `width * height` u32 values.
     pub fn render(&self, buffer: &mut [u32]) {
@@ -419,11 +444,11 @@ impl MycelialNetwork {
         let h = self.height as usize;
         assert!(buffer.len() >= w * h, "buffer too small");
 
-        // Simulation time can be frozen independently from presentation time.
-        // Reduced mode uses the terminal visual phase to show a complete still frame.
-        let visual_time = self.visual_time();
-        let bg = if visual_time < 1.0 {
-            Rgba::lerp(crate::color::BLACK, self.palette.background, visual_time)
+        // Motion-scaled simulation and presentation time are independent.
+        // Reduced mode uses the terminal phase to show a complete still frame.
+        let presentation_time = self.presentation_time();
+        let bg = if presentation_time < 1.0 {
+            Rgba::lerp(crate::color::BLACK, self.palette.background, presentation_time)
         } else {
             self.palette.background
         };
@@ -432,10 +457,10 @@ impl MycelialNetwork {
             *pixel = bg.to_xrgb8888();
         }
 
-        // Keep the first second calm for animated modes; Reduced skips directly
-        // to the final still composition so it cannot freeze on the intro.
-        if visual_time < 1.0 {
-            if visual_time >= 0.9 {
+        // Keep the first presentation second calm for animated modes;
+        // Reduced skips directly to the final still composition on its first frame.
+        if presentation_time < 1.0 {
+            if presentation_time >= 0.9 {
                 let cx = self.center.0 as usize;
                 let cy = self.center.1 as usize;
                 if cx < w && cy < h {
@@ -1186,14 +1211,14 @@ impl MycelialNetwork {
     ///
     /// The one-second intro deliberately draws only the background and seed. Once
     /// the full scene is eligible, reveal it over the configured duration instead of making a hard
-    /// composition cut. Reduced mode sets elapsed beyond this interval, so its
-    /// fixed composition is not faded on every frame.
+    /// composition cut. This handoff follows presentation time, not slowed scene simulation.
+    /// Reduced mode uses a terminal presentation phase and is not faded on every frame.
     fn apply_scene_entry_fade(&self, buffer: &mut [u32]) {
-        let visual_time = self.visual_time();
-        if !visual_time.is_finite() {
+        let presentation_time = self.presentation_time();
+        if !presentation_time.is_finite() {
             return;
         }
-        let progress = ((visual_time - SCENE_ENTRY_FADE_START) / self.scene_entry_fade_duration)
+        let progress = ((presentation_time - SCENE_ENTRY_FADE_START) / self.scene_entry_fade_duration)
             .clamp(0.0, 1.0);
         // Smoothstep has zero slope at both endpoints, avoiding a velocity snap
         // when the composition first appears and when the crossfade completes.
@@ -1585,6 +1610,40 @@ mod tests {
         net.elapsed = 2.0;
         let mut buf = vec![0u32; 100 * 80];
         net.render(&mut buf);
+    }
+
+    #[test]
+    fn low_power_slows_scene_time_without_stretching_the_boot_intro() {
+        use crate::theme::MotionMode;
+
+        let mut network = MycelialNetwork::new_with_theme(
+            160, 90, "presentation-clock-regression", Theme::CivicDawn,
+        );
+        network.set_motion_scale(MotionMode::LowPower.scale());
+
+        for _ in 0..45 {
+            network.grow(1.0 / 30.0, 1.0);
+        }
+
+        assert!(
+            (network.presentation_elapsed - 1.5).abs() < 0.001,
+            "presentation time should advance at wall cadence"
+        );
+        assert!(
+            (network.elapsed - 0.375).abs() < 0.001,
+            "scene simulation time should remain scaled by Low Power"
+        );
+        assert!(
+            network.presentation_time() >= 1.0 && network.visual_time() < 1.0,
+            "presentation must leave the intro while the slower scene clock remains below one second"
+        );
+
+        let mut frame = vec![0u32; 160 * 90];
+        network.render(&mut frame);
+        assert!(
+            frame.iter().any(|pixel| *pixel != network.palette.background.to_xrgb8888()),
+            "the low-power scene should be visible after presentation handoff"
+        );
     }
 
     #[test]
