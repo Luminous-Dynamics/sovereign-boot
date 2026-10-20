@@ -153,6 +153,8 @@ struct ThemeContract {
     scene_kind: SceneKind,
     scene_family_id: &'static str,
     boot_allowed: bool,
+    desktop_allowed: bool,
+    lockscreen_allowed: bool,
     palette: Palette,
     growth_profile: GrowthProfile,
     density: ThemeDensity,
