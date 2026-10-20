@@ -886,7 +886,9 @@ impl MycelialNetwork {
         let accent = if self.motion_scale <= 0.0 {
             self.palette.primary.with_opacity(0.35)
         } else {
-            let pulse = (self.visual_time() * self.theme_motion.pulse * 2.0).sin();
+            // Keep the pulse spatially limited but large enough to survive 30 Hz
+            // integer-frame sampling and the changed-channel floor of motion_audit.
+            let pulse = (self.visual_time() * self.theme_motion.pulse * 18.0).sin();
             self.palette.primary.with_opacity(0.42 + 0.20 * pulse)
         };
 
