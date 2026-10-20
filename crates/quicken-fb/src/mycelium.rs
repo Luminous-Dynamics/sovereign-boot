@@ -433,7 +433,12 @@ impl MycelialNetwork {
         {
             SCENE_ENTRY_FADE_START + self.scene_entry_fade_duration
         } else {
-            self.presentation_elapsed.max(self.elapsed)
+            // Elapsed is the motion-scaled simulation clock. Dividing by the
+            // selected scale reconstructs equivalent presentation duration,
+            // including fixtures that seed elapsed before a render audit. The
+            // accumulated presentation clock wins when it has advanced farther.
+            let scaled_elapsed = self.elapsed / self.motion_scale.clamp(f32::MIN_POSITIVE, 1.0);
+            self.presentation_elapsed.max(scaled_elapsed)
         }
     }
 
@@ -1886,11 +1891,22 @@ mod tests {
         network.set_motion_scale(0.25);
         network.set_particle_budget_scale(0.25);
         network.elapsed = 8.0;
+        let clock_before = network.presentation_time();
         let mut earlier = vec![0u32; 160 * 90];
         network.render(&mut earlier);
 
-        network.presentation_elapsed = 8.25;
-        network.elapsed = 8.0625;
+        for _ in 0..30 {
+            network.grow(1.0 / 30.0, 0.75);
+        }
+        let clock_after = network.presentation_time();
+        assert!(
+            (clock_after - clock_before - 1.0).abs() < 0.02,
+            "presentation effects must advance at real cadence in Low Power"
+        );
+        assert!(
+            (network.elapsed - 8.25).abs() < 0.02,
+            "scene simulation must remain slowed in Low Power"
+        );
         let mut later = vec![0u32; 160 * 90];
         network.render(&mut later);
         assert_ne!(
