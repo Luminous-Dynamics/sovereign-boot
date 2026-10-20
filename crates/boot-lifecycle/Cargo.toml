@@ -1,0 +1,22 @@
+[package]
+name = "sovereign-boot-lifecycle"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-or-later"
+description = "Standalone, fail-open boot lifecycle receipts and Last Known Good GC-root qualification"
+
+[workspace]
+
+[lib]
+name = "sovereign_boot_lifecycle"
+path = "src/lib.rs"
+
+[[bin]]
+name = "spore-boot-state"
+path = "src/bin/spore_boot_state.rs"
+
+[[bin]]
+name = "spore-recovery-linux"
+path = "src/bin/spore_recovery_linux.rs"
+
+[dependencies]
