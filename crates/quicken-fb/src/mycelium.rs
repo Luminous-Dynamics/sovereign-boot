@@ -1043,6 +1043,23 @@ impl MycelialNetwork {
         let h = self.height as usize;
         let contraction = ((self.contraction - 0.65) / 0.35).clamp(0.0, 1.0);
 
+        // Low Power uses fewer stars, but those stars must still have observable
+        // movement at the real presentation cadence. Keep the drift spatially bounded
+        // and use presentation time so reduced simulation speed does not quantize the
+        // whole sequence into identical pixel frames. Reduced mode remains exact-static.
+        let presentation_time = self.presentation_time();
+        let animated_position = |star: &Star| {
+            if self.motion_scale <= 0.0 || !presentation_time.is_finite() {
+                return star.position;
+            }
+            let phase_x = presentation_time * 1.3 + star.phase;
+            let phase_y = presentation_time * 0.91 + star.phase * 0.73;
+            (
+                star.position.0 + phase_x.sin() * 2.0,
+                star.position.1 + phase_y.cos() * 1.5,
+            )
+        };
+
         // Connect only nearby neighbors: a loose atlas, never a dense wireframe.
         let visible_star_count = self.rendered_star_count();
         let visible_stars = &self.stars[..visible_star_count];
@@ -1052,20 +1069,22 @@ impl MycelialNetwork {
                 let Some(next) = visible_stars.get(next_index) else {
                     continue;
                 };
-                let dx = star.position.0 - next.position.0;
-                let dy = star.position.1 - next.position.1;
+                let from_position = animated_position(star);
+                let next_position = animated_position(next);
+                let dx = from_position.0 - next_position.0;
+                let dy = from_position.1 - next_position.1;
                 let max_distance = (self.width.min(self.height) as f32) * 0.24;
                 if dx * dx + dy * dy > max_distance * max_distance {
                     continue;
                 }
 
                 let start = (
-                    star.position.0 + (self.center.0 - star.position.0) * contraction,
-                    star.position.1 + (self.center.1 - star.position.1) * contraction,
+                    from_position.0 + (self.center.0 - from_position.0) * contraction,
+                    from_position.1 + (self.center.1 - from_position.1) * contraction,
                 );
                 let end = (
-                    next.position.0 + (self.center.0 - next.position.0) * contraction,
-                    next.position.1 + (self.center.1 - next.position.1) * contraction,
+                    next_position.0 + (self.center.0 - next_position.0) * contraction,
+                    next_position.1 + (self.center.1 - next_position.1) * contraction,
                 );
                 let edge = Rgba::lerp(
                     self.palette.secondary.with_opacity(0.18),
@@ -1082,11 +1101,17 @@ impl MycelialNetwork {
         }
 
         for star in visible_stars {
+            let star_position = animated_position(star);
             let position = (
-                star.position.0 + (self.center.0 - star.position.0) * contraction,
-                star.position.1 + (self.center.1 - star.position.1) * contraction,
+                star_position.0 + (self.center.0 - star_position.0) * contraction,
+                star_position.1 + (self.center.1 - star_position.1) * contraction,
             );
-            let twinkle = 0.58 + 0.32 * ((self.visual_time() * 0.7 + star.phase).sin() * 0.5 + 0.5);
+            let twinkle_time = if self.motion_scale <= 0.0 {
+                self.visual_time()
+            } else {
+                presentation_time
+            };
+            let twinkle = 0.58 + 0.32 * ((twinkle_time * 0.7 + star.phase).sin() * 0.5 + 0.5);
             let color = Rgba::lerp(self.palette.primary, self.palette.convergence, contraction)
                 .brighten(twinkle + self.global_pulse * 0.25 * self.theme_motion.pulse);
             draw_filled_circle(
@@ -1850,6 +1875,40 @@ mod tests {
         assert_eq!(
             reduced_earlier, reduced_later,
             "Reduced Graphite Focus must remain pixel-identical"
+        );
+    }
+
+    #[test]
+    fn cosmic_atlas_has_observable_low_power_motion_and_static_reduced_output() {
+        let mut network = MycelialNetwork::new_with_theme(
+            160, 90, "cosmic-motion-regression", Theme::CosmicAtlas,
+        );
+        network.set_motion_scale(0.25);
+        network.set_particle_budget_scale(0.25);
+        network.elapsed = 8.0;
+        let mut earlier = vec![0u32; 160 * 90];
+        network.render(&mut earlier);
+
+        network.presentation_elapsed = 8.25;
+        network.elapsed = 8.0625;
+        let mut later = vec![0u32; 160 * 90];
+        network.render(&mut later);
+        assert_ne!(
+            earlier, later,
+            "Cosmic Atlas must have observable spatial motion in Low Power mode"
+        );
+
+        network.set_motion_scale(0.0);
+        network.elapsed = 8.0;
+        let mut reduced_earlier = vec![0u32; 160 * 90];
+        network.render(&mut reduced_earlier);
+        network.elapsed = 8.25;
+        network.presentation_elapsed = 9.0;
+        let mut reduced_later = vec![0u32; 160 * 90];
+        network.render(&mut reduced_later);
+        assert_eq!(
+            reduced_earlier, reduced_later,
+            "Reduced Cosmic Atlas must remain pixel-identical regardless of elapsed clocks"
         );
     }
 
