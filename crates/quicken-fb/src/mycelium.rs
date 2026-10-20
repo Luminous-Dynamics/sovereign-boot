@@ -730,6 +730,13 @@ impl MycelialNetwork {
         let rows = (h as i32 / spacing) + 2;
         let cols = (w as i32 / spacing) + 2;
         let contraction = ((self.contraction - 0.68) / 0.32).clamp(0.0, 1.0);
+        // Let the evidence lattice breathe slowly in animated modes. Reduced
+        // motion fixes the phase so time-only changes cannot alter still output.
+        let temporal_breathe = if self.motion_scale <= 0.0 {
+            0.0
+        } else {
+            (self.elapsed * self.theme_motion.pulse * 2.5).sin() * 0.07
+        };
 
         let point = |row: i32, col: i32| {
             let stagger = if row.rem_euclid(2) == 0 { 0.0 } else { spacing as f32 * 0.5 };
@@ -752,7 +759,8 @@ impl MycelialNetwork {
                     }
                     let to = point(to_row, to_col);
                     let is_provenance_path = (row + col).rem_euclid(5) == 0;
-                    let alpha = if is_provenance_path { 0.25 } else { 0.09 };
+                    let alpha = (if is_provenance_path { 0.25 } else { 0.09 })
+                        + temporal_breathe;
                     let edge = Rgba::lerp(
                         self.palette.secondary.with_opacity(alpha),
                         self.palette.primary.with_opacity(alpha + 0.08),
@@ -1646,6 +1654,45 @@ mod tests {
                 "theme {} rendered a flat frame", theme.id()
             );
         }
+    }
+
+    #[test]
+    fn epistemic_lattice_has_motion_only_when_motion_is_enabled() {
+        use crate::theme::MotionMode;
+
+        for mode in [MotionMode::LowPower, MotionMode::Balanced, MotionMode::Cinematic] {
+            let mut network = MycelialNetwork::new_with_theme(
+                160, 90, "epistemic-lattice-motion-regression", Theme::PrismOfEvidence,
+            );
+            network.set_motion_scale(mode.scale());
+            network.elapsed = 8.0;
+            let mut earlier = vec![0u32; 160 * 90];
+            network.render(&mut earlier);
+
+            network.elapsed = 8.25;
+            let mut later = vec![0u32; 160 * 90];
+            network.render(&mut later);
+            assert_ne!(
+                earlier, later,
+                "Epistemic Lattice must respond to elapsed time in {:?} mode",
+                mode
+            );
+        }
+
+        let mut reduced = MycelialNetwork::new_with_theme(
+            160, 90, "epistemic-lattice-motion-regression", Theme::PrismOfEvidence,
+        );
+        reduced.set_motion_scale(MotionMode::Reduced.scale());
+        reduced.elapsed = 8.0;
+        let mut reduced_earlier = vec![0u32; 160 * 90];
+        reduced.render(&mut reduced_earlier);
+        reduced.elapsed = 8.25;
+        let mut reduced_later = vec![0u32; 160 * 90];
+        reduced.render(&mut reduced_later);
+        assert_eq!(
+            reduced_earlier, reduced_later,
+            "Reduced Epistemic Lattice must remain pixel-identical"
+        );
     }
 
     #[test]
