@@ -1,27 +1,14 @@
+# The public repository is composed of independently buildable package roots.
+# Keep this index workspace empty: importing the legacy Symthaea tree here would
+# make every Cargo operation resolve missing monorepo-relative path dependencies.
 [workspace]
 resolver = "2"
-members = [
-    "crates/quicken-fb",
-]
+members = []
 exclude = [
-    # The imported Symthaea Spore tree has monorepo-relative path dependencies and
-    # is not part of the independently buildable Sovereign Boot package.
+    "crates/quicken-fb",
+    "crates/boot-lifecycle",
     "crates/spore-kernel",
     "crates/spore-kernel/fuzz",
-    # The lifecycle tools are a self-contained nested Cargo workspace with their own lockfile.
-    "crates/boot-lifecycle",
-    # Standalone visual validators are intentionally isolated from the renderer workspace.
+    "validation/frame-audit",
     "validation/wgsl-check",
 ]
-
-[workspace.package]
-edition = "2024"
-license = "AGPL-3.0-or-later"
-authors = ["Luminous Dynamics <tristan.stoltz@evolvingresonantcocreationism.com>"]
-
-[workspace.dependencies]
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-proptest = "1"
-blake3 = "1"
-rand = "0.8"
