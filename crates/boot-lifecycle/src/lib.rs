@@ -920,18 +920,22 @@ mod tests {
         let runtime = root.join("runtime");
         let args = vec![
             "shutdown".to_owned(),
-            "--state-dir".to_owned(), state.to_string_lossy().into_owned(),
-            "--runtime-dir".to_owned(), runtime.to_string_lossy().into_owned(),
-            "--kind".to_owned(), "reboot".to_owned(),
-            "--uptime-secs".to_owned(), "42".to_owned(),
+            "--state-dir".to_owned(),
+            state.to_string_lossy().into_owned(),
+            "--runtime-dir".to_owned(),
+            runtime.to_string_lossy().into_owned(),
+            "--kind".to_owned(),
+            "reboot".to_owned(),
+            "--uptime-secs".to_owned(),
+            "42".to_owned(),
         ];
         run_state_cli(args).unwrap();
         let persistent = fs::read_to_string(state.join("clean-shutdown.json")).unwrap();
         let volatile = fs::read_to_string(runtime.join("last-shutdown.json")).unwrap();
         assert_eq!(persistent, volatile);
-        assert!(persistent.contains("\\\"clean_shutdown\\\": true"));
-        assert!(persistent.contains("\\\"kind\\\": \\"reboot\\\""));
-        assert!(persistent.contains("\\\"uptime_secs\\\": 42"));
+        assert!(persistent.contains("\"clean_shutdown\": true"));
+        assert!(persistent.contains("\"kind\": \"reboot\""));
+        assert!(persistent.contains("\"uptime_secs\": 42"));
         let _ = fs::remove_dir_all(root);
     }
 
