@@ -252,6 +252,13 @@ impl MycelialNetwork {
         // Bound recovery from long scheduling stalls; animation must not jump by
         // several seconds after a pause or a delayed framebuffer operation.
         let presentation_dt = dt.clamp(0.0, 0.25);
+        // If a caller restores/seeds the public simulation clock (for example,
+        // a renderer audit starting at steady state), align the presentation
+        // clock once before advancing it. Thereafter it advances at wall cadence
+        // while simulation time remains scaled by Low Power.
+        if self.presentation_elapsed < self.elapsed {
+            self.presentation_elapsed = self.elapsed;
+        }
         self.presentation_elapsed += presentation_dt;
         // The intro and scene handoff follow presentation time; scene evolution
         // and growth still respect the selected motion scale.
@@ -1649,6 +1656,30 @@ mod tests {
         net.elapsed = 2.0;
         let mut buf = vec![0u32; 100 * 80];
         net.render(&mut buf);
+    }
+
+    #[test]
+    fn restored_simulation_time_seeds_the_presentation_clock_once() {
+        use crate::theme::MotionMode;
+
+        let mut network = MycelialNetwork::new_with_theme(
+            160, 90, "restored-presentation-clock", Theme::CosmicAtlas,
+        );
+        network.set_motion_scale(MotionMode::LowPower.scale());
+        network.elapsed = 8.0;
+
+        network.grow(1.0 / 30.0, 0.75);
+        let first_presentation = network.presentation_elapsed;
+        let first_simulation = network.elapsed;
+        network.grow(1.0 / 30.0, 0.75);
+
+        assert!(first_presentation > 8.0);
+        assert!(network.presentation_elapsed - first_presentation > 0.03);
+        assert!(
+            network.presentation_elapsed > network.elapsed,
+            "presentation time must not fall back to the slower simulation clock"
+        );
+        assert!(network.elapsed - first_simulation < 0.01);
     }
 
     #[test]
