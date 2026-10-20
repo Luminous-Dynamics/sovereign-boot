@@ -874,6 +874,13 @@ impl MycelialNetwork {
         let h = self.height as usize;
         let center = (self.center.0.round() as i32, self.center.1.round() as i32);
         let unit = (w.min(h) as f32 * 0.07).max(3.0);
+        // The recovery mark has a very gentle opacity breath in animated modes.
+        // Reduced mode freezes the breath independently of externally supplied time.
+        let temporal_breathe = if self.motion_scale <= 0.0 {
+            0.0
+        } else {
+            (self.elapsed * 3.5).sin() * 0.07
+        };
         let pulse = 0.5 + 0.5 * (self.visual_time() * 0.035).sin();
 
         for ring in 1..=4 {
@@ -881,7 +888,8 @@ impl MycelialNetwork {
             draw_circle_outline(
                 buffer, w, h,
                 center.0, center.1, radius, 96,
-                self.palette.primary.with_opacity(0.14 + (4 - ring) as f32 * 0.05),
+                self.palette.primary
+                    .with_opacity(0.14 + (4 - ring) as f32 * 0.05 + temporal_breathe),
             );
         }
 
@@ -893,13 +901,17 @@ impl MycelialNetwork {
                 buffer, w, h,
                 start.0.round() as i32, start.1.round() as i32,
                 end.0.round() as i32, end.1.round() as i32,
-                self.palette.secondary.with_opacity(0.32),
+                self.palette.secondary.with_opacity(0.32 + temporal_breathe * 0.5),
             );
         }
 
         draw_filled_circle(
             buffer, w, h, center.0, center.1, (unit * 0.45).round() as i32,
-            Rgba::lerp(self.palette.primary, self.palette.convergence, 0.25),
+            Rgba::lerp(
+                self.palette.primary,
+                self.palette.convergence,
+                (0.25 + temporal_breathe).clamp(0.05, 0.45),
+            ),
         );
     }
 
@@ -1654,6 +1666,45 @@ mod tests {
                 "theme {} rendered a flat frame", theme.id()
             );
         }
+    }
+
+    #[test]
+    fn verdant_recovery_has_motion_only_when_motion_is_enabled() {
+        use crate::theme::MotionMode;
+
+        for mode in [MotionMode::LowPower, MotionMode::Balanced, MotionMode::Cinematic] {
+            let mut network = MycelialNetwork::new_with_theme(
+                160, 90, "verdant-recovery-motion-regression", Theme::VerdantRecovery,
+            );
+            network.set_motion_scale(mode.scale());
+            network.elapsed = 8.0;
+            let mut earlier = vec![0u32; 160 * 90];
+            network.render(&mut earlier);
+
+            network.elapsed = 8.25;
+            let mut later = vec![0u32; 160 * 90];
+            network.render(&mut later);
+            assert_ne!(
+                earlier, later,
+                "Verdant Recovery must breathe in {:?} mode",
+                mode
+            );
+        }
+
+        let mut reduced = MycelialNetwork::new_with_theme(
+            160, 90, "verdant-recovery-motion-regression", Theme::VerdantRecovery,
+        );
+        reduced.set_motion_scale(MotionMode::Reduced.scale());
+        reduced.elapsed = 8.0;
+        let mut reduced_earlier = vec![0u32; 160 * 90];
+        reduced.render(&mut reduced_earlier);
+        reduced.elapsed = 8.25;
+        let mut reduced_later = vec![0u32; 160 * 90];
+        reduced.render(&mut reduced_later);
+        assert_eq!(
+            reduced_earlier, reduced_later,
+            "Reduced Verdant Recovery must remain pixel-identical"
+        );
     }
 
     #[test]
