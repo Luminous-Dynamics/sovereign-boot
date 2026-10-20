@@ -47,6 +47,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Keep build output outside the clean source checkout: the following
+          # visual evidence harness intentionally rejects any dirty working tree.
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/standalone-boot-lifecycle-target"
           cargo fmt --manifest-path crates/boot-lifecycle/Cargo.toml -- --check
           cargo test --manifest-path crates/boot-lifecycle/Cargo.toml --locked
           cargo build --manifest-path crates/boot-lifecycle/Cargo.toml --locked --bins
