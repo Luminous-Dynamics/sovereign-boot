@@ -20,3 +20,6 @@ rand = "0.8"
 
 [dev-dependencies]
 proptest = "1.4"
+
+# This crate is a standalone Nix package; it must not depend on the legacy root workspace.
+[workspace]
