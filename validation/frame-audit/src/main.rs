@@ -1079,4 +1079,74 @@ mod tests {
         );
     }
 
+    fn brute_force_timestamp_windows(timestamps_ns: &[u64], events: &[bool]) -> WindowSummary {
+        if timestamps_ns.len() != events.len() || timestamps_ns.len() < 2 {
+            return WindowSummary::default();
+        }
+        let mut result = WindowSummary::default();
+        for right in 0..timestamps_ns.len() {
+            if timestamps_ns[right] - timestamps_ns[0] < ONE_SECOND_NS {
+                continue;
+            }
+            result.windows_examined += 1;
+            let window_start = timestamps_ns[right].saturating_sub(ONE_SECOND_NS);
+            let event_count = (0..=right)
+                .filter(|&left| {
+                    timestamps_ns[left] >= window_start
+                        && timestamps_ns[left] <= timestamps_ns[right]
+                        && events[left]
+                })
+                .count();
+            result.max_events = result.max_events.max(event_count);
+            if event_count > MAX_FLASH_EVENTS_PER_SECOND {
+                result.windows_over_three_events += 1;
+            }
+        }
+        result
+    }
+
+    #[test]
+    fn optimized_timestamp_windows_match_independent_oracle_exhaustively() {
+        // Exhaust every event mask for short timelines across uniform frame periods,
+        // jittered presentation times, and sample gaps both below and above one second.
+        // Alternate the timeline origin to catch accidental absolute-time assumptions,
+        // including arithmetic near the u64 limit.
+        let gap_patterns: &[&[u64]] = &[
+            &[100_000_000],
+            &[333_333_333],
+            &[1, 999_999_999, 1, 1_000_000_001],
+            &[450_000_000, 550_000_000, 100_000_000, 900_000_000],
+        ];
+        let mut cases = 0usize;
+        for (pattern_index, gaps) in gap_patterns.iter().enumerate() {
+            for len in 2..=9usize {
+                let event_masks = 1usize << len;
+                for mask in 0..event_masks {
+                    let base = if (pattern_index + len) % 2 == 0 {
+                        0
+                    } else {
+                        u64::MAX - 20_000_000_000
+                    };
+                    let mut timestamps_ns = Vec::with_capacity(len);
+                    timestamps_ns.push(base);
+                    for index in 1..len {
+                        let next = timestamps_ns[index - 1]
+                            .checked_add(gaps[(index - 1) % gaps.len()])
+                            .expect("test timeline remains within u64 bounds");
+                        timestamps_ns.push(next);
+                    }
+                    let events: Vec<bool> = (0..len).map(|index| mask & (1usize << index) != 0).collect();
+                    let optimized = summarize_one_second_windows_timed(&timestamps_ns, &events);
+                    let oracle = brute_force_timestamp_windows(&timestamps_ns, &events);
+                    assert_eq!(
+                        optimized, oracle,
+                        "timestamp window mismatch: pattern={pattern_index} len={len} mask={mask} timeline={timestamps_ns:?} events={events:?}"
+                    );
+                    cases += 1;
+                }
+            }
+        }
+        assert_eq!(cases, 4 * (4 + 8 + 16 + 32 + 64 + 128 + 256 + 512));
+    }
+
 }
