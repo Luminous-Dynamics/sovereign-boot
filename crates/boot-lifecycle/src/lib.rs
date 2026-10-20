@@ -11,8 +11,6 @@ use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
-
 const BOOT_STATE_SCHEMA: &str = "spore-boot-state-v1";
 const LINEAGE_SCHEMA: &str = "spore-boot-lineage-v1";
 const SHUTDOWN_SCHEMA: &str = "spore-shutdown-v1";
@@ -283,20 +281,29 @@ fn clean_stale_root_scratch(root: &Path) -> Result<(), String> {
     sync_directory(root)
 }
 
-fn rotate_current_previous_roots(root: &Path, next_generation: &Path) -> Result<Option<PathBuf>, String> {
+fn rotate_root_links(
+    root: &Path,
+    next_generation: &Path,
+    previous_current: Option<&Path>,
+) -> Result<(), String> {
     ensure_directory(root)?;
-    let previous_current = read_root_target(root, "current")?;
-    if let Some(old_generation) = previous_current.as_ref() {
+    if let Some(old_generation) = previous_current {
         if old_generation != next_generation {
             atomic_symlink(root, "previous", old_generation)?;
         }
     }
-    if previous_current.as_deref() != Some(next_generation) {
+    if previous_current != Some(next_generation) {
         atomic_symlink(root, "current", next_generation)?;
     }
-    Ok(previous_current)
+    Ok(())
 }
 
+fn rotate_current_previous_roots(root: &Path, next_generation: &Path) -> Result<Option<PathBuf>, String> {
+    ensure_directory(root)?;
+    let previous_current = read_root_target(root, "current")?;
+    rotate_root_links(root, next_generation, previous_current.as_deref())?;
+    Ok(previous_current)
+}
 fn validate_hardware_fingerprint(value: &str) -> Result<(), String> {
     if !valid_hex_digest(value) {
         return Err(error("hardware fingerprint must be a lowercase 64-character SHA-256 digest"));
@@ -523,7 +530,7 @@ fn qualify(args: &[String]) -> Result<i32, String> {
     let booted_generation = require_existing_generation(booted_text)?;
     let current_generation = optional(&options, "--current-generation").unwrap_or("").to_owned();
     if !current_generation.is_empty() {
-        validate_store_generation(&current_generation)?;
+        require_existing_generation(&current_generation)?;
     }
     let input = HealthInput {
         booted_generation: booted_generation.to_string_lossy().into_owned(),
@@ -723,12 +730,8 @@ mod tests {
 
     #[test]
     fn json_writer_escapes_quotes_control_characters_and_backslashes() {
-        let encoded = json_string("quote\" slash\\\\ newline\\n tab\\t control\\u{0001}");
-        assert!(encoded.starts_with('"') && encoded.ends_with('"'));
-        assert!(encoded.contains("\\\\\\""));
-        assert!(encoded.contains("\\\\n"));
-        assert!(encoded.contains("\\\\t"));
-        assert!(encoded.contains("\\\\u0001"));
+        let encoded = json_string("q\"\\\n\t\u{0001}");
+        assert_eq!(encoded, "\"q\\\"\\\\\\n\\t\\u0001\"");
     }
 
     #[test]
@@ -780,21 +783,14 @@ mod tests {
         let root = temp_dir("root-rotation");
         let previous = temp_dir("old-generation");
         let next = temp_dir("new-generation");
-        let old = root.join("current");
-        #[cfg(unix)]
-        std::os::unix::fs::symlink(&previous, &old).unwrap();
-        #[cfg(unix)]
-        {
-            // The pure rotation helper accepts an already-resolved generation
-            // path. The command entry point separately checks Nix store paths.
-            // Use a temporary copy of the read/rotate operation to avoid touching /nix/store.
-            let current = fs::read_link(&old).unwrap();
-            assert_eq!(current, previous);
-            assert_eq!(atomic_symlink(&root, "previous", &previous).unwrap(), ());
-            atomic_symlink(&root, "current", &next).unwrap();
-            assert_eq!(fs::read_link(root.join("previous")).unwrap(), previous);
-            assert_eq!(fs::read_link(root.join("current")).unwrap(), next);
-        }
+        std::os::unix::fs::symlink(&previous, root.join("current")).unwrap();
+        let prior = fs::read_link(root.join("current")).unwrap();
+        rotate_root_links(&root, &next, Some(&prior)).unwrap();
+        assert_eq!(fs::read_link(root.join("previous")).unwrap(), previous);
+        assert_eq!(fs::read_link(root.join("current")).unwrap(), next);
+
+        rotate_root_links(&root, &next, Some(&next)).unwrap();
+        assert_eq!(fs::read_link(root.join("previous")).unwrap(), previous);
         let _ = fs::remove_dir_all(root);
         let _ = fs::remove_dir_all(previous);
         let _ = fs::remove_dir_all(next);
