@@ -10,6 +10,7 @@ on:
       - "README.md"
       - "themes/visual-genome-v1.json"
       - "flake.nix"
+      - "flake.lock"
       - "Cargo.toml"
       - "renderers/wgpu/**"
       - "validation/wgsl-check/**"
@@ -1077,3 +1078,50 @@ jobs:
             ${{ runner.temp }}/wgpu-reference-Cargo.lock.sha256
           if-no-files-found: ignore
           retention-days: 14
+
+
+  standalone-lifecycle-nix-package:
+    name: Build pinned standalone lifecycle packages with Nix
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    steps:
+      - name: Check out reviewed source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Install Nix with flakes enabled
+        uses: DeterminateSystems/nix-installer-action@dbbcd8c3ec10ff26bded0022d5b9c00c1c3b687a
+        with:
+          determinate: false
+          github-token: ${{ github.token }}
+          extra-conf: |
+            experimental-features = nix-command flakes
+
+      - name: Verify locked inputs and build package outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s flake.lock
+          nix --version
+          metadata="$RUNNER_TEMP/flake-metadata.json"
+          nix flake metadata --json > "$metadata"
+          jq -e '
+            .locks.nodes.nixpkgs.locked.rev == "5b2c2d84341b2afb5647081c1386a80d7a8d8605"
+            and .locks.nodes."flake-utils".locked.rev == "11707dc2f618dd54ca8739b309ec4fc024de578b"
+          ' "$metadata"
+
+          lifecycle_path="$(nix build --no-link --print-out-paths .#boot-lifecycle)"
+          tools_path="$(nix build --no-link --print-out-paths .#spore-boot-tools)"
+          test -x "$lifecycle_path/bin/spore-boot-state"
+          test -x "$lifecycle_path/bin/spore-recovery-linux"
+          test -x "$tools_path/bin/spore-boot-state"
+          test -x "$tools_path/bin/spore-recovery-linux"
+          test -x "$tools_path/bin/quicken-fb"
+          "$lifecycle_path/bin/spore-boot-state" --help
+          "$lifecycle_path/bin/spore-recovery-linux" --help
+          printf 'flake_lock_sha256=%s\n' "$(sha256sum flake.lock | cut -d ' ' -f 1)"
+          printf 'lifecycle_output=%s\n' "$lifecycle_path"
+          printf 'tool_bundle_output=%s\n' "$tools_path"
