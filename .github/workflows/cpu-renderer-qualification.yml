@@ -11,6 +11,7 @@ on:
       - "validation/wgsl-check/**"
       - "validation/frame-audit/**"
       - "validation/capture-audit.sh"
+      - "docs/VISUAL_BENCHMARKS.md"
       - "docs/CAPTURE_EVIDENCE.md"
       - "validation/wgpu-reference/**"
       - ".github/workflows/cpu-renderer-qualification.yml"
