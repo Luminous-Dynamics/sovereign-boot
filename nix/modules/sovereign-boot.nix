@@ -15,11 +15,18 @@ let
   cfg = config.luminous.services.sporeBoot;
   types = lib.types;
 
-  # Prefer explicit package overrides (useful for tests and canaries). On the
-  # real host, build the two boot binaries hermetically from the pinned Symthaea
-  # flake source instead of falling back to /usr/local or another mutable path.
+  # Explicit package overrides support tests and canaries. The public flake
+  # injects its own self-contained package by default; Symthaea is only a
+  # compatibility fallback when this module is imported outside that flake.
+  localSporeTools =
+    if inputs != null && inputs ? sovereignBootTools then
+      inputs.sovereignBootTools
+    else
+      null;
   inputSporeTools =
-    if inputs != null && inputs ? symthaea then
+    if localSporeTools != null then
+      localSporeTools
+    else if inputs != null && inputs ? symthaea then
       import (inputs.symthaea.outPath + "/nix/packages/spore-boot-tools.nix") {
         inherit pkgs;
         src = inputs.symthaea.outPath;
