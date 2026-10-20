@@ -368,9 +368,10 @@ fn validate_hardware_fingerprint(value: &str) -> Result<(), String> {
 
 fn current_boot_id() -> String {
     fs::read_to_string("/proc/sys/kernel/random/boot_id")
+        .ok()
         .map(|value| value.trim().to_owned())
         .filter(|value| !value.is_empty())
-        .unwrap_or_else(|_| "unknown".to_owned())
+        .unwrap_or_else(|| "unknown".to_owned())
 }
 
 fn shutdown(args: &[String]) -> Result<(), String> {
