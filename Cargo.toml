@@ -2,11 +2,15 @@
 resolver = "2"
 members = [
     "crates/quicken-fb",
-    "crates/spore-kernel",
 ]
 exclude = [
+    # The imported Symthaea Spore tree has monorepo-relative path dependencies and
+    # is not part of the independently buildable Sovereign Boot package.
+    "crates/spore-kernel",
     "crates/spore-kernel/fuzz",
-    # Standalone WGSL validator is intentionally isolated from the extracted workspace.
+    # The lifecycle tools are a self-contained nested Cargo workspace with their own lockfile.
+    "crates/boot-lifecycle",
+    # Standalone visual validators are intentionally isolated from the renderer workspace.
     "validation/wgsl-check",
 ]
 
@@ -19,3 +23,5 @@ authors = ["Luminous Dynamics <tristan.stoltz@evolvingresonantcocreationism.com>
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 proptest = "1"
+blake3 = "1"
+rand = "0.8"
