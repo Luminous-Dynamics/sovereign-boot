@@ -70,11 +70,16 @@ impl DiagnosticRecord {
         }
 
         let booted = booted_deployment_id.as_deref().unwrap_or_default();
-        let current = current_userspace_deployment_id.as_deref().unwrap_or_default();
+        let current = current_userspace_deployment_id
+            .as_deref()
+            .unwrap_or_default();
         let (status, reason_code) = if booted == current {
             (Status::Match, "booted-and-current-identities-match")
         } else {
-            (Status::Mismatch, "current-userspace-differs-from-booted-system")
+            (
+                Status::Mismatch,
+                "current-userspace-differs-from-booted-system",
+            )
         };
 
         Self {
@@ -177,7 +182,9 @@ fn resolve_store_link(root: &Path, relative_link: &Path) -> Result<String, &'sta
     // In fixture mode, absolute targets such as /nix/store/... are mapped
     // beneath the fixture root instead of resolving against the host filesystem.
     let candidate = if target.is_absolute() {
-        let relative_target = target.strip_prefix("/").map_err(|_| "deployment-target-invalid")?;
+        let relative_target = target
+            .strip_prefix("/")
+            .map_err(|_| "deployment-target-invalid")?;
         canonical_root.join(relative_target)
     } else {
         link_path
@@ -210,9 +217,9 @@ fn valid_nix_store_path(value: &str) -> bool {
             .bytes()
             .all(|byte| byte.is_ascii_digit() || b"abcdfghijklmnpqrsvwxyz".contains(&byte))
         && !name.is_empty()
-        && name.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'+' | b'-')
-        })
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'+' | b'-'))
 }
 
 fn parse_root_argument() -> Result<PathBuf, &'static str> {
@@ -228,7 +235,9 @@ fn parse_root_argument() -> Result<PathBuf, &'static str> {
             if root.is_some() {
                 return Err("duplicate-root-argument");
             }
-            root = Some(PathBuf::from(args.next().ok_or("root-argument-needs-value")?));
+            root = Some(PathBuf::from(
+                args.next().ok_or("root-argument-needs-value")?,
+            ));
         } else {
             return Err("unknown-argument");
         }
@@ -301,8 +310,14 @@ mod tests {
     fn matching_booted_and_current_paths_is_still_d0_only() {
         let fixture = Fixture::new();
         fixture.store_path(STORE_HASH_A, "nixos-system-test");
-        fixture.point(BOOTED_LINK, "/nix/store/0123456789abcdfghijklmnpqrsvwxyz-nixos-system-test");
-        fixture.point(CURRENT_LINK, "/nix/store/0123456789abcdfghijklmnpqrsvwxyz-nixos-system-test");
+        fixture.point(
+            BOOTED_LINK,
+            "/nix/store/0123456789abcdfghijklmnpqrsvwxyz-nixos-system-test",
+        );
+        fixture.point(
+            CURRENT_LINK,
+            "/nix/store/0123456789abcdfghijklmnpqrsvwxyz-nixos-system-test",
+        );
 
         let record = DiagnosticRecord::evaluate(&fixture.root);
         assert_eq!(record.status, Status::Match);
@@ -324,8 +339,14 @@ mod tests {
         let fixture = Fixture::new();
         fixture.store_path(STORE_HASH_A, "nixos-system-booted");
         fixture.store_path(STORE_HASH_B, "nixos-system-current");
-        fixture.point(BOOTED_LINK, "/nix/store/0123456789abcdfghijklmnpqrsvwxyz-nixos-system-booted");
-        fixture.point(CURRENT_LINK, "/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-nixos-system-current");
+        fixture.point(
+            BOOTED_LINK,
+            "/nix/store/0123456789abcdfghijklmnpqrsvwxyz-nixos-system-booted",
+        );
+        fixture.point(
+            CURRENT_LINK,
+            "/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-nixos-system-current",
+        );
 
         let record = DiagnosticRecord::evaluate(&fixture.root);
         assert_eq!(record.status, Status::Mismatch);
@@ -341,13 +362,19 @@ mod tests {
     fn missing_booted_system_is_blocked_and_not_repaired() {
         let fixture = Fixture::new();
         fixture.store_path(STORE_HASH_A, "nixos-system-current");
-        fixture.point(CURRENT_LINK, "/nix/store/0123456789abcdfghijklmnpqrsvwxyz-nixos-system-current");
+        fixture.point(
+            CURRENT_LINK,
+            "/nix/store/0123456789abcdfghijklmnpqrsvwxyz-nixos-system-current",
+        );
         let before = fs::read_dir(fixture.root.join("run")).unwrap().count();
 
         let record = DiagnosticRecord::evaluate(&fixture.root);
         assert_eq!(record.status, Status::Blocked);
         assert_eq!(record.reason_code, "booted-system-missing-or-invalid");
-        assert_eq!(fs::read_dir(fixture.root.join("run")).unwrap().count(), before);
+        assert_eq!(
+            fs::read_dir(fixture.root.join("run")).unwrap().count(),
+            before
+        );
         fixture.cleanup();
     }
 
@@ -355,8 +382,14 @@ mod tests {
     fn malformed_boot_id_blocks_observation() {
         let fixture = Fixture::new();
         fixture.store_path(STORE_HASH_A, "nixos-system-test");
-        fixture.point(BOOTED_LINK, "/nix/store/0123456789abcdfghijklmnpqrsvwxyz-nixos-system-test");
-        fixture.point(CURRENT_LINK, "/nix/store/0123456789abcdfghijklmnpqrsvwxyz-nixos-system-test");
+        fixture.point(
+            BOOTED_LINK,
+            "/nix/store/0123456789abcdfghijklmnpqrsvwxyz-nixos-system-test",
+        );
+        fixture.point(
+            CURRENT_LINK,
+            "/nix/store/0123456789abcdfghijklmnpqrsvwxyz-nixos-system-test",
+        );
         fs::write(fixture.root.join(BOOT_ID_FILE), "not-a-boot-id\n").unwrap();
 
         let record = DiagnosticRecord::evaluate(&fixture.root);
@@ -393,7 +426,10 @@ mod tests {
     fn missing_current_system_is_blocked_even_with_valid_booted_system() {
         let fixture = Fixture::new();
         fixture.store_path(STORE_HASH_A, "nixos-system-booted");
-        fixture.point(BOOTED_LINK, "/nix/store/0123456789abcdfghijklmnpqrsvwxyz-nixos-system-booted");
+        fixture.point(
+            BOOTED_LINK,
+            "/nix/store/0123456789abcdfghijklmnpqrsvwxyz-nixos-system-booted",
+        );
 
         let record = DiagnosticRecord::evaluate(&fixture.root);
         assert_eq!(record.status, Status::Blocked);
@@ -405,8 +441,14 @@ mod tests {
     fn matching_status_never_populates_target_decision_challenge_or_measurement() {
         let fixture = Fixture::new();
         fixture.store_path(STORE_HASH_A, "nixos-system-test");
-        fixture.point(BOOTED_LINK, "/nix/store/0123456789abcdfghijklmnpqrsvwxyz-nixos-system-test");
-        fixture.point(CURRENT_LINK, "/nix/store/0123456789abcdfghijklmnpqrsvwxyz-nixos-system-test");
+        fixture.point(
+            BOOTED_LINK,
+            "/nix/store/0123456789abcdfghijklmnpqrsvwxyz-nixos-system-test",
+        );
+        fixture.point(
+            CURRENT_LINK,
+            "/nix/store/0123456789abcdfghijklmnpqrsvwxyz-nixos-system-test",
+        );
 
         let json = DiagnosticRecord::evaluate(&fixture.root).to_json();
         assert!(json.contains("\"target_id\":null"));
