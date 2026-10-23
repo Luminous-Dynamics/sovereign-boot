@@ -8,7 +8,7 @@
 
   outputs = { self, nixpkgs, flake-utils }:
     let
-      nixosModule = { config, pkgs, lib, ... }@args:
+      nixosModule = { config, pkgs, lib, utils, ... }@args:
         import ./nix/modules/sovereign-boot.nix (args // {
           inputs = (args.inputs or { }) // {
             sovereignBootTools = self.packages.${pkgs.system}.spore-boot-tools;
