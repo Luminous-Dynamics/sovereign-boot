@@ -732,6 +732,18 @@ mod tests {
             ledger.issue(invalid_digest, 100, 1_000_000_000),
             Err(LedgerError::InvalidDigest("policy_digest"))
         );
+        let mut invalid_promotion_receipt = request(CHALLENGE, 100, 160);
+        invalid_promotion_receipt.promotion_receipt_sha256 = "missing-durable-receipt".to_owned();
+        assert_eq!(
+            ledger.issue(invalid_promotion_receipt, 100, 1_000_000_000),
+            Err(LedgerError::InvalidDigest("promotion_receipt_sha256"))
+        );
+        let mut invalid_tool_policy = request(CHALLENGE, 100, 160);
+        invalid_tool_policy.expected_tool_build_sha256 = "not-a-build-digest".to_owned();
+        assert_eq!(
+            ledger.issue(invalid_tool_policy, 100, 1_000_000_000),
+            Err(LedgerError::InvalidDigest("expected_tool_build_sha256"))
+        );
         assert_eq!(
             ledger.issue(request(CHALLENGE, 101, 160), 100, 1_000_000_000),
             Err(LedgerError::IssueTimeMismatch)
