@@ -1,0 +1,14 @@
+[package]
+name = "srq-d1-freshness-ledger"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-or-later"
+publish = false
+description = "In-memory single-use challenge ledger for a future SRQ D1 attestation verifier"
+
+
+[dependencies]
+ed25519-dalek = { version = "=2.1.0", default-features = false, features = ["std", "zeroize"] }
+sha2 = "=0.10.9"
+
+[workspace]

@@ -1,0 +1,48 @@
+name: SRQ D1 freshness ledger
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/srq-d1-freshness-ledger.yml"
+      - "tools/srq-d1-freshness-ledger/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  freshness-ledger:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
+        with:
+          toolchain: 1.96.0
+          components: rustfmt
+
+      - name: Check formatting
+        run: cargo fmt --manifest-path tools/srq-d1-freshness-ledger/Cargo.toml -- --check
+
+      - name: Run freshness, binding and replay tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/srq-d1-freshness-ledger-test.log"
+          cargo test --manifest-path tools/srq-d1-freshness-ledger/Cargo.toml --locked 2>&1 | tee "$log"
+          grep -Fq 'test result: ok. 14 passed; 0 failed' "$log"
+          echo "PASS: a challenge is consumed once; 64 concurrent replays have exactly one winner"
+
+      - name: Preserve test evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: srq-d1-freshness-ledger
+          path: ${{ runner.temp }}/srq-d1-freshness-ledger-test.log
+          if-no-files-found: ignore
+          retention-days: 14
