@@ -8,7 +8,7 @@ description = "In-memory single-use challenge ledger for a future SRQ D1 attesta
 
 
 [dependencies]
-ed25519-dalek = "=2.1.0"
+ed25519-dalek = { version = "=2.1.0", default-features = false, features = ["std", "zeroize"] }
 sha2 = "=0.10.9"
 
 [workspace]
