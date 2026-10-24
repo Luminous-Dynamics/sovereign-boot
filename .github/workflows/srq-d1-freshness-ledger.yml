@@ -35,7 +35,7 @@ jobs:
           set -euo pipefail
           log="$RUNNER_TEMP/srq-d1-freshness-ledger-test.log"
           cargo test --manifest-path tools/srq-d1-freshness-ledger/Cargo.toml --locked 2>&1 | tee "$log"
-          grep -Fq 'test result: ok. 12 passed; 0 failed' "$log"
+          grep -Fq 'test result: ok. 14 passed; 0 failed' "$log"
           echo "PASS: a challenge is consumed once; 64 concurrent replays have exactly one winner"
 
       - name: Preserve test evidence
