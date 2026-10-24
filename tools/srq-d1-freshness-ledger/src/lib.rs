@@ -76,10 +76,14 @@ pub struct AppraisedEvidence {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ConsumptionReceipt {
     pub challenge_id: String,
+    pub promotion_challenge_id: String,
+    pub promotion_receipt_sha256: String,
     pub target_id: String,
     pub decision_id: String,
     pub logical_generation: u64,
     pub expected_deployment_id: String,
+    pub expected_measurement_source: String,
+    pub expected_tool_build_sha256: String,
     pub booted_deployment_id: String,
     pub current_userspace_deployment_id: String,
     pub policy_digest: String,
@@ -496,6 +500,18 @@ mod tests {
     }
 
     #[test]
+    fn post_promotion_challenge_must_differ_from_promotion_challenge() {
+        let ledger = ledger();
+        let mut request = request(CHALLENGE, 100, 160);
+        request.promotion_challenge_id = CHALLENGE.to_owned();
+        assert_eq!(
+            ledger.issue(request, 100, 1_000_000_000),
+            Err(LedgerError::ChallengeSameAsPromotionChallenge)
+        );
+        assert_eq!(ledger.retained_challenge_count().unwrap(), 0);
+    }
+
+    #[test]
     fn valid_appraisal_consumes_challenge_once_and_returns_binding_receipt() {
         let ledger = ledger();
         issue_default(&ledger);
@@ -598,6 +614,28 @@ mod tests {
             ledger.consume(wrong_artifact, 120, 21_000_000_000),
             Err(LedgerError::BindingMismatch("artifact_digest"))
         );
+        assert!(ledger.consume(evidence(), 120, 21_000_000_000).is_ok());
+    }
+
+    #[test]
+    fn measurement_source_and_tool_build_are_bound_to_challenge() {
+        let ledger = ledger();
+        issue_default(&ledger);
+
+        let mut wrong_source = evidence();
+        wrong_source.measurement_source = "unapproved-measurement-source".to_owned();
+        assert_eq!(
+            ledger.consume(wrong_source, 120, 21_000_000_000),
+            Err(LedgerError::BindingMismatch("measurement_source"))
+        );
+
+        let mut wrong_build = evidence();
+        wrong_build.tool_build_sha256 = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff".to_owned();
+        assert_eq!(
+            ledger.consume(wrong_build, 120, 21_000_000_000),
+            Err(LedgerError::BindingMismatch("tool_build_sha256"))
+        );
+
         assert!(ledger.consume(evidence(), 120, 21_000_000_000).is_ok());
     }
 
