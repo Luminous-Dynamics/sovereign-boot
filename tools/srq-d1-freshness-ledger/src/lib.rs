@@ -478,6 +478,7 @@ mod tests {
         assert_eq!(receipt.booted_deployment_id, "/nix/store/test-deployment-v42");
         assert_eq!(receipt.current_userspace_deployment_id, "/nix/store/test-deployment-v42");
         assert_eq!(receipt.measurement_source, "resolved-deployment-manifest-v1");
+        assert_eq!(receipt.tool_build_sha256, "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
         assert_eq!(receipt.policy_digest, POLICY);
         assert_eq!(receipt.artifact_digest, ARTIFACT);
         assert_eq!(receipt.observed_at_unix_secs, 110);
@@ -498,6 +499,51 @@ mod tests {
         assert_eq!(
             ledger.consume(wrong, 120, 21_000_000_000),
             Err(LedgerError::BindingMismatch("target_id"))
+        );
+        assert!(ledger.consume(evidence(), 120, 21_000_000_000).is_ok());
+    }
+
+    #[test]
+    fn decision_generation_and_booted_deployment_mismatches_fail_closed() {
+        let ledger = ledger();
+        issue_default(&ledger);
+
+        let mut wrong_decision = evidence();
+        wrong_decision.decision_id = "decision:other".to_owned();
+        assert_eq!(
+            ledger.consume(wrong_decision, 120, 21_000_000_000),
+            Err(LedgerError::BindingMismatch("decision_id"))
+        );
+
+        let mut wrong_generation = evidence();
+        wrong_generation.logical_generation = 43;
+        assert_eq!(
+            ledger.consume(wrong_generation, 120, 21_000_000_000),
+            Err(LedgerError::BindingMismatch("logical_generation"))
+        );
+
+        let mut wrong_deployment = evidence();
+        wrong_deployment.booted_deployment_id = "/nix/store/test-deployment-v43".to_owned();
+        wrong_deployment.current_userspace_deployment_id =
+            "/nix/store/test-deployment-v43".to_owned();
+        assert_eq!(
+            ledger.consume(wrong_deployment, 120, 21_000_000_000),
+            Err(LedgerError::BindingMismatch("booted_deployment_id"))
+        );
+
+        assert!(ledger.consume(evidence(), 120, 21_000_000_000).is_ok());
+    }
+
+    #[test]
+    fn live_userspace_switch_is_not_accepted_as_a_successful_reboot() {
+        let ledger = ledger();
+        issue_default(&ledger);
+        let mut switched = evidence();
+        switched.current_userspace_deployment_id =
+            "/nix/store/test-deployment-v43".to_owned();
+        assert_eq!(
+            ledger.consume(switched, 120, 21_000_000_000),
+            Err(LedgerError::BootedCurrentDeploymentMismatch)
         );
         assert!(ledger.consume(evidence(), 120, 21_000_000_000).is_ok());
     }
@@ -626,6 +672,26 @@ mod tests {
             ledger.issue(request(CHALLENGE, 100, 161), 100, 1_000_000_000),
             Err(LedgerError::ChallengeLifetimeTooLong)
         );
+        let mut invalid_generation = request(CHALLENGE, 100, 160);
+        invalid_generation.expected_logical_generation = 0;
+        assert_eq!(
+            ledger.issue(invalid_generation, 100, 1_000_000_000),
+            Err(LedgerError::InvalidLogicalGeneration)
+        );
+        issue_default(&ledger);
+        let mut invalid_measurement_source = evidence();
+        invalid_measurement_source.measurement_source.clear();
+        assert_eq!(
+            ledger.consume(invalid_measurement_source, 120, 21_000_000_000),
+            Err(LedgerError::InvalidMeasurementSource)
+        );
+        let mut invalid_tool_build = evidence();
+        invalid_tool_build.tool_build_sha256 = "not-a-digest".to_owned();
+        assert_eq!(
+            ledger.consume(invalid_tool_build, 120, 21_000_000_000),
+            Err(LedgerError::InvalidDigest("tool_build_sha256"))
+        );
+        assert!(ledger.consume(evidence(), 120, 21_000_000_000).is_ok());
     }
 
     #[test]
