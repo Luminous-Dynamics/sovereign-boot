@@ -958,7 +958,7 @@ mod tests {
                     advance_for(&mut scene, 2.0);
                     scene.transition_to(second_target);
 
-                    for _ in 0..240 {
+                    for _ in 0..480 {
                         scene.advance(0.025).unwrap();
                         let weights = scene.frame().form_weights;
                         assert!(weights.is_finite_and_bounded());
