@@ -92,6 +92,7 @@ pub fn render_reference_rgba(
     // The body is a stable ordered curve across all forms. Material channels
     // change continuously while the centerline sampling identity is retained.
     let mut previous = None;
+    let mut first = None;
     for index in 0..BODY_SAMPLES {
         let sample = scene
             .body_sample(index, BODY_SAMPLES)
@@ -120,8 +121,32 @@ pub fn render_reference_rgba(
                 palette,
                 2.25,
             );
+        } else {
+            first = Some(point);
         }
         previous = Some(point);
+    }
+    // Close the body behind the persistent head so it reads as one continuous
+    // Ouroboros ring rather than an open-ended curve.
+    if let (Some(last), Some(first)) = (previous, first) {
+        draw_line(
+            &mut pixels,
+            width,
+            height,
+            last,
+            first,
+            palette.with_opacity(0.18),
+            7.0,
+        );
+        draw_line(
+            &mut pixels,
+            width,
+            height,
+            last,
+            first,
+            palette,
+            2.25,
+        );
     }
 
     // Nature: paired leaf/node motifs grow from the same ring centerline.
@@ -200,8 +225,10 @@ pub fn render_reference_rgba(
     let humanity_strength = weights.humanity.clamp(0.0, 1.0);
     if humanity_strength > 0.02 {
         let head = frame.head_anchor;
-        let yaw = frame.head_pose.yaw_radians;
-        let forward = [yaw.cos(), yaw.sin()];
+        let forward = face_forward(
+            frame.head_pose.yaw_radians,
+            frame.head_pose.pitch_radians,
+        );
         let lateral = [-forward[1], forward[0]];
         let anchor = [
             center[0] + head[0] * scale,
@@ -255,10 +282,10 @@ pub fn render_reference_rgba(
         center[0] + frame.head_anchor[0] * scale,
         center[1] + frame.head_anchor[1] * scale,
     ];
-    let yaw = frame.head_pose.yaw_radians;
-    let pitch = frame.head_pose.pitch_radians;
-    let mut forward = [yaw.cos(), pitch.sin()];
-    forward = normalized(forward);
+    let forward = face_forward(
+        frame.head_pose.yaw_radians,
+        frame.head_pose.pitch_radians,
+    );
     let lateral = [-forward[1], forward[0]];
     let head_color = Rgba::lerp(palette, HUMANITY, 0.28);
     draw_disc(
@@ -336,6 +363,14 @@ fn fill(buffer: &mut [u8], color: Rgba) {
     for pixel in buffer.chunks_exact_mut(4) {
         pixel.copy_from_slice(&[color.0, color.1, color.2, 255]);
     }
+}
+
+fn face_forward(yaw: f32, pitch: f32) -> [f32; 2] {
+    let pitch_scale = pitch.cos();
+    normalized([
+        yaw.cos() * pitch_scale,
+        yaw.sin() * pitch_scale + pitch.sin(),
+    ])
 }
 
 fn normalized(vector: [f32; 2]) -> [f32; 2] {
