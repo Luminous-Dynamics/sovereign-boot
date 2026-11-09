@@ -13,7 +13,7 @@ use crate::{
     contract::{self, SCENE_CONTRACT_VERSION},
     ouroboros::{
         AttentionTarget, OuroborosConfig, OuroborosError, OuroborosForm,
-        OuroborosFrame, OuroborosMotionMode, OuroborosScene,
+        OuroborosMotionMode, OuroborosScene,
     },
 };
 
@@ -260,8 +260,7 @@ impl OuroborosTrace {
             }
         }
 
-        let frame = scene.frame();
-        let final_state_bytes = canonical_state_bytes(scene.config(), frame);
+        let final_state_bytes = scene.canonical_state_bytes();
         let receipt = ReplayReceipt {
             trace_version: TRACE_VERSION,
             scene_contract_version: SCENE_CONTRACT_VERSION,
@@ -357,28 +356,6 @@ fn decode_config(cursor: &mut Cursor<'_>) -> Result<OuroborosConfig, TraceError>
         .validate()
         .map_err(TraceError::InvalidConfiguration)?;
     Ok(config)
-}
-
-fn canonical_state_bytes(config: OuroborosConfig, frame: OuroborosFrame) -> Vec<u8> {
-    let mut bytes = Vec::with_capacity(96);
-    encode_config(config, &mut bytes);
-    bytes.push(form_tag(frame.target_form));
-    bytes.push(motion_mode_tag(frame.motion_mode));
-    for value in [
-        frame.form_weights.nature,
-        frame.form_weights.humanity,
-        frame.form_weights.digital,
-        frame.form_weights.enlightenment,
-        frame.transition_progress,
-        frame.head_pose.yaw_radians,
-        frame.head_pose.pitch_radians,
-        frame.head_anchor[0],
-        frame.head_anchor[1],
-        frame.head_anchor[2],
-    ] {
-        push_f32(value, &mut bytes);
-    }
-    bytes
 }
 
 struct Cursor<'a> {
