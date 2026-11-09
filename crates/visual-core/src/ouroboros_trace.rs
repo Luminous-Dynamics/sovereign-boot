@@ -490,6 +490,31 @@ mod tests {
     }
 
     #[test]
+    fn internal_state_digest_includes_pending_attention_even_before_motion() {
+        let still = OuroborosTrace::new(
+            OuroborosConfig::default(),
+            OuroborosForm::Nature,
+        );
+        let mut pending = OuroborosTrace::new(
+            OuroborosConfig::default(),
+            OuroborosForm::Nature,
+        );
+        pending
+            .push(OuroborosEvent::SetAttentionTarget {
+                target: AttentionTarget::new(0.8, -0.4).unwrap(),
+            })
+            .unwrap();
+
+        let still_replay = still.replay().unwrap();
+        let pending_replay = pending.replay().unwrap();
+        assert_eq!(still_replay.scene.frame(), pending_replay.scene.frame());
+        assert_ne!(
+            still_replay.receipt.final_state_digest,
+            pending_replay.receipt.final_state_digest
+        );
+    }
+
+    #[test]
     fn decoder_rejects_invalid_headers_tags_and_trailing_data() {
         let encoded = representative_trace().encode().unwrap();
 
