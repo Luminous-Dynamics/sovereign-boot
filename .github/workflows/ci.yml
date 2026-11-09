@@ -38,6 +38,11 @@ jobs:
       - name: Format
         run: cargo +1.96.0 fmt --all -- --check
 
+      - name: Verify production workspace lockfile is pinned
+        run: |
+          cargo +1.96.0 generate-lockfile --manifest-path Cargo.toml
+          git diff --exit-code -- Cargo.lock
+
       - name: Check
         run: cargo +1.96.0 check --workspace --locked
 
