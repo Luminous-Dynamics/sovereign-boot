@@ -166,6 +166,50 @@ impl RenderTargetCapabilities {
     }
 }
 
+/// Wire values from Waywallen's buffer_path enum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RenderTargetPath {
+    OptimizedSameDevice,
+    OptimizedSameVendor,
+    CompatLinear,
+    CompatCpuReadback,
+}
+
+impl TryFrom<u32> for RenderTargetPath {
+    type Error = ContractError;
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::OptimizedSameDevice),
+            1 => Ok(Self::OptimizedSameVendor),
+            2 => Ok(Self::CompatLinear),
+            3 => Ok(Self::CompatCpuReadback),
+            _ => Err(ContractError::InvalidRenderTargetConfig),
+        }
+    }
+}
+
+/// Wire values from Waywallen's buffer_memory_source enum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RenderTargetMemorySource {
+    GpuNative,
+    GpuLinear,
+    DmabufHeap,
+}
+
+impl TryFrom<u32> for RenderTargetMemorySource {
+    type Error = ContractError;
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::GpuNative),
+            1 => Ok(Self::GpuLinear),
+            2 => Ok(Self::DmabufHeap),
+            _ => Err(ContractError::InvalidRenderTargetConfig),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RenderTargetConfig {
     pub revision: u64,
@@ -176,8 +220,8 @@ pub struct RenderTargetConfig {
     pub color: u32,
     pub memory_hint: u32,
     pub slot_count: u32,
-    pub path: u32,
-    pub memory_source: u32,
+    pub path: RenderTargetPath,
+    pub memory_source: RenderTargetMemorySource,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -402,8 +446,8 @@ mod tests {
             color: 0,
             memory_hint: 0,
             slot_count: 3,
-            path: 2,
-            memory_source: 1,
+            path: RenderTargetPath::CompatLinear,
+            memory_source: RenderTargetMemorySource::GpuLinear,
         }
     }
 
