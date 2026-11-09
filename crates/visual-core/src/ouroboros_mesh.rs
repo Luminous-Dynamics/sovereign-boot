@@ -258,7 +258,14 @@ impl OuroborosMesh {
         let tube_count = self.config.tube_segments as usize;
         let expected_vertices = (ring_count + 1) * (tube_count + 1);
         let expected_indices = ring_count * tube_count * 6;
-        if self.vertices.len() != expected_vertices || self.indices.len() != expected_indices {
+        if self.scene_contract_version != SCENE_CONTRACT_VERSION
+            || !(32..=2048).contains(&self.config.ring_segments)
+            || !(6..=64).contains(&self.config.tube_segments)
+            || !self.config.tube_radius.is_finite()
+            || !(0.001..=0.08).contains(&self.config.tube_radius)
+            || self.vertices.len() != expected_vertices
+            || self.indices.len() != expected_indices
+        {
             return Err(OuroborosMeshError::InvalidGeneratedGeometry);
         }
         if self
@@ -306,11 +313,19 @@ impl OuroborosMesh {
     pub fn receipt(&self) -> Result<OuroborosMeshReceipt, OuroborosMeshError> {
         self.validate()?;
         let mut bytes = Vec::new();
-        let estimated = self
+        let vertex_bytes = self
             .vertices
             .len()
-            .checked_mul(4 * 11)
-            .and_then(|n| n.checked_add(self.indices.len() * 4))
+            .checked_mul(4 * 12)
+            .ok_or(OuroborosMeshError::SizeOverflow)?;
+        let index_bytes = self
+            .indices
+            .len()
+            .checked_mul(4)
+            .ok_or(OuroborosMeshError::SizeOverflow)?;
+        let estimated = vertex_bytes
+            .checked_add(index_bytes)
+            .and_then(|n| n.checked_add(18))
             .ok_or(OuroborosMeshError::SizeOverflow)?;
         bytes
             .try_reserve_exact(estimated)
