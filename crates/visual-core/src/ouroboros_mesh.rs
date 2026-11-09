@@ -885,6 +885,108 @@ mod tests {
     }
 
     #[test]
+    fn lod_budget_sweep_never_exceeds_declared_resource_ceilings() {
+        let scene = scene(OuroborosForm::Enlightenment);
+        let projected_ring_radii = [0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048];
+        let projected_tube_radii = [0, 1, 2, 4, 8, 16, 32, 64];
+        let budgets = [
+            (2_000_u32, 12_000_u32, 160_000_u32),
+            (10_000, 60_000, 600_000),
+            (40_000, 240_000, 2_000_000),
+            (100_000, 600_000, 8_000_000),
+            (u32::MAX, u32::MAX, u32::MAX),
+        ];
+
+        for ring_px in projected_ring_radii {
+            for tube_px in projected_tube_radii {
+                for (max_vertices, max_indices, max_buffer_bytes) in budgets {
+                    let budget = OuroborosMeshBudget {
+                        projected_major_radius_px: ring_px,
+                        projected_tube_radius_px: tube_px,
+                        max_vertices,
+                        max_indices,
+                        max_buffer_bytes,
+                    };
+                    match OuroborosMeshConfig::plan_for_budget(&scene, 0.025, budget) {
+                        Ok(plan) => {
+                            assert!(plan.vertex_count <= max_vertices);
+                            assert!(plan.index_count <= max_indices);
+                            assert!(plan.estimated_buffer_bytes <= max_buffer_bytes);
+                            assert!(plan.config.validate(&scene).is_ok());
+                            assert_eq!(
+                                mesh_resource_estimate(plan.config).unwrap(),
+                                (
+                                    plan.vertex_count,
+                                    plan.index_count,
+                                    plan.estimated_buffer_bytes
+                                )
+                            );
+                            assert!(plan.requested_ring_segments >= plan.config.ring_segments);
+                            assert!(plan.requested_tube_segments >= plan.config.tube_segments);
+                        }
+                        Err(OuroborosMeshError::BudgetTooSmall) => {
+                            let minimum = OuroborosMeshConfig {
+                                ring_segments: 32,
+                                tube_segments: 6,
+                                tube_radius: 0.025,
+                            };
+                            let (vertices, indices, bytes) = mesh_resource_estimate(minimum).unwrap();
+                            assert!(
+                                vertices > max_vertices
+                                    || indices > max_indices
+                                    || bytes > max_buffer_bytes
+                            );
+                        }
+                        Err(error) => panic!("unexpected LOD planner error: {error}"),
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn lod_selection_is_monotonic_when_other_demand_and_budgets_are_fixed() {
+        let scene = scene(OuroborosForm::Digital);
+        let budget = OuroborosMeshBudget {
+            projected_major_radius_px: 64,
+            projected_tube_radius_px: 8,
+            max_vertices: 80_000,
+            max_indices: 480_000,
+            max_buffer_bytes: 4_000_000,
+        };
+        let mut previous_ring = 0;
+        for projected_radius in [16, 32, 64, 128, 256, 512, 1024, 2048] {
+            let plan = OuroborosMeshConfig::plan_for_budget(
+                &scene,
+                0.025,
+                OuroborosMeshBudget {
+                    projected_major_radius_px: projected_radius,
+                    ..budget
+                },
+            )
+            .unwrap();
+            assert!(plan.config.ring_segments >= previous_ring);
+            previous_ring = plan.config.ring_segments;
+        }
+
+        let mut previous_tube = 0;
+        for projected_tube in [1, 2, 4, 8, 16, 24, 32, 64] {
+            let plan = OuroborosMeshConfig::plan_for_budget(
+                &scene,
+                0.025,
+                OuroborosMeshBudget {
+                    projected_major_radius_px: 128,
+                    projected_tube_radius_px: projected_tube,
+                    ..budget
+                },
+            )
+            .unwrap();
+            assert!(plan.config.tube_segments >= previous_tube);
+            previous_tube = plan.config.tube_segments;
+        }
+    }
+
+    #[test]
     fn host_budget_rejects_limits_below_minimum_geometry() {
         let scene = scene(OuroborosForm::Humanity);
         assert_eq!(
