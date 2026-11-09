@@ -971,6 +971,73 @@ mod tests {
     }
 
     #[test]
+    fn deterministic_adversarial_retarget_chains_preserve_bounds_and_finite_velocity() {
+        let mut scene = scene(OuroborosForm::Nature);
+        let mut random = 0x6d2b_79f5_u32;
+        let modes = [
+            OuroborosMotionMode::LowPower,
+            OuroborosMotionMode::Balanced,
+            OuroborosMotionMode::Cinematic,
+            OuroborosMotionMode::Reduced,
+        ];
+
+        for step in 0..512 {
+            random = random.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            let target = OuroborosForm::ALL[(random as usize) % OuroborosForm::ALL.len()];
+            scene.transition_to(target);
+            assert!(scene.transition_duration.is_finite());
+            assert!(scene.transition_duration > 0.0);
+            assert!(hermite_segment_is_bounded(
+                scene.from_weights,
+                scene.target_form.weights(),
+                scene.transition_start_velocity,
+                scene.transition_duration
+            ));
+
+            random = random.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            let frames = (random >> 24) as usize;
+            for _ in 0..frames {
+                scene.advance(0.025).unwrap();
+                let weights = scene.current_weights();
+                let velocity = scene.current_velocity();
+                assert!(weights.is_finite_and_bounded());
+                assert!(
+                    [
+                        velocity.nature,
+                        velocity.humanity,
+                        velocity.digital,
+                        velocity.enlightenment,
+                    ]
+                    .into_iter()
+                    .all(f32::is_finite)
+                );
+            }
+
+            // Force frequent boundary-adjacent freeze/resume cycles as well
+            // as all four motion policies; Reduced retargets must be static.
+            if step % 7 == 0 {
+                let before_reduce = scene.current_weights();
+                let velocity_before_reduce = scene.current_velocity();
+                scene.set_motion_mode(OuroborosMotionMode::Reduced);
+                assert_eq!(scene.current_weights(), before_reduce);
+                assert_eq!(scene.current_velocity(), velocity_before_reduce);
+
+                random = random.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                let reduced_target =
+                    OuroborosForm::ALL[(random as usize) % OuroborosForm::ALL.len()];
+                scene.transition_to(reduced_target);
+                assert_eq!(scene.current_weights(), reduced_target.weights());
+                assert_eq!(scene.current_velocity(), FormWeights::ZERO);
+
+                let resume_mode = modes[(step / 7) % 3];
+                scene.set_motion_mode(resume_mode);
+                assert_eq!(scene.current_weights(), reduced_target.weights());
+                assert_eq!(scene.current_velocity(), FormWeights::ZERO);
+            }
+        }
+    }
+
+    #[test]
     fn head_tracks_only_a_bounded_normalized_host_target() {
         let mut scene = scene(OuroborosForm::Nature);
         scene
