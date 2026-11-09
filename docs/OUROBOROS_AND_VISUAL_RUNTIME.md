@@ -1,6 +1,6 @@
 # Ouroboros and the Luminous Visual Runtime
 
-**Status:** portable scene state, C1-continuous bounded Hermite morph retargeting, deterministic CPU rasterization, a bounded 3D tube mesh, canonical event traces and content-addressed replay/image/mesh receipts are implemented on `feat/ouroboros-identity-core-v1`. Tests are authored but have not yet been executed successfully on this exact branch head. No WGPU desktop renderer or Waywallen adapter is claimed by this document.
+**Status:** portable scene state, C1-continuous bounded Hermite morph retargeting, deterministic CPU rasterization, a bounded 3D tube mesh, host-budgeted LOD, versioned semantic face landmarks, portable checkpoints and a sealed replay/checkpoint/landmark/mesh/image evidence bundle are implemented on `feat/ouroboros-identity-core-v1`. Tests are authored; exact-head CI has exposed formatting and a Nix VM canary failure, and the latest fixes are awaiting their next run. No WGPU desktop renderer or Waywallen adapter is claimed by this document.
 
 ## 1. Product thesis
 
@@ -49,9 +49,9 @@ A sixth core module, `crates/visual-core/src/ouroboros_evidence.rs`, seals a rep
 - Encodes the final semantic scene checkpoint, including C1 velocity and motion-policy state.
 - Generates and validates the planned mesh, binding its canonical geometry receipt.
 - Renders the deterministic CPU reference image and retains its RGBA8 bytes and pixel receipt.
-- Encodes the sub-receipts, scene-contract versions, requested/selected LOD and exact resource estimate into a canonical `OUROEVB1` metadata bundle; BLAKE3 over that bundle is the evidence root.
+- Encodes the sub-receipts, scene-contract versions, requested/selected LOD and exact resource estimate into a canonical `OUROEVB2` metadata bundle, including the semantic face-landmark receipt and the complete host-provided budget inputs; BLAKE3 over that bundle is the evidence root. The sealer recomputes the deterministic LOD plan from the replayed scene and those exact budget inputs before accepting the evidence.
 
-The returned artifact includes trace bytes, checkpoint bytes, mesh geometry, pixels, bundle bytes and receipts. It is a content-addressed evidence root, **not a digital signature or authenticated provenance**. Build/commit identity, GPU driver, host measurements, compositor presentation and physical hardware evidence must be attached by a separately qualified host/attestation layer. Exact-head evidence-sealer tests are authored but not yet qualified.
+The returned artifact includes trace bytes, checkpoint bytes, semantic landmarks, mesh geometry, pixels, bundle bytes and receipts. It is a content-addressed evidence root, **not a digital signature or authenticated provenance**. Build/commit identity, GPU driver, host measurements, compositor presentation and physical hardware evidence must be attached by a separately qualified host/attestation layer. Exact-head evidence-sealer tests are authored but not yet qualified.
 
 The CPU renderer also exposes `render_reference_artifact`, which binds RGBA bytes to width, height, scene-contract version and a BLAKE3 pixel digest. These receipts make a run inspectable and replayable; they do not establish cross-architecture floating-point parity, GPU parity, visual quality or authenticity without a separately verified source/build and capture process.
 
@@ -63,6 +63,11 @@ The fourth core module, `crates/visual-core/src/ouroboros_mesh.rs`, converts the
 - Canonical little-endian mesh serialization and a BLAKE3 receipt binding the scene-contract version, tessellation, vertices, normals, UVs, form weights and indices.
 
 The mesh is a geometry artifact, not a final character model or shader. It has no face sculpt, material graph, animation rig, GPU upload path, shadowing or physically based lighting. Its test coverage is authored but not yet qualified on this exact PR head.
+
+
+A seventh core contract adds `OuroborosScene::landmarks()`: one versioned semantic head/face attachment set in normalized scene coordinates. It carries the exact invariant head root, an orthonormal forward/lateral/up basis derived from bounded yaw/pitch, and stable left-eye, right-eye, nose-tip, mouth-center, crown and chin points. Facial proportions scale with the scene major radius; semantic form weights never move or reorder the root or attachment IDs. `OuroborosLandmarks::canonical_bytes` emits the versioned `OUROLND1` representation and its BLAKE3 receipt is independently versioned from mesh, checkpoint and trace schemas. Tests are authored for all forms, pose extremes, basis orthogonality, left/right symmetry, head-envelope bounds, canonical determinism and pose sensitivity; exact-head qualification is pending.
+
+The landmark set is a renderer-neutral attachment contract, not a sculpted model or full skeletal rig. It does not claim photorealism, facial expression quality or human identity; those remain visual-art and perceptual-evaluation work.
 
 
 The mesh API also exposes deterministic host-budget planning. The host supplies projected ring/tube pixel radii plus maximum vertex, index and byte budgets. The core selects a deterministic feasible tessellation tier (Economy, Balanced or Cinematic) using a quantized ring/tube ladder and exact resource estimates. The returned plan includes both the requested and selected ring/tube segments, so a host can see where the shared budget traded cross-section detail for silhouette resolution. If even the minimum mesh cannot fit, it returns `BudgetTooSmall`; the host must choose a CPU/static fallback. This keeps display/GPU discovery out of the scene core while allowing predictable resolution/power scaling. The same budget input produces the same plan, and the plan reports exact counts and estimated geometry bytes.
@@ -80,8 +85,9 @@ Keep scene semantics portable and host capabilities separate.
 | Reference renderer | Rust CPU RGBA | Mycelial scene plus stylized Ouroboros CPU reference rasterizer; content-addressed capture receipts authored, golden artifact review pending |
 | Geometry | Rust CPU indexed mesh | Closed Ouroboros tube mesh, invariant topology, deterministic UV seams, normals, hostile-input validation and mesh receipt authored; exact-head geometry tests pending |
 | Quality planning | Host-provided projected size and resource ceilings | Deterministic Economy/Balanced/Cinematic mesh planner with exact vertex/index/byte estimates; exact-head budget tests pending |
-| Replay/evidence | Canonical Rust event trace + BLAKE3 | Versioned input trace, full internal state digest and sealed replay/checkpoint/mesh/image evidence root authored; exact-head tests pending |
+| Replay/evidence | Canonical Rust event trace + BLAKE3 | Versioned input trace, full internal state digest and `OUROEVB2` evidence root binding checkpoint, face-landmark, mesh, image and complete LOD budget receipts; exact-head tests pending |
 | Persistence | Canonical Rust checkpoint + BLAKE3 | Bounded `OUROCKP1` checkpoint API, active/Reduced restore tests and evidence-bundle integration authored; exact-head qualification pending |
+| Semantic identity rig | Rust scene landmark contract | Versioned `OUROLND1` invariant face root/basis/attachment points and evidence receipt authored; exact-head landmark tests and visual review pending |
 | Desktop renderer | Rust + wgpu | Headless reference path exists on the separate Visual Genome branch; not a desktop presentation adapter |
 | Boot adapter | Rust DRM/KMS + NixOS service | Existing renderer, VM/hardware qualification remains separate |
 | Desktop host adapter | Waywallen renderer subprocess + pinned bridge; Waywallen Display owns Plasma/Wayland presentation | Not implemented |
@@ -228,11 +234,12 @@ The identity metric is intentionally not just a pixel similarity score: material
 
 ### Reproducible visual evidence
 
-- One evidence bundle must bind the event trace, final internal-state digest, portable checkpoint, mesh receipt, pixel receipt and selected/requested LOD.
+- One evidence bundle must bind the event trace, final internal-state digest, portable checkpoint, semantic face-landmark receipt, mesh receipt, pixel receipt, full host budget and selected/requested LOD.
 - All embedded scene-contract and artifact schema versions must be explicit.
 - Re-sealing identical trace, plan, image dimensions and same-build inputs must produce identical sub-artifacts and bundle root.
 - A changed trace, pixel, mesh, checkpoint or plan must change the corresponding sub-receipt and evidence root.
-- The evidence bundle is content-addressed, not signed. Authenticity requires an independently verified build/source attestation and a trusted capture path.
+- The `OUROEVB2` evidence bundle is content-addressed, not signed. Authenticity requires an independently verified build/source attestation and a trusted capture path.
+- Landmark schema version and canonical digest must be embedded in every backend comparison; adapters must not silently replace the semantic eye/nose/mouth/root attachment map.
 - CPU reference, GPU output and compositor-presented captures remain distinct backends; never treat equal dimensions or a shared scene contract as proof of pixel parity.
 
 ### Persistence and handoff
@@ -304,7 +311,8 @@ Ouroboros is a first exemplar. Future scenes could embody civic commons, ecologi
 | P1 | Deterministic Ouroboros tube mesh | **Source implemented** with topology/mesh receipts; exact-head geometry tests and visual review pending |
 | P1 | Host-budgeted deterministic LOD | **Source implemented** with Economy/Balanced/Cinematic selection and hard budget checks; exact-head planning tests pending |
 | P1 | Portable Ouroboros checkpoint | **Source implemented** with `OUROCKP1` schema and active/Reduced restore tests; exact-head tests and p95 encode/decode measurements pending |
-| P1 | Sealed visual-evidence bundle | **Source implemented** with `OUROEVB1` binding trace, checkpoint, mesh, CPU pixels and LOD plan; exact-head tests and cross-backend comparison pending |
+| P1 | Semantic face landmark contract | **Source implemented** with `OUROLND1`, invariant root, orthonormal pose basis and six face attachments; exact-head tests and visual review pending |
+| P1 | Sealed visual-evidence bundle | **Source implemented** with `OUROEVB2` binding trace, checkpoint, landmarks, mesh, CPU pixels and complete LOD budget; exact-head tests and cross-backend comparison pending |
 | P1 | WGPU Ouroboros renderer | Same semantic fixtures, GPU shader validation, reference comparisons and named-device performance evidence |
 | P1 | Waywallen bridge smoke renderer | Exact protocol handshake, buffer negotiation, DMA-BUF publication, SYNC_FD and release-point lifecycle |
 | P2 | Sandboxed Ouroboros Waywallen plugin | Per-user plugin install, typed scene settings, renderer process sandbox, static fallback and daemon lifecycle |
