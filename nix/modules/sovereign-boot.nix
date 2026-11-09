@@ -47,6 +47,12 @@ let
     # System services do not inherit an interactive shell PATH. Keep every
     # external utility used by this post-stop path pinned to the Nix store.
     export PATH="${lib.makeBinPath [ pkgs.coreutils pkgs.gnugrep pkgs.gnused ]}"
+    for utility in mktemp chmod cat mv rm mkdir sha256sum cut date; do
+      if ! command -v "$utility" >/dev/null 2>&1; then
+        echo "sovereign-boot: required canary utility missing from runtime PATH: $utility" >&2
+        exit 127
+      fi
+    done
 
     request=${lib.escapeShellArg canaryRequest}
     inflight="$request.inflight"
@@ -126,6 +132,12 @@ let
     # This runs before the display manager with a deliberately strict systemd
     # sandbox. Never depend on the ambient manager PATH for shell utilities.
     export PATH="${lib.makeBinPath [ pkgs.coreutils pkgs.gnugrep pkgs.gnused ]}"
+    for utility in mktemp chmod cat mv rm mkdir; do
+      if ! command -v "$utility" >/dev/null 2>&1; then
+        echo "sovereign-boot: required post-stop utility missing from runtime PATH: $utility" >&2
+        exit 127
+      fi
+    done
 
     request=${lib.escapeShellArg canaryRequest}
     inflight="$request.inflight"
