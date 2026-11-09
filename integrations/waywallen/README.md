@@ -48,4 +48,4 @@ Cross-GPU paths must be tested separately from same-device zero-copy paths. Unkn
 
 ## Packaging
 
-The plugin must ship a newline-separated `files.txt`. Its binary path is relative to the plugin directory and mirrors the upstream glTF plugin's packaging layout. The manifest's `resolution = -2` default requests the daemon's Auto resolution policy; do not advertise that mode until render-target capability negotiation is implemented and qualified.
+The plugin must ship a newline-separated `files.txt`. Its binary path is relative to the plugin directory and mirrors the upstream glTF plugin's packaging layout. The initial manifest deliberately omits the special `resolution = -2` setting, because it requests the daemon's Auto resolution policy. Add Auto sizing only after the renderer implements render-target capabilities, revision ordering and result messages and those paths have been qualified.
