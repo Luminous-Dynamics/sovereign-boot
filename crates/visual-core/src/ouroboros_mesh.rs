@@ -78,6 +78,8 @@ pub struct OuroborosMesh {
     pub vertices: Vec<OuroborosMeshVertex>,
     pub indices: Vec<u32>,
     pub config: OuroborosMeshConfig,
+    /// Major radius of the semantic source scene.
+    pub source_major_radius: f32,
     pub scene_contract_version: u16,
 }
 
@@ -244,6 +246,7 @@ impl OuroborosMesh {
             vertices,
             indices,
             config,
+            source_major_radius: scene.config().major_radius,
             scene_contract_version: crate::contract::SCENE_CONTRACT_VERSION,
         };
         mesh.validate()?;
@@ -253,33 +256,48 @@ impl OuroborosMesh {
 
     /// Validate closed seams, topology, index bounds, finite values and unit normals.
     pub fn validate(&self) -> Result<(), OuroborosMeshError> {
-        let ring_count = self.config.ring_segments as usize;
-        let tube_count = self.config.tube_segments as usize;
-        let expected_vertices = (ring_count + 1) * (tube_count + 1);
-        let expected_indices = ring_count * tube_count * 6;
+        // Validate scalar bounds before size arithmetic. The mesh fields are
+        // public renderer data, so callers can construct hostile values.
         if self.scene_contract_version != SCENE_CONTRACT_VERSION
             || !(32..=2048).contains(&self.config.ring_segments)
             || !(6..=64).contains(&self.config.tube_segments)
             || !self.config.tube_radius.is_finite()
             || !(0.001..=0.08).contains(&self.config.tube_radius)
+            || !self.source_major_radius.is_finite()
+            || !(0.1..=0.45).contains(&self.source_major_radius)
+            || self.config.tube_radius > self.source_major_radius * 0.20
+        {
+            return Err(OuroborosMeshError::InvalidGeneratedGeometry);
+        }
+
+        let ring_count = self.config.ring_segments as usize;
+        let tube_count = self.config.tube_segments as usize;
+        let expected_vertices = (ring_count + 1)
+            .checked_mul(tube_count + 1)
+            .ok_or(OuroborosMeshError::SizeOverflow)?;
+        let expected_indices = ring_count
+            .checked_mul(tube_count)
+            .and_then(|quads| quads.checked_mul(6))
+            .ok_or(OuroborosMeshError::SizeOverflow)?;
+        if expected_vertices > MAX_VERTICES
+            || expected_indices > MAX_INDICES
+            || expected_vertices > u32::MAX as usize
             || self.vertices.len() != expected_vertices
             || self.indices.len() != expected_indices
         {
             return Err(OuroborosMeshError::InvalidGeneratedGeometry);
         }
-        if self
-            .indices
-            .iter()
-            .any(|index| *index as usize >= self.vertices.len())
-        {
-            return Err(OuroborosMeshError::InvalidGeneratedGeometry);
-        }
 
+        let Some(reference_weights) = self.vertices.first().map(|vertex| vertex.form_weights) else {
+            return Err(OuroborosMeshError::InvalidGeneratedGeometry);
+        };
         for vertex in &self.vertices {
             if !vertex.position.into_iter().all(f32::is_finite)
                 || !vertex.normal.into_iter().all(f32::is_finite)
                 || !vertex.uv.into_iter().all(f32::is_finite)
                 || !weights_are_valid(vertex.form_weights)
+                || vertex.form_weights != reference_weights
+                || !vertex.uv.into_iter().all(|value| (0.0..=1.0).contains(&value))
             {
                 return Err(OuroborosMeshError::InvalidGeneratedGeometry);
             }
@@ -289,7 +307,48 @@ impl OuroborosMesh {
             }
         }
 
+        // Require the canonical two-triangle tessellation, not merely
+        // in-range indices. This makes receipt validation meaningful even
+        // when callers mutate the public vertex/index vectors.
         let row = tube_count + 1;
+        let mut offset = 0;
+        for ring_index in 0..ring_count {
+            for tube_index in 0..tube_count {
+                let a = (ring_index * row + tube_index) as u32;
+                let b = ((ring_index + 1) * row + tube_index) as u32;
+                let c = (ring_index * row + tube_index + 1) as u32;
+                let d = ((ring_index + 1) * row + tube_index + 1) as u32;
+                let expected = [a, b, c, b, d, c];
+                if self.indices[offset..offset + 6] != expected {
+                    return Err(OuroborosMeshError::InvalidGeneratedGeometry);
+                }
+                offset += 6;
+            }
+        }
+
+        // Validate every triangle, not a sampling of triangles: no degenerate
+        // faces and no inward winding relative to the interpolated vertex normals.
+        for triangle in self.indices.chunks_exact(3) {
+            let a = self.vertices[triangle[0] as usize];
+            let b = self.vertices[triangle[1] as usize];
+            let c = self.vertices[triangle[2] as usize];
+            let face = cross(
+                sub(b.position, a.position),
+                sub(c.position, a.position),
+            );
+            let area_squared = dot(face, face);
+            let outward = dot(face, add(add(a.normal, b.normal), c.normal));
+            if !area_squared.is_finite()
+                || area_squared <= 1.0e-16
+                || !outward.is_finite()
+                || outward <= 1.0e-12
+            {
+                return Err(OuroborosMeshError::InvalidGeneratedGeometry);
+            }
+        }
+
+        // Both periodic dimensions duplicate their seam vertex exactly;
+        // UVs alone may differ at 0/1.
         for tube_index in 0..=tube_count {
             let first = self.vertices[tube_index];
             let last = self.vertices[ring_count * row + tube_index];
@@ -324,7 +383,7 @@ impl OuroborosMesh {
             .ok_or(OuroborosMeshError::SizeOverflow)?;
         let estimated = vertex_bytes
             .checked_add(index_bytes)
-            .and_then(|n| n.checked_add(18))
+            .and_then(|n| n.checked_add(26))
             .ok_or(OuroborosMeshError::SizeOverflow)?;
         bytes
             .try_reserve_exact(estimated)
@@ -335,6 +394,7 @@ impl OuroborosMesh {
         bytes.extend_from_slice(&self.config.ring_segments.to_le_bytes());
         bytes.extend_from_slice(&self.config.tube_segments.to_le_bytes());
         append_f32(&mut bytes, self.config.tube_radius);
+        append_f32(&mut bytes, self.source_major_radius);
 
         for vertex in &self.vertices {
             for value in vertex.position {
@@ -534,6 +594,70 @@ mod tests {
 
         assert_eq!(a, b);
         assert_ne!(a.digest, c.digest);
+    }
+
+    #[test]
+    fn validator_rejects_hostile_dimensions_without_overflowing() {
+        let (mut mesh, _) = OuroborosMesh::build(
+            &scene(OuroborosForm::Nature),
+            OuroborosMeshConfig::default(),
+        )
+        .unwrap();
+        mesh.config.ring_segments = u32::MAX;
+        assert_eq!(
+            mesh.validate(),
+            Err(OuroborosMeshError::InvalidGeneratedGeometry)
+        );
+    }
+
+    #[test]
+    fn validator_rejects_noncanonical_indices_and_inward_winding() {
+        let (mut mesh, _) = OuroborosMesh::build(
+            &scene(OuroborosForm::Nature),
+            OuroborosMeshConfig::default(),
+        )
+        .unwrap();
+        mesh.indices[0] = mesh.indices[0].wrapping_add(1);
+        assert_eq!(
+            mesh.validate(),
+            Err(OuroborosMeshError::InvalidGeneratedGeometry)
+        );
+
+        let (mut mesh, _) = OuroborosMesh::build(
+            &scene(OuroborosForm::Digital),
+            OuroborosMeshConfig::default(),
+        )
+        .unwrap();
+        mesh.indices.swap(0, 1);
+        assert_eq!(
+            mesh.validate(),
+            Err(OuroborosMeshError::InvalidGeneratedGeometry)
+        );
+    }
+
+    #[test]
+    fn validator_rejects_inconsistent_semantic_weights_and_scene_scale() {
+        let (mut mesh, _) = OuroborosMesh::build(
+            &scene(OuroborosForm::Humanity),
+            OuroborosMeshConfig::default(),
+        )
+        .unwrap();
+        mesh.vertices[0].form_weights.nature = 0.25;
+        assert_eq!(
+            mesh.validate(),
+            Err(OuroborosMeshError::InvalidGeneratedGeometry)
+        );
+
+        let (mut mesh, _) = OuroborosMesh::build(
+            &scene(OuroborosForm::Nature),
+            OuroborosMeshConfig::default(),
+        )
+        .unwrap();
+        mesh.source_major_radius = 0.1;
+        assert_eq!(
+            mesh.validate(),
+            Err(OuroborosMeshError::InvalidGeneratedGeometry)
+        );
     }
 
     #[test]
