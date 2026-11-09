@@ -347,6 +347,77 @@ impl OuroborosScene {
         self.config
     }
 
+    /// Canonical internal state bytes for replay evidence.
+    ///
+    /// This includes pending attention and transition state, not just the
+    /// currently visible frame. It is crate-private because the internal
+    /// checkpoint layout is versioned with the scene contract.
+    pub(crate) fn canonical_state_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(160);
+        bytes.extend_from_slice(b"OUROSTA1");
+        bytes.extend_from_slice(&contract::SCENE_CONTRACT_VERSION.to_le_bytes());
+
+        let mut push = |value: f32| bytes.extend_from_slice(&value.to_bits().to_le_bytes());
+        for value in [
+            self.config.major_radius,
+            self.config.vertical_scale,
+            self.config.organic_deformation,
+            self.config.digital_deformation,
+            self.config.transition_seconds,
+            self.config.face_response,
+            self.config.max_yaw_radians,
+            self.config.max_pitch_radians,
+            self.from_weights.nature,
+            self.from_weights.humanity,
+            self.from_weights.digital,
+            self.from_weights.enlightenment,
+            self.transition_elapsed,
+            self.transition_duration,
+            self.transition_start_progress,
+            self.attention_target.x,
+            self.attention_target.y,
+            self.head_pose.yaw_radians,
+            self.head_pose.pitch_radians,
+        ] {
+            push(value);
+        }
+
+        bytes.push(match self.target_form {
+            OuroborosForm::Nature => 0,
+            OuroborosForm::Humanity => 1,
+            OuroborosForm::Digital => 2,
+            OuroborosForm::Enlightenment => 3,
+        });
+        bytes.push(match self.motion_mode {
+            OuroborosMotionMode::Reduced => 0,
+            OuroborosMotionMode::LowPower => 1,
+            OuroborosMotionMode::Balanced => 2,
+            OuroborosMotionMode::Cinematic => 3,
+        });
+        match self.frozen_weights {
+            Some(weights) => {
+                bytes.push(1);
+                for value in [
+                    weights.nature,
+                    weights.humanity,
+                    weights.digital,
+                    weights.enlightenment,
+                ] {
+                    push(value);
+                }
+            }
+            None => bytes.push(0),
+        }
+        match self.frozen_progress {
+            Some(progress) => {
+                bytes.push(1);
+                push(progress);
+            }
+            None => bytes.push(0),
+        }
+        bytes
+    }
+
     pub fn target_form(&self) -> OuroborosForm {
         self.target_form
     }
