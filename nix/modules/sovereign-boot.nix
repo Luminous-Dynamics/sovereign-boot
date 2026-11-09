@@ -44,6 +44,9 @@ let
 
   physicalCanaryPostStop = pkgs.writeShellScript "sovereign-boot-physical-canary-post-stop" ''
     set -u
+    # System services do not inherit an interactive shell PATH. Keep every
+    # external utility used by this post-stop path pinned to the Nix store.
+    export PATH="${lib.makeBinPath [ pkgs.coreutils pkgs.gnugrep pkgs.gnused ]}"
 
     request=${lib.escapeShellArg canaryRequest}
     inflight="$request.inflight"
@@ -120,6 +123,9 @@ let
 
   physicalCanaryRunner = pkgs.writeShellScript "sovereign-boot-physical-canary-runner" ''
     set -euo pipefail
+    # This runs before the display manager with a deliberately strict systemd
+    # sandbox. Never depend on the ambient manager PATH for shell utilities.
+    export PATH="${lib.makeBinPath [ pkgs.coreutils pkgs.gnugrep pkgs.gnused ]}"
 
     request=${lib.escapeShellArg canaryRequest}
     inflight="$request.inflight"
