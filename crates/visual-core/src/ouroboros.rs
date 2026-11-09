@@ -568,7 +568,8 @@ mod tests {
     fn transition_reaches_target_without_changing_identity_anchor() {
         let mut scene = scene(OuroborosForm::Nature);
         scene.transition_to(OuroborosForm::Enlightenment);
-        advance_for(&mut scene, 8.0);
+        // Balanced mode runs at 0.70x; include that policy in the duration.
+        advance_for(&mut scene, 12.0);
 
         let frame = scene.frame();
         assert_eq!(frame.form_weights, OuroborosForm::Enlightenment.weights());
