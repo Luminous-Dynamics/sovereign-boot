@@ -246,7 +246,7 @@ The identity metric is intentionally not just a pixel similarity score: material
 
 - Active C1 trajectories must resume with identical per-channel values, velocities and subsequent state on the same build/target.
 - Reduced checkpoints must remain frozen until the host explicitly resumes the entity.
-- Current canonical schema sizes are 121 bytes for an active checkpoint and 157 bytes for a Reduced checkpoint; the hard format ceiling remains 256 bytes.
+- Current canonical schema sizes are 121 bytes for an active checkpoint and 160 bytes for a Reduced checkpoint; the hard format ceiling remains 256 bytes.
 - p95 encode/decode target <=100 microseconds for 1,000 in-process operations on the reference laptop CPU; actual latency remains unmeasured.
 - Invalid, oversized, unknown-version, out-of-range and trailing-byte snapshots are rejected before use.
 - Checkpoints contain semantic state only. Renderer handles, file paths, DMA-BUFs, FDs, display identity and permissions are never persisted.
