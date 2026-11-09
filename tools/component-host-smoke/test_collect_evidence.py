@@ -396,6 +396,7 @@ class EvidenceCollectorTests(unittest.TestCase):
             ).read_bytes()
             hashes.update({
                 "qualification_workflow": hashlib.sha256(workflow_bytes).hexdigest(),
+                "rustc_version": "c" * 64,
                 "rustc_version_verbose": "d" * 64,
                 "cargo_version": "e" * 64,
                 "rustup_toolchain": "1" * 64,
@@ -405,6 +406,7 @@ class EvidenceCollectorTests(unittest.TestCase):
             })
             sizes.update({
                 "qualification_workflow": len(workflow_bytes),
+                "rustc_version": 1,
                 "rustc_version_verbose": 1,
                 "cargo_version": 1,
                 "rustup_toolchain": 1,
