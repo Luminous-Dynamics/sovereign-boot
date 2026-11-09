@@ -7,6 +7,8 @@
 
 use std::collections::BTreeSet;
 
+pub mod render_target;
+
 pub const IPC_PROTOCOL_VERSION: u32 = 3;
 pub const RENDERER_SPAWN_VERSION: u32 = 10;
 pub const MAX_FORMAT_COUNT: usize = 16;
@@ -188,6 +190,14 @@ pub enum ContractError {
     NonMonotonicFrameSequence,
     NonMonotonicTimestamp,
     NonMonotonicReleasePoint,
+    InvalidRenderTargetCapabilities,
+    MissingRenderTargetCapabilities,
+    RenderTargetCapabilityRevisionConflict,
+    NonMonotonicRenderTargetRevision,
+    StaleRenderTargetCapabilities,
+    RenderTargetRequestInFlight,
+    RenderTargetAspectMismatch,
+    InvalidRenderTargetOutcome,
 }
 
 #[derive(Debug, Clone)]
