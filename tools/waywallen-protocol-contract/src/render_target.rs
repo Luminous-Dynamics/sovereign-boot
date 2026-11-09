@@ -320,6 +320,7 @@ impl RenderTargetSession {
                     || pool.generation == 0
                     || pool.generation <= self.applied_pool_generation
                 {
+                    self.pending = None;
                     return Err(ContractError::InvalidRenderTargetOutcome);
                 }
                 self.applied_pool_generation = pool.generation;
@@ -487,11 +488,11 @@ mod tests {
         );
 
         let mut bad_aspect = capabilities(RenderTargetMode::NativeExtent);
-        bad_aspect.alignment = Extent { width: 100, height: 1 };
+        bad_aspect.alignment = Extent { width: 16, height: 1 };
         let mut aspect_session = RenderTargetSession::default();
         aspect_session.publish_capabilities(bad_aspect).unwrap();
         assert_eq!(
-            aspect_session.receive_config(config(1, 1, 1_900, 1_080), &producer),
+            aspect_session.receive_config(config(1, 1, 1_904, 1_080), &producer),
             Err(ContractError::RenderTargetAspectMismatch)
         );
 
@@ -505,7 +506,9 @@ mod tests {
     #[test]
     fn applied_result_requires_matching_published_pool_extent_and_generation() {
         let mut session = RenderTargetSession::default();
-        session.publish_capabilities(capabilities(RenderTargetMode::ScalableFixedAspect)).unwrap();
+        session
+            .publish_capabilities(capabilities(RenderTargetMode::ScalableFixedAspect))
+            .unwrap();
         session.receive_config(config(1, 1, 960, 540), &producer_capabilities()).unwrap();
 
         let stale = RenderTargetOutcome {
@@ -514,34 +517,53 @@ mod tests {
             extent: Extent { width: 960, height: 540 },
             pool_generation: 1,
         };
-        assert_eq!(session.finish(stale, None).unwrap(), RenderTargetCompletion::IgnoredStale);
+        assert_eq!(
+            session.finish(stale, None).unwrap(),
+            RenderTargetCompletion::IgnoredStale
+        );
+        assert_eq!(session.pending().unwrap().revision, 1);
 
-        let applied = RenderTargetOutcome {
+        let mismatched_pool = RenderTargetOutcome {
             revision: 1,
             status: RenderTargetStatus::Applied,
             extent: Extent { width: 960, height: 540 },
             pool_generation: 4,
         };
         assert_eq!(
-            session.finish(applied, Some(PublishedTargetPool {
-                generation: 3,
-                extent: applied.extent,
-            })),
+            session.finish(
+                mismatched_pool,
+                Some(PublishedTargetPool {
+                    generation: 3,
+                    extent: mismatched_pool.extent,
+                })
+            ),
             Err(ContractError::InvalidRenderTargetOutcome)
         );
+        assert!(session.pending().is_none());
+        assert!(session.applied().is_none());
+        assert_eq!(session.applied_pool_generation(), 0);
+
+        // Invalid Applied evidence consumes revision 1. Recovery is a new
+        // monotonically increasing request with a separately published pool.
+        session.receive_config(config(2, 1, 960, 540), &producer_capabilities()).unwrap();
+        let valid = RenderTargetOutcome {
+            revision: 2,
+            status: RenderTargetStatus::Applied,
+            extent: Extent { width: 960, height: 540 },
+            pool_generation: 4,
+        };
         assert_eq!(
-            session.finish(applied, Some(PublishedTargetPool {
-                generation: 4,
-                extent: Extent { width: 1_280, height: 720 },
-            })),
-            Err(ContractError::InvalidRenderTargetOutcome)
-        );
-        assert_eq!(
-            session.finish(applied, Some(PublishedTargetPool {
-                generation: 4,
-                extent: applied.extent,
-            })).unwrap(),
-            RenderTargetCompletion::Applied { revision: 1, pool_generation: 4 }
+            session.finish(
+                valid,
+                Some(PublishedTargetPool {
+                    generation: 4,
+                    extent: valid.extent,
+                })
+            ).unwrap(),
+            RenderTargetCompletion::Applied {
+                revision: 2,
+                pool_generation: 4,
+            }
         );
         assert_eq!(session.applied().unwrap().extent.width, 960);
         assert_eq!(session.applied_pool_generation(), 4);
