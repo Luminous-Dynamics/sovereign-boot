@@ -63,6 +63,9 @@ jobs:
           cat /etc/os-release > "$RUNNER_TEMP/runner-os-release.txt"
           uname -srvm > "$RUNNER_TEMP/runner-kernel.txt"
 
+      - name: Resolve exact-head production workspace lockfile
+        run: cargo +1.96.0 generate-lockfile --manifest-path Cargo.toml
+
       - name: Resolve isolated host dependency graph
         id: resolve_lockfile
         run: cargo +1.96.0 generate-lockfile --manifest-path tools/component-host-smoke/Cargo.toml
@@ -114,6 +117,19 @@ jobs:
           RECEIPT_OUTCOME: ${{ steps.receipt.outcome }}
         run: |
           python3 tools/component-host-smoke/assemble-packet.py
+      - name: Upload regenerated production lockfile for source pinning
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: component-production-lockfile-${{ github.run_id }}-${{ github.run_attempt }}
+          path: Cargo.lock
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Require regenerated production lockfile to be pinned in source
+        if: steps.resolve_lockfile.outcome == 'success'
+        run: git diff --exit-code -- Cargo.lock
+
       - name: Upload runtime evidence and lockfile
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

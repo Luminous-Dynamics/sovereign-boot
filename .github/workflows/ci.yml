@@ -38,6 +38,18 @@ jobs:
       - name: Format
         run: cargo +1.96.0 fmt --all -- --check
 
+      - name: Resolve exact-head production workspace lockfile
+        run: cargo +1.96.0 generate-lockfile --manifest-path Cargo.toml
+
+      - name: Upload regenerated production lockfile for source pinning
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: production-workspace-lockfile-${{ github.run_id }}-${{ github.run_attempt }}
+          path: Cargo.lock
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Check
         run: cargo +1.96.0 check --workspace --locked
 
@@ -122,6 +134,9 @@ jobs:
 
       - name: Clippy
         run: cargo +1.96.0 clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Require regenerated production lockfile to be pinned in source
+        run: git diff --exit-code -- Cargo.lock
 
   nix:
     name: Nix build
