@@ -146,6 +146,7 @@ Targets below are proposed qualification targets, not results. Every measurement
 | Retarget continuity (C0) | Zero instantaneous jump in all four form weights |
 | Retarget velocity continuity (C1) | Analytic derivative jump <=1e-6 normalized weight units/s in exact-head tests; finite-difference target <=1e-4 on captured 30/60 Hz trajectories |
 | Retarget boundedness | Zero excursions outside [0, 1] over all channels and repeated retarget chains |
+| Channel independence | A short duration for one near-boundary channel must not shorten other active channels; measure per-channel completion times |
 | Body topology | Same ordered centerline parameterization and sample IDs across all forms |
 | Pose bounds | Yaw and pitch always remain inside validated configuration limits |
 | Reduced mode | No frame/state change from elapsed time or attention-target updates over a 60-second replay |
