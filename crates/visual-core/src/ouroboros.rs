@@ -316,6 +316,7 @@ pub struct OuroborosScene {
     head_pose: HeadPose,
     motion_mode: OuroborosMotionMode,
     frozen_weights: Option<FormWeights>,
+    frozen_progress: Option<f32>,
 }
 
 impl OuroborosScene {
@@ -334,6 +335,7 @@ impl OuroborosScene {
             head_pose: HeadPose::default(),
             motion_mode: OuroborosMotionMode::Balanced,
             frozen_weights: None,
+            frozen_progress: None,
         })
     }
 
@@ -372,6 +374,7 @@ impl OuroborosScene {
             OuroborosMotionMode::Reduced => {
                 // Freeze the currently visible composition, not a future frame.
                 self.frozen_weights = Some(self.current_weights());
+                self.frozen_progress = Some(self.transition_progress());
             }
             _ => {
                 if let Some(frozen) = self.frozen_weights.take() {
@@ -379,6 +382,7 @@ impl OuroborosScene {
                     // the currently selected semantic form.
                     self.from_weights = frozen;
                     self.transition_elapsed = 0.0;
+                    self.frozen_progress = None;
                 }
             }
         }
@@ -397,10 +401,12 @@ impl OuroborosScene {
 
         if self.motion_mode == OuroborosMotionMode::Reduced {
             self.frozen_weights = Some(form.weights());
+            self.frozen_progress = Some(1.0);
             self.from_weights = form.weights();
             self.transition_elapsed = self.config.transition_seconds;
         } else {
             self.frozen_weights = None;
+            self.frozen_progress = None;
         }
     }
 
@@ -503,10 +509,9 @@ impl OuroborosScene {
     }
 
     fn transition_progress(&self) -> f32 {
-        // Freezing a scene must preserve the actual transition position.
-        // A transition requested while already Reduced sets elapsed to its
-        // terminal value, while reducing mid-transition preserves partial
-        // progress without advancing it.
+        if let Some(progress) = self.frozen_progress {
+            return progress;
+        }
         (self.transition_elapsed / self.config.transition_seconds).clamp(0.0, 1.0)
     }
 
@@ -647,6 +652,13 @@ mod tests {
         assert_eq!(frozen.form_weights, visible.form_weights);
         assert_eq!(frozen.transition_progress, visible.transition_progress);
         assert!(frozen.transition_progress < 1.0);
+
+        // An explicit form selection during Reduced mode changes the still
+        // immediately and reports the new target as complete.
+        scene.transition_to(OuroborosForm::Digital);
+        let selected = scene.frame();
+        assert_eq!(selected.form_weights, OuroborosForm::Digital.weights());
+        assert_eq!(selected.transition_progress, 1.0);
 
         for _ in 0..60 {
             scene.advance(0.1).unwrap();
