@@ -285,7 +285,10 @@ impl fmt::Display for OuroborosMeshError {
             Self::InvalidConfiguration => write!(f, "invalid Ouroboros mesh configuration"),
             Self::SizeOverflow => write!(f, "Ouroboros mesh size arithmetic overflowed"),
             Self::SizeLimitExceeded => write!(f, "Ouroboros mesh exceeds the vertex/index budget"),
-            Self::BudgetTooSmall => write!(f, "host mesh budget cannot hold the minimum Ouroboros geometry"),
+            Self::BudgetTooSmall => write!(
+                f,
+                "host mesh budget cannot hold the minimum Ouroboros geometry"
+            ),
             Self::AllocationFailed => write!(f, "unable to reserve bounded Ouroboros mesh storage"),
             Self::Scene(error) => write!(f, "invalid Ouroboros scene: {error}"),
             Self::DegenerateCenterline => {
@@ -464,7 +467,8 @@ impl OuroborosMesh {
             return Err(OuroborosMeshError::InvalidGeneratedGeometry);
         }
 
-        let Some(reference_weights) = self.vertices.first().map(|vertex| vertex.form_weights) else {
+        let Some(reference_weights) = self.vertices.first().map(|vertex| vertex.form_weights)
+        else {
             return Err(OuroborosMeshError::InvalidGeneratedGeometry);
         };
         for vertex in &self.vertices {
@@ -473,7 +477,10 @@ impl OuroborosMesh {
                 || !vertex.uv.into_iter().all(f32::is_finite)
                 || !weights_are_valid(vertex.form_weights)
                 || vertex.form_weights != reference_weights
-                || !vertex.uv.into_iter().all(|value| (0.0..=1.0).contains(&value))
+                || !vertex
+                    .uv
+                    .into_iter()
+                    .all(|value| (0.0..=1.0).contains(&value))
             {
                 return Err(OuroborosMeshError::InvalidGeneratedGeometry);
             }
@@ -508,10 +515,7 @@ impl OuroborosMesh {
             let a = self.vertices[triangle[0] as usize];
             let b = self.vertices[triangle[1] as usize];
             let c = self.vertices[triangle[2] as usize];
-            let face = cross(
-                sub(b.position, a.position),
-                sub(c.position, a.position),
-            );
+            let face = cross(sub(b.position, a.position), sub(c.position, a.position));
             let area_squared = dot(face, face);
             let outward = dot(face, add(add(a.normal, b.normal), c.normal));
             if !area_squared.is_finite()
@@ -846,10 +850,8 @@ mod tests {
             max_indices: 240_000,
             max_buffer_bytes: 2_000_000,
         };
-        let first =
-            OuroborosMeshConfig::plan_for_budget(&scene, 0.025, budget).unwrap();
-        let second =
-            OuroborosMeshConfig::plan_for_budget(&scene, 0.025, budget).unwrap();
+        let first = OuroborosMeshConfig::plan_for_budget(&scene, 0.025, budget).unwrap();
+        let second = OuroborosMeshConfig::plan_for_budget(&scene, 0.025, budget).unwrap();
         assert_eq!(first, second);
         assert!(first.vertex_count <= budget.max_vertices);
         assert!(first.index_count <= budget.max_indices);
@@ -868,8 +870,7 @@ mod tests {
             projected_tube_radius_px: 1,
             ..budget
         };
-        let small_plan =
-            OuroborosMeshConfig::plan_for_budget(&scene, 0.025, small).unwrap();
+        let small_plan = OuroborosMeshConfig::plan_for_budget(&scene, 0.025, small).unwrap();
         assert!(small_plan.config.ring_segments <= first.config.ring_segments);
         assert!(small_plan.config.tube_segments <= first.config.tube_segments);
 
@@ -878,8 +879,7 @@ mod tests {
             projected_tube_radius_px: 24,
             ..budget
         };
-        let large_plan =
-            OuroborosMeshConfig::plan_for_budget(&scene, 0.025, large).unwrap();
+        let large_plan = OuroborosMeshConfig::plan_for_budget(&scene, 0.025, large).unwrap();
         assert!(large_plan.config.ring_segments >= first.config.ring_segments);
         assert!(large_plan.config.tube_segments >= first.config.tube_segments);
     }
