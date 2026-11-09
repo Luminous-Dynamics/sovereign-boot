@@ -149,7 +149,7 @@ in
     ).strip()
     assert archived_output_sha == recomputed_output_sha, (archived_output_sha, recomputed_output_sha)
     permissions = machine.succeed("stat -c %a /var/lib/sovereign-boot/physical-canary.result").strip()
-    assert permissions == "600", permissions, result
+    assert permissions == "600", (permissions, result)
 
     unit = machine.succeed(
         "systemctl cat sovereign-boot-physical-canary.service"
