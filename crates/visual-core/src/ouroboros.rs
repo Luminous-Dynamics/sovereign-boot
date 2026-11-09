@@ -200,6 +200,17 @@ impl FormWeights {
             .into_iter()
             .all(|value| value.is_finite() && (0.0..=1.0).contains(&value))
     }
+
+    fn is_finite_and_limited(self, limit: f32) -> bool {
+        [
+            self.nature,
+            self.humanity,
+            self.digital,
+            self.enlightenment,
+        ]
+        .into_iter()
+        .all(|value| value.is_finite() && value.abs() <= limit)
+    }
 }
 
 /// Content address for one portable Ouroboros scene checkpoint.
@@ -484,6 +495,176 @@ impl OuroborosScene {
 
     pub fn config(&self) -> OuroborosConfig {
         self.config
+    }
+
+    /// Serialize the complete portable scene state into a bounded checkpoint.
+    ///
+    /// Device handles, renderer resources and host capabilities are deliberately
+    /// excluded. The snapshot is suitable for a host to persist or hand off.
+    pub fn encode_checkpoint(
+        &self,
+    ) -> Result<(Vec<u8>, OuroborosCheckpointReceipt), OuroborosCheckpointError> {
+        self.validate_checkpoint_state()?;
+
+        let mut bytes = Vec::with_capacity(160);
+        bytes.extend_from_slice(&CHECKPOINT_MAGIC);
+        bytes.extend_from_slice(&CHECKPOINT_VERSION.to_le_bytes());
+        bytes.extend_from_slice(&contract::SCENE_CONTRACT_VERSION.to_le_bytes());
+        encode_checkpoint_config(self.config, &mut bytes);
+        encode_checkpoint_weights(self.from_weights, &mut bytes);
+        bytes.push(checkpoint_form_tag(self.target_form));
+        bytes.push(checkpoint_motion_tag(self.motion_mode));
+        checkpoint_push_f32(&mut bytes, self.transition_elapsed);
+        for duration in self.transition_durations {
+            checkpoint_push_f32(&mut bytes, duration);
+        }
+        checkpoint_push_f32(&mut bytes, self.transition_start_progress);
+        encode_checkpoint_weights(self.transition_start_velocity, &mut bytes);
+        checkpoint_push_f32(&mut bytes, self.attention_target.x);
+        checkpoint_push_f32(&mut bytes, self.attention_target.y);
+        checkpoint_push_f32(&mut bytes, self.head_pose.yaw_radians);
+        checkpoint_push_f32(&mut bytes, self.head_pose.pitch_radians);
+        encode_checkpoint_optional_weights(self.frozen_weights, &mut bytes);
+        encode_checkpoint_optional_f32(self.frozen_progress, &mut bytes);
+        encode_checkpoint_optional_weights(self.frozen_velocity, &mut bytes);
+
+        if bytes.len() > MAX_CHECKPOINT_BYTES || bytes.len() > u16::MAX as usize {
+            return Err(OuroborosCheckpointError::TooLarge);
+        }
+        let receipt = checkpoint_receipt(&bytes);
+        Ok((bytes, receipt))
+    }
+
+    /// Restore a scene only after the entire checkpoint and its kinematics validate.
+    pub fn restore_checkpoint(
+        bytes: &[u8],
+    ) -> Result<(Self, OuroborosCheckpointReceipt), OuroborosCheckpointError> {
+        if bytes.len() > MAX_CHECKPOINT_BYTES {
+            return Err(OuroborosCheckpointError::TooLarge);
+        }
+
+        let mut cursor = CheckpointCursor::new(bytes);
+        if cursor.take::<8>()? != CHECKPOINT_MAGIC {
+            return Err(OuroborosCheckpointError::InvalidMagic);
+        }
+        let version = cursor.u16()?;
+        if version != CHECKPOINT_VERSION {
+            return Err(OuroborosCheckpointError::UnsupportedVersion(version));
+        }
+        let contract_version = cursor.u16()?;
+        if contract_version != contract::SCENE_CONTRACT_VERSION {
+            return Err(OuroborosCheckpointError::UnsupportedSceneContract(
+                contract_version,
+            ));
+        }
+
+        let config = decode_checkpoint_config(&mut cursor)?;
+        let from_weights = decode_checkpoint_weights(&mut cursor)?;
+        let target_form = checkpoint_decode_form(cursor.u8()?)?;
+        let motion_mode = checkpoint_decode_motion(cursor.u8()?)?;
+        let transition_elapsed = cursor.f32()?;
+        let mut transition_durations = [0.0; 4];
+        for duration in &mut transition_durations {
+            *duration = cursor.f32()?;
+        }
+        let transition_start_progress = cursor.f32()?;
+        let transition_start_velocity = decode_checkpoint_weights(&mut cursor)?;
+        let attention_target = AttentionTarget {
+            x: cursor.f32()?,
+            y: cursor.f32()?,
+        };
+        let head_pose = HeadPose {
+            yaw_radians: cursor.f32()?,
+            pitch_radians: cursor.f32()?,
+        };
+        let frozen_weights = decode_checkpoint_optional_weights(&mut cursor)?;
+        let frozen_progress = decode_checkpoint_optional_f32(&mut cursor)?;
+        let frozen_velocity = decode_checkpoint_optional_weights(&mut cursor)?;
+
+        if !cursor.is_empty() {
+            return Err(OuroborosCheckpointError::TrailingBytes);
+        }
+
+        let mut scene = Self::new(config, target_form)
+            .map_err(|_| OuroborosCheckpointError::InvalidConfiguration)?;
+        scene.from_weights = from_weights;
+        scene.transition_elapsed = transition_elapsed;
+        scene.transition_durations = transition_durations;
+        scene.transition_start_progress = transition_start_progress;
+        scene.transition_start_velocity = transition_start_velocity;
+        scene.attention_target = attention_target;
+        scene.head_pose = head_pose;
+        scene.motion_mode = motion_mode;
+        scene.frozen_weights = frozen_weights;
+        scene.frozen_progress = frozen_progress;
+        scene.frozen_velocity = frozen_velocity;
+        scene.validate_checkpoint_state()?;
+
+        Ok((scene, checkpoint_receipt(bytes)))
+    }
+
+    fn validate_checkpoint_state(&self) -> Result<(), OuroborosCheckpointError> {
+        if self.config.validate().is_err() {
+            return Err(OuroborosCheckpointError::InvalidConfiguration);
+        }
+        if !self.from_weights.is_finite_and_bounded()
+            || !self.transition_start_velocity.is_finite_and_limited(MAX_FORM_VELOCITY)
+            || !self.transition_start_progress.is_finite()
+            || !(0.0..=1.0).contains(&self.transition_start_progress)
+            || !self.transition_elapsed.is_finite()
+            || self.transition_elapsed < 0.0
+            || !self
+                .transition_durations
+                .iter()
+                .all(|duration| {
+                    duration.is_finite()
+                        && (1.0e-6..=self.config.transition_seconds).contains(duration)
+                })
+            || self.transition_elapsed > max_transition_duration(self.transition_durations)
+            || !hermite_segments_are_bounded(
+                self.from_weights,
+                self.target_form.weights(),
+                self.transition_start_velocity,
+                self.transition_durations,
+            )
+            || AttentionTarget::new(self.attention_target.x, self.attention_target.y).is_err()
+            || !self.head_pose.yaw_radians.is_finite()
+            || self.head_pose.yaw_radians.abs() > self.config.max_yaw_radians
+            || !self.head_pose.pitch_radians.is_finite()
+            || self.head_pose.pitch_radians.abs() > self.config.max_pitch_radians
+        {
+            return Err(OuroborosCheckpointError::InvalidState);
+        }
+
+        match (
+            self.motion_mode,
+            self.frozen_weights,
+            self.frozen_progress,
+            self.frozen_velocity,
+        ) {
+            (
+                OuroborosMotionMode::Reduced,
+                Some(weights),
+                Some(progress),
+                Some(velocity),
+            ) if weights.is_finite_and_bounded()
+                && progress.is_finite()
+                && (0.0..=1.0).contains(&progress)
+                && velocity.is_finite_and_limited(MAX_FORM_VELOCITY) => {}
+            (OuroborosMotionMode::Reduced, _, _, _) => {
+                return Err(OuroborosCheckpointError::InvalidState);
+            }
+            (_, None, None, None) => {}
+            _ => return Err(OuroborosCheckpointError::InvalidState),
+        }
+
+        if !self.current_weights().is_finite_and_bounded()
+            || !self.current_velocity().is_finite_and_limited(MAX_FORM_VELOCITY)
+        {
+            return Err(OuroborosCheckpointError::InvalidState);
+        }
+
+        Ok(())
     }
 
     /// Canonical internal state bytes for replay evidence.
@@ -959,6 +1140,195 @@ fn cubic_channel_is_bounded(p0: f32, p1: f32, velocity: f32, duration: f32) -> b
         .into_iter()
         .filter(|root| (0.0..1.0).contains(root))
         .all(|root| in_bounds(evaluate(root)))
+}
+
+fn checkpoint_push_f32(bytes: &mut Vec<u8>, value: f32) {
+    bytes.extend_from_slice(&value.to_bits().to_le_bytes());
+}
+
+fn encode_checkpoint_config(config: OuroborosConfig, bytes: &mut Vec<u8>) {
+    for value in [
+        config.major_radius,
+        config.vertical_scale,
+        config.organic_deformation,
+        config.digital_deformation,
+        config.transition_seconds,
+        config.face_response,
+        config.max_yaw_radians,
+        config.max_pitch_radians,
+    ] {
+        checkpoint_push_f32(bytes, value);
+    }
+}
+
+fn decode_checkpoint_config(
+    cursor: &mut CheckpointCursor<'_>,
+) -> Result<OuroborosConfig, OuroborosCheckpointError> {
+    let config = OuroborosConfig {
+        major_radius: cursor.f32()?,
+        vertical_scale: cursor.f32()?,
+        organic_deformation: cursor.f32()?,
+        digital_deformation: cursor.f32()?,
+        transition_seconds: cursor.f32()?,
+        face_response: cursor.f32()?,
+        max_yaw_radians: cursor.f32()?,
+        max_pitch_radians: cursor.f32()?,
+    };
+    config
+        .validate()
+        .map_err(|_| OuroborosCheckpointError::InvalidConfiguration)?;
+    Ok(config)
+}
+
+fn encode_checkpoint_weights(weights: FormWeights, bytes: &mut Vec<u8>) {
+    for value in [
+        weights.nature,
+        weights.humanity,
+        weights.digital,
+        weights.enlightenment,
+    ] {
+        checkpoint_push_f32(bytes, value);
+    }
+}
+
+fn decode_checkpoint_weights(
+    cursor: &mut CheckpointCursor<'_>,
+) -> Result<FormWeights, OuroborosCheckpointError> {
+    Ok(FormWeights {
+        nature: cursor.f32()?,
+        humanity: cursor.f32()?,
+        digital: cursor.f32()?,
+        enlightenment: cursor.f32()?,
+    })
+}
+
+fn encode_checkpoint_optional_weights(value: Option<FormWeights>, bytes: &mut Vec<u8>) {
+    match value {
+        Some(weights) => {
+            bytes.push(1);
+            encode_checkpoint_weights(weights, bytes);
+        }
+        None => bytes.push(0),
+    }
+}
+
+fn decode_checkpoint_optional_weights(
+    cursor: &mut CheckpointCursor<'_>,
+) -> Result<Option<FormWeights>, OuroborosCheckpointError> {
+    match cursor.u8()? {
+        0 => Ok(None),
+        1 => Ok(Some(decode_checkpoint_weights(cursor)?)),
+        other => Err(OuroborosCheckpointError::InvalidOptionFlag(other)),
+    }
+}
+
+fn encode_checkpoint_optional_f32(value: Option<f32>, bytes: &mut Vec<u8>) {
+    match value {
+        Some(number) => {
+            bytes.push(1);
+            checkpoint_push_f32(bytes, number);
+        }
+        None => bytes.push(0),
+    }
+}
+
+fn decode_checkpoint_optional_f32(
+    cursor: &mut CheckpointCursor<'_>,
+) -> Result<Option<f32>, OuroborosCheckpointError> {
+    match cursor.u8()? {
+        0 => Ok(None),
+        1 => Ok(Some(cursor.f32()?)),
+        other => Err(OuroborosCheckpointError::InvalidOptionFlag(other)),
+    }
+}
+
+fn checkpoint_form_tag(form: OuroborosForm) -> u8 {
+    match form {
+        OuroborosForm::Nature => 0,
+        OuroborosForm::Humanity => 1,
+        OuroborosForm::Digital => 2,
+        OuroborosForm::Enlightenment => 3,
+    }
+}
+
+fn checkpoint_decode_form(value: u8) -> Result<OuroborosForm, OuroborosCheckpointError> {
+    match value {
+        0 => Ok(OuroborosForm::Nature),
+        1 => Ok(OuroborosForm::Humanity),
+        2 => Ok(OuroborosForm::Digital),
+        3 => Ok(OuroborosForm::Enlightenment),
+        other => Err(OuroborosCheckpointError::InvalidTag(other)),
+    }
+}
+
+fn checkpoint_motion_tag(mode: OuroborosMotionMode) -> u8 {
+    match mode {
+        OuroborosMotionMode::Reduced => 0,
+        OuroborosMotionMode::LowPower => 1,
+        OuroborosMotionMode::Balanced => 2,
+        OuroborosMotionMode::Cinematic => 3,
+    }
+}
+
+fn checkpoint_decode_motion(value: u8) -> Result<OuroborosMotionMode, OuroborosCheckpointError> {
+    match value {
+        0 => Ok(OuroborosMotionMode::Reduced),
+        1 => Ok(OuroborosMotionMode::LowPower),
+        2 => Ok(OuroborosMotionMode::Balanced),
+        3 => Ok(OuroborosMotionMode::Cinematic),
+        other => Err(OuroborosCheckpointError::InvalidTag(other)),
+    }
+}
+
+fn checkpoint_receipt(bytes: &[u8]) -> OuroborosCheckpointReceipt {
+    OuroborosCheckpointReceipt {
+        schema_version: CHECKPOINT_VERSION,
+        scene_contract_version: contract::SCENE_CONTRACT_VERSION,
+        byte_length: bytes.len() as u16,
+        digest: *blake3::hash(bytes).as_bytes(),
+    }
+}
+
+struct CheckpointCursor<'a> {
+    bytes: &'a [u8],
+    offset: usize,
+}
+
+impl<'a> CheckpointCursor<'a> {
+    fn new(bytes: &'a [u8]) -> Self {
+        Self { bytes, offset: 0 }
+    }
+
+    fn take<const N: usize>(&mut self) -> Result<[u8; N], OuroborosCheckpointError> {
+        let end = self
+            .offset
+            .checked_add(N)
+            .ok_or(OuroborosCheckpointError::Truncated)?;
+        let source = self
+            .bytes
+            .get(self.offset..end)
+            .ok_or(OuroborosCheckpointError::Truncated)?;
+        let mut output = [0_u8; N];
+        output.copy_from_slice(source);
+        self.offset = end;
+        Ok(output)
+    }
+
+    fn u8(&mut self) -> Result<u8, OuroborosCheckpointError> {
+        Ok(self.take::<1>()?[0])
+    }
+
+    fn u16(&mut self) -> Result<u16, OuroborosCheckpointError> {
+        Ok(u16::from_le_bytes(self.take::<2>()?))
+    }
+
+    fn f32(&mut self) -> Result<f32, OuroborosCheckpointError> {
+        Ok(f32::from_bits(u32::from_le_bytes(self.take::<4>()?)))
+    }
+
+    fn is_empty(&self) -> bool {
+        self.offset == self.bytes.len()
+    }
 }
 
 fn append_state_f32(bytes: &mut Vec<u8>, value: f32) {
