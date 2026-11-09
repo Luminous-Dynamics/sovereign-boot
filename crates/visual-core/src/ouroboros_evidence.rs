@@ -189,14 +189,16 @@ pub fn capture_ouroboros_evidence(
 
 fn validate_plan_shape(plan: OuroborosMeshPlan) -> Result<(), OuroborosEvidenceError> {
     let config = plan.config;
-    if !(32..=2048).contains(&config.ring_segments)
-        || !(6..=64).contains(&config.tube_segments)
+    let valid_ring = |segments| matches!(segments, 32 | 64 | 128 | 256 | 512 | 1024 | 2048);
+    let valid_tube = |segments| matches!(segments, 6 | 8 | 12 | 16 | 24 | 32 | 48 | 64);
+    if !valid_ring(config.ring_segments)
+        || !valid_tube(config.tube_segments)
+        || !valid_ring(plan.requested_ring_segments)
+        || !valid_tube(plan.requested_tube_segments)
         || !config.tube_radius.is_finite()
         || !(0.001..=0.08).contains(&config.tube_radius)
         || plan.requested_ring_segments < config.ring_segments
         || plan.requested_tube_segments < config.tube_segments
-        || plan.requested_ring_segments > 2048
-        || plan.requested_tube_segments > 64
     {
         return Err(OuroborosEvidenceError::InvalidPlan);
     }
