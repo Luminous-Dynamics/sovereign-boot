@@ -9,9 +9,7 @@
 use crate::{
     color::Rgba,
     contract::{self, DimensionsError},
-    ouroboros::{
-        OuroborosError, OuroborosForm, OuroborosMotionMode, OuroborosScene,
-    },
+    ouroboros::{OuroborosError, OuroborosScene},
 };
 
 const BODY_SAMPLES: u32 = 512;
@@ -474,6 +472,7 @@ fn draw_circle(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ouroboros::{OuroborosForm, OuroborosMotionMode};
 
     fn scene(form: OuroborosForm) -> OuroborosScene {
         OuroborosScene::new(
