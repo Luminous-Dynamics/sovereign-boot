@@ -389,7 +389,7 @@ impl OuroborosMesh {
             .try_reserve_exact(estimated)
             .map_err(|_| OuroborosMeshError::AllocationFailed)?;
 
-        bytes.extend_from_slice(b"OUROMSH1");
+        bytes.extend_from_slice(b"OUROMSH2");
         bytes.extend_from_slice(&self.scene_contract_version.to_le_bytes());
         bytes.extend_from_slice(&self.config.ring_segments.to_le_bytes());
         bytes.extend_from_slice(&self.config.tube_segments.to_le_bytes());
