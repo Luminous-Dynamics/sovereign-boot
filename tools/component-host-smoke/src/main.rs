@@ -389,9 +389,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         scene_api.call_height(&mut store, unchanged_scene)?,
     ) != (16, 16)
     {
-        return Err(
-            io::Error::other("failed configure partially mutated scene dimensions").into(),
-        );
+        return Err(io::Error::other("failed configure partially mutated scene dimensions").into());
     }
     if scene_api.call_branch_count(&mut store, unchanged_scene)? != unchanged_before_branches {
         return Err(io::Error::other("failed configure mutated the branch count").into());
