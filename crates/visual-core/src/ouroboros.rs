@@ -110,14 +110,9 @@ impl FormWeights {
     }
 
     fn is_finite_and_bounded(self) -> bool {
-        [
-            self.nature,
-            self.humanity,
-            self.digital,
-            self.enlightenment,
-        ]
-        .into_iter()
-        .all(|value| value.is_finite() && (0.0..=1.0).contains(&value))
+        [self.nature, self.humanity, self.digital, self.enlightenment]
+            .into_iter()
+            .all(|value| value.is_finite() && (0.0..=1.0).contains(&value))
     }
 }
 
@@ -287,7 +282,10 @@ impl fmt::Display for OuroborosError {
         match self {
             Self::InvalidConfiguration => write!(f, "invalid Ouroboros configuration"),
             Self::InvalidAttentionTarget => {
-                write!(f, "attention target must be finite and normalized to -1..=1")
+                write!(
+                    f,
+                    "attention target must be finite and normalized to -1..=1"
+                )
             }
             Self::InvalidSampleCount => {
                 write!(f, "body sample count must be in 8..=4096")
@@ -429,10 +427,7 @@ impl OuroborosScene {
         self.head_pose
     }
 
-    pub fn set_attention_target(
-        &mut self,
-        target: AttentionTarget,
-    ) -> Result<(), OuroborosError> {
+    pub fn set_attention_target(&mut self, target: AttentionTarget) -> Result<(), OuroborosError> {
         // Revalidate even though AttentionTarget has a checked constructor:
         // its fields are public for straightforward host-language bindings.
         self.attention_target = AttentionTarget::new(target.x, target.y)?;
@@ -497,8 +492,7 @@ impl OuroborosScene {
 
     /// Advance the scene by a bounded host-supplied time step.
     pub fn advance(&mut self, dt_seconds: f32) -> Result<(), OuroborosError> {
-        contract::validate_step(dt_seconds, 0.0)
-            .map_err(OuroborosError::InvalidStep)?;
+        contract::validate_step(dt_seconds, 0.0).map_err(OuroborosError::InvalidStep)?;
 
         let time_scale = self.motion_mode.time_scale();
         if time_scale == 0.0 || dt_seconds == 0.0 {
@@ -512,10 +506,8 @@ impl OuroborosScene {
         let target_pitch = -self.attention_target.y * self.config.max_pitch_radians;
         let response = (self.config.face_response * dt).clamp(0.0, 1.0);
 
-        self.head_pose.yaw_radians +=
-            (target_yaw - self.head_pose.yaw_radians) * response;
-        self.head_pose.pitch_radians +=
-            (target_pitch - self.head_pose.pitch_radians) * response;
+        self.head_pose.yaw_radians += (target_yaw - self.head_pose.yaw_radians) * response;
+        self.head_pose.pitch_radians += (target_pitch - self.head_pose.pitch_radians) * response;
 
         // Clamp after interpolation as a defense against accumulated numerical
         // drift and future changes to the host input contract.
@@ -523,10 +515,10 @@ impl OuroborosScene {
             .head_pose
             .yaw_radians
             .clamp(-self.config.max_yaw_radians, self.config.max_yaw_radians);
-        self.head_pose.pitch_radians = self
-            .head_pose
-            .pitch_radians
-            .clamp(-self.config.max_pitch_radians, self.config.max_pitch_radians);
+        self.head_pose.pitch_radians = self.head_pose.pitch_radians.clamp(
+            -self.config.max_pitch_radians,
+            self.config.max_pitch_radians,
+        );
 
         Ok(())
     }
@@ -561,12 +553,10 @@ impl OuroborosScene {
 
         let angle = TAU * sample_index as f32 / sample_count as f32;
         let weights = self.current_weights();
-        let organic = (weights.nature * 0.70
-            + weights.humanity * 0.20
-            + weights.enlightenment * 0.10)
-            .clamp(0.0, 1.0);
-        let digital =
-            (weights.digital * 0.80 + weights.enlightenment * 0.15).clamp(0.0, 1.0);
+        let organic =
+            (weights.nature * 0.70 + weights.humanity * 0.20 + weights.enlightenment * 0.10)
+                .clamp(0.0, 1.0);
+        let digital = (weights.digital * 0.80 + weights.enlightenment * 0.15).clamp(0.0, 1.0);
 
         // Harmonics are zero at angle 0, preserving the shared face anchor.
         let radial = 1.0
@@ -575,8 +565,7 @@ impl OuroborosScene {
         let radius = self.config.major_radius * radial;
         let y_radius = radius * self.config.vertical_scale;
         let z = self.config.major_radius
-            * (0.055 * organic * (5.0 * angle).sin()
-                + 0.025 * digital * (13.0 * angle).sin());
+            * (0.055 * organic * (5.0 * angle).sin() + 0.025 * digital * (13.0 * angle).sin());
 
         let sample = OuroborosBodySample {
             angle_radians: angle,
@@ -648,7 +637,10 @@ mod tests {
         for form in OuroborosForm::ALL {
             let scene = scene(form);
             assert_eq!(scene.frame().head_anchor, [0.38, 0.0, 0.0]);
-            assert_eq!(scene.body_sample(0, 128).unwrap().centerline, [0.38, 0.0, 0.0]);
+            assert_eq!(
+                scene.body_sample(0, 128).unwrap().centerline,
+                [0.38, 0.0, 0.0]
+            );
         }
     }
 
@@ -784,7 +776,10 @@ mod tests {
         assert_eq!(scene.frame().form_weights, frozen.form_weights);
         assert_eq!(scene.frame().transition_progress, 1.0);
         advance_for(&mut scene, 12.0);
-        assert_eq!(scene.frame().form_weights, OuroborosForm::Humanity.weights());
+        assert_eq!(
+            scene.frame().form_weights,
+            OuroborosForm::Humanity.weights()
+        );
         assert_eq!(scene.frame().transition_progress, 1.0);
     }
 
@@ -798,7 +793,10 @@ mod tests {
         scene.set_motion_mode(OuroborosMotionMode::Reduced);
         let frozen = scene.frame();
         assert_eq!(frozen.form_weights, before_reduce.form_weights);
-        assert_eq!(frozen.transition_progress, before_reduce.transition_progress);
+        assert_eq!(
+            frozen.transition_progress,
+            before_reduce.transition_progress
+        );
 
         scene.set_motion_mode(OuroborosMotionMode::Balanced);
         let resumed = scene.frame();
