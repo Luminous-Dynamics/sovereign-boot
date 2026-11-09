@@ -385,6 +385,78 @@ impl Default for HeadPose {
     }
 }
 
+/// Independent schema version for the semantic head/face attachment contract.
+pub const OUROBOROS_LANDMARK_SCHEMA_VERSION: u16 = 1;
+const OUROBOROS_LANDMARK_MAGIC: [u8; 8] = *b"OUROLND1";
+
+/// Renderer-neutral semantic attachment points for one persistent Ouroboros head.
+///
+/// Points are expressed in the same normalized scene space as the body mesh.
+/// The root anchor is invariant across the four semantic forms. The local
+/// face basis follows only the bounded head pose; no renderer owns landmark
+/// placement or may silently substitute a different rig.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct OuroborosLandmarks {
+    pub scene_contract_version: u16,
+    pub schema_version: u16,
+    pub head_anchor: [f32; 3],
+    pub forward: [f32; 3],
+    pub lateral: [f32; 3],
+    pub up: [f32; 3],
+    pub left_eye: [f32; 3],
+    pub right_eye: [f32; 3],
+    pub nose_tip: [f32; 3],
+    pub mouth_center: [f32; 3],
+    pub crown: [f32; 3],
+    pub chin: [f32; 3],
+}
+
+/// Content address for one canonical semantic landmark set.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OuroborosLandmarkReceipt {
+    pub schema_version: u16,
+    pub scene_contract_version: u16,
+    pub byte_length: u16,
+    pub digest: [u8; 32],
+}
+
+impl OuroborosLandmarks {
+    /// Canonical little-endian representation; point order is part of schema v1.
+    pub fn canonical_bytes(self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(136);
+        bytes.extend_from_slice(&OUROBOROS_LANDMARK_MAGIC);
+        bytes.extend_from_slice(&self.schema_version.to_le_bytes());
+        bytes.extend_from_slice(&self.scene_contract_version.to_le_bytes());
+        for point in [
+            self.head_anchor,
+            self.forward,
+            self.lateral,
+            self.up,
+            self.left_eye,
+            self.right_eye,
+            self.nose_tip,
+            self.mouth_center,
+            self.crown,
+            self.chin,
+        ] {
+            for value in point {
+                bytes.extend_from_slice(&value.to_bits().to_le_bytes());
+            }
+        }
+        bytes
+    }
+
+    pub fn receipt(self) -> OuroborosLandmarkReceipt {
+        let bytes = self.canonical_bytes();
+        OuroborosLandmarkReceipt {
+            schema_version: self.schema_version,
+            scene_contract_version: self.scene_contract_version,
+            byte_length: bytes.len() as u16,
+            digest: *blake3::hash(&bytes).as_bytes(),
+        }
+    }
+}
+
 /// Stable, renderer-facing snapshot of the current scene state.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct OuroborosFrame {
@@ -893,6 +965,53 @@ impl OuroborosScene {
         }
     }
 
+    /// Return the stable semantic head/face attachment contract.
+    ///
+    /// Form weights do not participate in landmark placement. The root is
+    /// exactly the historical head anchor; the orthonormal face basis follows
+    /// the bounded yaw/pitch state. All offsets scale with the scene major
+    /// radius so host-selected scene sizes preserve proportions.
+    pub fn landmarks(&self) -> OuroborosLandmarks {
+        let head_anchor = [self.config.major_radius, 0.0, 0.0];
+        let yaw = self.head_pose.yaw_radians;
+        let pitch = self.head_pose.pitch_radians;
+        let forward = normalize3([
+            yaw.cos() * pitch.cos(),
+            yaw.sin() * pitch.cos(),
+            pitch.sin(),
+        ]);
+        let lateral = normalize3(cross3([0.0, 0.0, 1.0], forward));
+        let up = normalize3(cross3(forward, lateral));
+        let radius = self.config.major_radius;
+        let point = |forward_offset: f32, lateral_offset: f32, up_offset: f32| {
+            add3(
+                add3(
+                    add3(
+                        head_anchor,
+                        scale3(forward, radius * forward_offset),
+                    ),
+                    scale3(lateral, radius * lateral_offset),
+                ),
+                scale3(up, radius * up_offset),
+            )
+        };
+
+        OuroborosLandmarks {
+            scene_contract_version: contract::SCENE_CONTRACT_VERSION,
+            schema_version: OUROBOROS_LANDMARK_SCHEMA_VERSION,
+            head_anchor,
+            forward,
+            lateral,
+            up,
+            left_eye: point(0.06, -0.05, 0.02),
+            right_eye: point(0.06, 0.05, 0.02),
+            nose_tip: point(0.18, 0.0, 0.005),
+            mouth_center: point(0.14, 0.0, -0.035),
+            crown: point(0.015, 0.0, 0.10),
+            chin: point(0.08, 0.0, -0.10),
+        }
+    }
+
     /// Deterministic point on the ring's shared body centerline.
     ///
     /// The first sample is the head anchor in every form. The renderer may
@@ -1330,6 +1449,35 @@ impl<'a> CheckpointCursor<'a> {
 
     fn is_empty(&self) -> bool {
         self.offset == self.bytes.len()
+    }
+}
+
+fn add3(left: [f32; 3], right: [f32; 3]) -> [f32; 3] {
+    [
+        left[0] + right[0],
+        left[1] + right[1],
+        left[2] + right[2],
+    ]
+}
+
+fn scale3(vector: [f32; 3], scale: f32) -> [f32; 3] {
+    [vector[0] * scale, vector[1] * scale, vector[2] * scale]
+}
+
+fn cross3(left: [f32; 3], right: [f32; 3]) -> [f32; 3] {
+    [
+        left[1] * right[2] - left[2] * right[1],
+        left[2] * right[0] - left[0] * right[2],
+        left[0] * right[1] - left[1] * right[0],
+    ]
+}
+
+fn normalize3(vector: [f32; 3]) -> [f32; 3] {
+    let length = (vector[0] * vector[0] + vector[1] * vector[1] + vector[2] * vector[2]).sqrt();
+    if !length.is_finite() || length <= f32::EPSILON {
+        [1.0, 0.0, 0.0]
+    } else {
+        [vector[0] / length, vector[1] / length, vector[2] / length]
     }
 }
 
@@ -1803,6 +1951,101 @@ mod tests {
                 assert!(scene.encode_checkpoint().is_ok());
             }
         }
+    }
+
+    #[test]
+    fn semantic_landmarks_preserve_root_and_proportions_across_all_forms() {
+        let expected = scene(OuroborosForm::Nature).landmarks();
+        for form in OuroborosForm::ALL {
+            let current = scene(form).landmarks();
+            assert_eq!(current.head_anchor, [0.38, 0.0, 0.0]);
+            assert_eq!(current.head_anchor, expected.head_anchor);
+            assert_eq!(current.left_eye, expected.left_eye);
+            assert_eq!(current.right_eye, expected.right_eye);
+            assert_eq!(current.nose_tip, expected.nose_tip);
+            assert_eq!(current.mouth_center, expected.mouth_center);
+            assert_eq!(current.crown, expected.crown);
+            assert_eq!(current.chin, expected.chin);
+            assert_eq!(current.receipt(), expected.receipt());
+        }
+    }
+
+    #[test]
+    fn semantic_landmark_basis_is_finite_orthonormal_and_bounded_at_pose_limits() {
+        for target in [
+            AttentionTarget::new(-1.0, -1.0).unwrap(),
+            AttentionTarget::new(1.0, 1.0).unwrap(),
+            AttentionTarget::new(-1.0, 1.0).unwrap(),
+            AttentionTarget::new(1.0, -1.0).unwrap(),
+        ] {
+            let mut scene = scene(OuroborosForm::Humanity);
+            scene.set_attention_target(target).unwrap();
+            advance_for(&mut scene, 8.0);
+            let landmarks = scene.landmarks();
+            let dot = |a: [f32; 3], b: [f32; 3]| {
+                a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+            };
+            let length = |v: [f32; 3]| dot(v, v).sqrt();
+
+            for axis in [landmarks.forward, landmarks.lateral, landmarks.up] {
+                assert!(axis.into_iter().all(f32::is_finite));
+                assert!((length(axis) - 1.0).abs() < 1.0e-5);
+            }
+            assert!(dot(landmarks.forward, landmarks.lateral).abs() < 1.0e-5);
+            assert!(dot(landmarks.forward, landmarks.up).abs() < 1.0e-5);
+            assert!(dot(landmarks.lateral, landmarks.up).abs() < 1.0e-5);
+            assert_eq!(landmarks.head_anchor, scene.frame().head_anchor);
+
+            let radius = scene.config().major_radius;
+            for point in [
+                landmarks.left_eye,
+                landmarks.right_eye,
+                landmarks.nose_tip,
+                landmarks.mouth_center,
+                landmarks.crown,
+                landmarks.chin,
+            ] {
+                assert!(point.into_iter().all(f32::is_finite));
+                let offset = [
+                    point[0] - landmarks.head_anchor[0],
+                    point[1] - landmarks.head_anchor[1],
+                    point[2] - landmarks.head_anchor[2],
+                ];
+                assert!(length(offset) <= radius * 0.20);
+            }
+
+            let eye_delta = [
+                landmarks.left_eye[0] - landmarks.right_eye[0],
+                landmarks.left_eye[1] - landmarks.right_eye[1],
+                landmarks.left_eye[2] - landmarks.right_eye[2],
+            ];
+            assert!((dot(eye_delta, landmarks.forward)).abs() < 1.0e-5);
+            assert!((dot(eye_delta, landmarks.up)).abs() < 1.0e-5);
+            assert!((dot(eye_delta, landmarks.lateral) + radius * 0.10).abs() < 1.0e-5);
+        }
+    }
+
+    #[test]
+    fn landmark_serialization_is_canonical_and_pose_sensitive() {
+        let mut scene = scene(OuroborosForm::Digital);
+        let first = scene.landmarks();
+        let second = scene.landmarks();
+        assert_eq!(first.canonical_bytes(), second.canonical_bytes());
+        assert_eq!(first.receipt(), second.receipt());
+        assert_eq!(first.canonical_bytes().len(), 132);
+        assert_eq!(first.receipt().byte_length, 132);
+        assert_eq!(
+            first.receipt().digest,
+            *blake3::hash(&first.canonical_bytes()).as_bytes()
+        );
+
+        scene
+            .set_attention_target(AttentionTarget::new(1.0, -1.0).unwrap())
+            .unwrap();
+        advance_for(&mut scene, 8.0);
+        let turned = scene.landmarks();
+        assert_eq!(turned.head_anchor, first.head_anchor);
+        assert_ne!(turned.receipt().digest, first.receipt().digest);
     }
 
     #[test]
