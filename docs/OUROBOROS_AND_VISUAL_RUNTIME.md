@@ -1,6 +1,6 @@
 # Ouroboros and the Luminous Visual Runtime
 
-**Status:** portable scene state, deterministic CPU rasterization, a bounded 3D tube mesh, canonical event traces and content-addressed replay/image/mesh receipts are implemented on `feat/ouroboros-identity-core-v1`. Tests are authored but have not yet been executed successfully on this exact branch head. No WGPU desktop renderer or Waywallen adapter is claimed by this document.
+**Status:** portable scene state, C1-continuous bounded Hermite morph retargeting, deterministic CPU rasterization, a bounded 3D tube mesh, canonical event traces and content-addressed replay/image/mesh receipts are implemented on `feat/ouroboros-identity-core-v1`. Tests are authored but have not yet been executed successfully on this exact branch head. No WGPU desktop renderer or Waywallen adapter is claimed by this document.
 
 ## 1. Product thesis
 
@@ -20,12 +20,12 @@ The entity must remain recognizably the same across every transition. The ring t
 The new `crates/visual-core/src/ouroboros.rs` module provides:
 
 - Four stable form IDs and independent material-expression weights.
-- Smoothstep form transitions.
-- Mid-transition retargeting from the currently evaluated weights, avoiding a snap to an earlier state.
+- Bounded cubic-Hermite form transitions with zero terminal velocity.
+- Mid-transition retargeting carries the instantaneous derivative into the new segment, preserving C1 continuity rather than merely preserving position.
 - One invariant head anchor shared by all four forms.
 - Bounded body-centerline sampling with an explicit maximum sample count.
 - Bounded yaw/pitch driven only by a normalized host-supplied attention target.
-- Four motion policies; Reduced freezes the visible composition and ignores further time advancement.
+- Four motion policies; Reduced freezes weights, transition progress and velocity, and ignores further time advancement.
 - Validation of configuration, attention targets, sample ranges and frame delta.
 - No OS, display, camera, filesystem or network authority.
 
@@ -44,12 +44,12 @@ The fourth core module, `crates/visual-core/src/ouroboros_mesh.rs`, converts the
 - Stable ring/tube tessellation with explicit resource ceilings (ring 32–2048, tube 6–64 segments).
 - A deterministic low-twist frame projected from the scene's bounded centerline tangent.
 - Unit normals, a closed periodic centerline, duplicated UV seam vertices with byte-identical positions/normals, and stable indices across every semantic form.
-- An explicit outward triangle winding contract.
+- An explicit outward triangle winding contract validated for every triangle, plus exact canonical index topology and hostile-public-data bounds checks.
 - Canonical little-endian mesh serialization and a BLAKE3 receipt binding the scene-contract version, tessellation, vertices, normals, UVs, form weights and indices.
 
 The mesh is a geometry artifact, not a final character model or shader. It has no face sculpt, material graph, animation rig, GPU upload path, shadowing or physically based lighting. Its test coverage is authored but not yet qualified on this exact PR head.
 
-**Motion-quality boundary:** interrupted morphs are currently C0 position-continuous (the four form weights do not jump). The segment uses smoothstep and can exhibit a velocity discontinuity when retargeted. C1 velocity-continuity work is explicitly tracked in [issue #18](https://github.com/Luminous-Dynamics/sovereign-boot/issues/18); it is not yet implemented or claimed.
+**Motion-quality boundary:** the source now uses bounded cubic-Hermite segments. A retarget carries the current form-weight derivative into the new segment and uses a zero-velocity terminal condition. Candidate segment duration is shortened until analytic cubic extrema remain inside the validated weight range; no per-frame allocation is introduced. Reduced mode freezes and restores the kinematic state. C1 tests cover all 64 initial/target/retarget triples, finite-difference derivative agreement, repeated retarget bounds, freeze/resume and zero terminal velocity. These tests are authored but not yet qualified on the exact PR head; C1 is an implementation claim awaiting exact-head test evidence and visual review. Acceleration continuity (C2) is not claimed.
 
 ## 3. Architecture
 
@@ -143,12 +143,14 @@ Targets below are proposed qualification targets, not results. Every measurement
 | Metric | Acceptance target |
 |---|---|
 | Head anchor | Exactly invariant in the scene contract across all four forms |
-| Retarget continuity | Zero instantaneous jump in form weights when a transition is interrupted and redirected |
+| Retarget continuity (C0) | Zero instantaneous jump in all four form weights |
+| Retarget velocity continuity (C1) | Analytic derivative jump <=1e-6 normalized weight units/s in exact-head tests; finite-difference target <=1e-4 on captured 30/60 Hz trajectories |
+| Retarget boundedness | Zero excursions outside [0, 1] over all channels and repeated retarget chains |
 | Body topology | Same ordered centerline parameterization and sample IDs across all forms |
 | Pose bounds | Yaw and pitch always remain inside validated configuration limits |
 | Reduced mode | No frame/state change from elapsed time or attention-target updates over a 60-second replay |
 | Deterministic replay | Same build, seed/configuration, ordered input events and fixed-step sequence produce the same scene-state and CPU reference output |
-| Transition quality | No geometry inversion, NaN, discontinuity or unintended topology change; human-reviewed motion at 30/60 Hz |
+| Transition quality | No geometry inversion, NaN, C0/C1 discontinuity or unintended topology change; C2/acceleration jumps reported separately; human-reviewed motion at 30/60 Hz |
 | Perceptual identity | Blinded reviewers correctly match the same Ouroboros across all four forms at a proposed >=90% rate; report sample size and confidence interval |
 
 The identity metric is intentionally not just a pixel similarity score: materials are supposed to change substantially. We should measure persistent landmarks, silhouette/topology continuity and human recognition separately.
@@ -199,7 +201,7 @@ Ouroboros is a first exemplar. Future scenes could embody civic commons, ecologi
 | Priority | Deliverable | Exit condition |
 |---|---|---|
 | P0 | Qualify this Ouroboros core slice | Exact-head formatting, compile, unit tests, frozen/resume/retarget tests and deterministic replay/capture receipts |
-| P0 | Establish C1 morph contract | Issue #18: bounded retarget algorithm, velocity continuity, zero overshoot and adversarial replay tests |
+| P0 | Qualify C1 morph retargeting | **Source implemented** with bounded cubic-Hermite segments and analytic extrema checks; exact-head tests, finite-difference captures and human motion review pending |
 | P0 | Resolve portable visual-core/Scene Pack integration | Versioned contract and positive/negative fixtures, no ambiguous settings authority |
 | P1 | CPU reference renderer for Ouroboros | **Source implemented** with pixel receipts; exact-head tests, saved golden artifacts and human visual review remain pending |
 | P1 | Deterministic Ouroboros tube mesh | **Source implemented** with topology/mesh receipts; exact-head geometry tests and visual review pending |
@@ -210,7 +212,7 @@ Ouroboros is a first exemplar. Future scenes could embody civic commons, ecologi
 | P3 | Lock-screen background adapter | Independent security review and lock/unlock transition capture |
 | P3 | Sovereign Boot visual handoff | VM handoff gates, then separate physical canary evidence |
 
-The new branch is stacked on the open standalone visual-core hardening PR. It is deliberately not based on the default branch because the portable core it extends is not yet merged. The new module's tests have not been run on this branch; no qualification claim is made until exact-head checks complete.
+The new branch is stacked on the open standalone visual-core hardening PR. It is deliberately not based on the default branch because the portable core it extends is not yet merged. The new module's tests have not yet been run successfully on this exact branch head; no qualification claim is made until exact-head checks complete.
 
 ## References
 
