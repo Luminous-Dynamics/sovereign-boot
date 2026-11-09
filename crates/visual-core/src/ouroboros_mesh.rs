@@ -180,8 +180,8 @@ fn desired_ring_segments(projected_radius_px: u32) -> u32 {
         .ceil()
         .clamp(32.0, 2048.0) as u32;
     let mut selected = 32_u32;
-    while selected.saturating_mul(2) <= desired {
-        selected *= 2;
+    while selected < desired {
+        selected = selected.saturating_mul(2).min(2048);
     }
     selected
 }
@@ -841,6 +841,17 @@ mod tests {
             mesh.validate(),
             Err(OuroborosMeshError::InvalidGeneratedGeometry)
         );
+    }
+
+    #[test]
+    fn requested_ring_lod_rounds_up_to_preserve_projected_spacing_target() {
+        let radius_px = 160_u32;
+        let requested = desired_ring_segments(radius_px);
+        let centerline_spacing =
+            std::f64::consts::TAU * f64::from(radius_px) / f64::from(requested);
+        assert!(requested.is_power_of_two());
+        assert!(centerline_spacing <= 0.75);
+        assert_eq!(requested, 2048);
     }
 
     #[test]
