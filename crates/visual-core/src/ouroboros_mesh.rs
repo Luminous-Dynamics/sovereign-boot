@@ -65,6 +65,10 @@ pub enum OuroborosQualityTier {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct OuroborosMeshPlan {
     pub tier: OuroborosQualityTier,
+    /// Tessellation requested by projected size before resource constraints.
+    pub requested_ring_segments: u32,
+    pub requested_tube_segments: u32,
+    /// Tessellation selected after applying all hard resource ceilings.
     pub config: OuroborosMeshConfig,
     pub vertex_count: u32,
     pub index_count: u32,
@@ -144,6 +148,8 @@ impl OuroborosMeshConfig {
                     };
                     return Ok(OuroborosMeshPlan {
                         tier,
+                        requested_ring_segments: desired_ring,
+                        requested_tube_segments: desired_tube,
                         config,
                         vertex_count: vertices,
                         index_count: indices,
