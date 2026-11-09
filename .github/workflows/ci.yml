@@ -38,9 +38,6 @@ jobs:
       - name: Format
         run: cargo +1.96.0 fmt --all -- --check
 
-      - name: Verify production workspace lockfile is pinned
-        run: cargo +1.96.0 metadata --format-version 1 --locked > "$RUNNER_TEMP/production-workspace-metadata.json"
-
       - name: Check
         run: cargo +1.96.0 check --workspace --locked
 
