@@ -12,8 +12,8 @@ use std::fmt;
 use crate::{
     contract::{self, SCENE_CONTRACT_VERSION},
     ouroboros::{
-        AttentionTarget, OuroborosConfig, OuroborosError, OuroborosForm,
-        OuroborosMotionMode, OuroborosScene,
+        AttentionTarget, OuroborosConfig, OuroborosError, OuroborosForm, OuroborosMotionMode,
+        OuroborosScene,
     },
 };
 
@@ -101,7 +101,10 @@ impl fmt::Display for TraceError {
                 write!(f, "invalid Ouroboros configuration: {error}")
             }
             Self::InvalidAttentionTarget => {
-                write!(f, "attention target must be finite and normalized to -1..=1")
+                write!(
+                    f,
+                    "attention target must be finite and normalized to -1..=1"
+                )
             }
             Self::InvalidStep(error) => write!(f, "invalid Ouroboros step: {error}"),
         }
@@ -249,9 +252,9 @@ impl OuroborosTrace {
 
         for event in &self.events {
             match *event {
-                OuroborosEvent::Advance { dt_seconds } => scene
-                    .advance(dt_seconds)
-                    .map_err(TraceError::InvalidStep)?,
+                OuroborosEvent::Advance { dt_seconds } => {
+                    scene.advance(dt_seconds).map_err(TraceError::InvalidStep)?
+                }
                 OuroborosEvent::TransitionTo { form } => scene.transition_to(form),
                 OuroborosEvent::SetAttentionTarget { target } => scene
                     .set_attention_target(target)
@@ -569,7 +572,8 @@ mod tests {
             ] {
                 let mut trace = OuroborosTrace::new(OuroborosConfig::default(), form);
                 trace.push(OuroborosEvent::SetMotionMode { mode }).unwrap();
-                trace.push(OuroborosEvent::TransitionTo {
+                trace
+                    .push(OuroborosEvent::TransitionTo {
                         form: OuroborosForm::ALL[(form_tag(form) as usize + 1) % 4],
                     })
                     .unwrap();
