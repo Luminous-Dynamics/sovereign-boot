@@ -65,6 +65,8 @@ pub enum OuroborosQualityTier {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct OuroborosMeshPlan {
     pub tier: OuroborosQualityTier,
+    /// Complete, host-provided input budget used to produce this plan.
+    pub budget: OuroborosMeshBudget,
     /// Tessellation requested by projected size before resource constraints.
     pub requested_ring_segments: u32,
     pub requested_tube_segments: u32,
@@ -148,6 +150,7 @@ impl OuroborosMeshConfig {
                     };
                     return Ok(OuroborosMeshPlan {
                         tier,
+                        budget,
                         requested_ring_segments: desired_ring,
                         requested_tube_segments: desired_tube,
                         config,
