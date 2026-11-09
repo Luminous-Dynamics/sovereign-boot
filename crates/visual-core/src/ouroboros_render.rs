@@ -42,6 +42,31 @@ impl std::fmt::Display for OuroborosRenderError {
 
 impl std::error::Error for OuroborosRenderError {}
 
+/// Content-addressed metadata for one CPU reference capture.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReferenceImageReceipt {
+    pub scene_contract_version: u16,
+    pub width: u32,
+    pub height: u32,
+    pub pixel_digest: [u8; 32],
+}
+
+/// Render a reference capture and bind its exact dimensions and bytes to a digest.
+pub fn render_reference_artifact(
+    scene: &OuroborosScene,
+    width: u32,
+    height: u32,
+) -> Result<(Vec<u8>, ReferenceImageReceipt), OuroborosRenderError> {
+    let pixels = render_reference_rgba(scene, width, height)?;
+    let receipt = ReferenceImageReceipt {
+        scene_contract_version: crate::contract::SCENE_CONTRACT_VERSION,
+        width,
+        height,
+        pixel_digest: *blake3::hash(&pixels).as_bytes(),
+    };
+    Ok((pixels, receipt))
+}
+
 /// Render a deterministic opaque RGBA8 reference image.
 ///
 /// The current profile draws one continuous ring, expression-specific body
@@ -515,6 +540,21 @@ mod tests {
             form,
         )
         .expect("default scene config is valid")
+    }
+
+    #[test]
+    fn reference_artifact_receipt_binds_dimensions_and_pixel_bytes() {
+        let scene = scene(OuroborosForm::Digital);
+        let (left_pixels, left) = render_reference_artifact(&scene, 128, 128).unwrap();
+        let (right_pixels, right) = render_reference_artifact(&scene, 128, 128).unwrap();
+        assert_eq!(left, right);
+        assert_eq!(left_pixels, right_pixels);
+        assert_eq!(left.pixel_digest, *blake3::hash(&left_pixels).as_bytes());
+        assert_eq!(left.scene_contract_version, crate::contract::SCENE_CONTRACT_VERSION);
+        assert_ne!(
+            left.pixel_digest,
+            render_reference_artifact(&scene, 160, 128).unwrap().1.pixel_digest
+        );
     }
 
     #[test]
