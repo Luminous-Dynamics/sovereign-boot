@@ -310,6 +310,7 @@ impl RenderTargetSession {
         config: RenderTargetConfig,
         producer: &ProducerCapabilities,
     ) -> Result<(), ContractError> {
+        producer.validate()?;
         if self.pending.is_some() {
             return Err(ContractError::RenderTargetRequestInFlight);
         }
@@ -469,10 +470,12 @@ mod tests {
             modifiers: vec![0],
             plane_counts: vec![1],
             max_extent: Extent { width: 3_840, height: 2_160 },
-            mem_hints: super::super::MEMORY_HINT_DEVICE_LOCAL
-                | super::super::MEMORY_HINT_HOST_VISIBLE,
-            sync_caps: super::super::KNOWN_SYNC_CAPS,
-            color_caps: super::super::KNOWN_COLOR_CAPS,
+            mem_hints: super::super::MEMORY_HINT_HOST_VISIBLE,
+            sync_caps: super::super::SYNC_SYNCOBJ_TIMELINE,
+            // Match the current waywallen-bridge Vulkan pool defaults.
+            color_caps: super::super::COLOR_ENCODING_SRGB
+                | super::super::COLOR_RANGE_LIMITED
+                | super::super::COLOR_ALPHA_PREMULTIPLIED,
         }
     }
 
@@ -596,6 +599,47 @@ mod tests {
             session.receive_config(config(2, 1, 1_280, 720), &producer),
             Err(ContractError::RenderTargetRequestInFlight)
         );
+    }
+
+    #[test]
+    fn config_sync_color_and_memory_hints_must_be_advertised() {
+        let mut session = RenderTargetSession::default();
+        session
+            .publish_capabilities(capabilities(RenderTargetMode::NativeExtent))
+            .unwrap();
+        let producer = producer_capabilities();
+
+        let mut unsupported_sync = config(1, 1, 960, 540);
+        unsupported_sync.sync_mode = super::super::SYNC_SYNCOBJ_BINARY;
+        assert_eq!(
+            session.receive_config(unsupported_sync, &producer),
+            Err(ContractError::InvalidRenderTargetConfig)
+        );
+
+        let mut unsupported_color = config(1, 1, 960, 540);
+        unsupported_color.color = super::super::COLOR_ENCODING_BT709
+            | super::super::COLOR_RANGE_LIMITED
+            | super::super::COLOR_ALPHA_PREMULTIPLIED;
+        assert_eq!(
+            session.receive_config(unsupported_color, &producer),
+            Err(ContractError::InvalidRenderTargetConfig)
+        );
+
+        let mut unsupported_memory = config(1, 1, 960, 540);
+        unsupported_memory.memory_hint = super::super::MEMORY_HINT_DEVICE_LOCAL;
+        assert_eq!(
+            session.receive_config(unsupported_memory, &producer),
+            Err(ContractError::InvalidRenderTargetConfig)
+        );
+
+        let mut multiple_sync_modes = config(1, 1, 960, 540);
+        multiple_sync_modes.sync_mode = super::super::KNOWN_SYNC_CAPS;
+        assert_eq!(
+            session.receive_config(multiple_sync_modes, &producer),
+            Err(ContractError::InvalidRenderTargetConfig)
+        );
+
+        session.receive_config(config(1, 1, 960, 540), &producer).unwrap();
     }
 
     #[test]
