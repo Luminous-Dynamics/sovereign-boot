@@ -804,7 +804,10 @@ mod tests {
         assert_eq!(resumed.transition_progress, frozen.transition_progress);
 
         advance_for(&mut scene, 12.0);
-        assert_eq!(scene.frame().form_weights, OuroborosForm::Humanity.weights());
+        assert_eq!(
+            scene.frame().form_weights,
+            OuroborosForm::Humanity.weights()
+        );
         assert_eq!(scene.frame().transition_progress, 1.0);
     }
 
