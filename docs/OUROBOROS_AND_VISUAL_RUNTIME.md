@@ -1,6 +1,6 @@
 # Ouroboros and the Luminous Visual Runtime
 
-**Status:** first portable scene-state slice implemented on `feat/ouroboros-identity-core-v1`; tests are authored but not yet executed on this branch. No desktop renderer or Plasma adapter is claimed by this document.
+**Status:** portable scene state and a deterministic CPU reference rasterizer are implemented on `feat/ouroboros-identity-core-v1`; tests are authored but not yet executed on this branch. No WGPU desktop renderer or Plasma adapter is claimed by this document.
 
 ## 1. Product thesis
 
@@ -29,7 +29,9 @@ The new `crates/visual-core/src/ouroboros.rs` module provides:
 - Validation of configuration, attention targets, sample ranges and frame delta.
 - No OS, display, camera, filesystem or network authority.
 
-This is a **parametric scene-state contract**, not finished art. It does not yet produce a volumetric mesh, facial geometry, materials, lighting, a WGPU renderer, a wallpaper surface, or a screensaver. Those must be implemented and measured separately.
+The additional `crates/visual-core/src/ouroboros_render.rs` module now produces deterministic opaque RGBA8 reference images: a continuous ring, expression-specific leaf/node/circuit/ray detail, and a persistent stylized face whose gaze changes from the bounded host pose. It includes fixtures for opaque output, four distinct form captures, identical-input replay, Reduced-mode invariance, dimension rejection, and gaze-driven pixel changes.
+
+This is still a **stylized 2D CPU reference**, not finished art. It does not yet produce a volumetric mesh, sculpted facial geometry, physically based materials, advanced lighting, a WGPU renderer, a wallpaper surface, or a screensaver. Its tests are authored, not yet executed on the exact PR head, and no screenshots have received human visual review.
 
 ## 3. Architecture
 
@@ -39,7 +41,7 @@ Keep scene semantics portable and host capabilities separate.
 |---|---|---|
 | Scene identity and state | Rust visual core | Ouroboros v0.1 state model now added |
 | Scene pack / visual contract | Versioned data + Rust validation | Existing Scene Pack work is a separate integration track |
-| Reference renderer | Rust CPU RGBA | Existing mycelial scene and static fallback |
+| Reference renderer | Rust CPU RGBA | Mycelial scene plus new stylized Ouroboros CPU reference rasterizer; golden capture qualification is pending |
 | Desktop renderer | Rust + wgpu | Headless reference path exists on the separate Visual Genome branch; not a desktop presentation adapter |
 | Boot adapter | Rust DRM/KMS + NixOS service | Existing renderer, VM/hardware qualification remains separate |
 | Desktop host adapter | Plasma 6 / Wayland | Not implemented |
@@ -164,8 +166,8 @@ Ouroboros is a first exemplar. Future scenes could embody civic commons, ecologi
 |---|---|---|
 | P0 | Qualify this Ouroboros core slice | Exact-head formatting, compile, unit tests and deterministic replay receipts |
 | P0 | Resolve portable visual-core/Scene Pack integration | Versioned contract and positive/negative fixtures, no ambiguous settings authority |
-| P1 | CPU reference renderer for Ouroboros | Deterministic RGBA output, all four forms, morph and pose captures |
-| P1 | WGPU Ouroboros renderer | Same semantic fixtures, GPU shader validation, reference comparisons |
+| P1 | CPU reference renderer for Ouroboros | **Source implemented**; exact-head tests, golden artifacts and human visual review remain pending |
+| P1 | WGPU Ouroboros renderer | Same semantic fixtures, GPU shader validation, reference comparisons and named-device performance evidence |
 | P1 | Rust Wayland presentation spike | Input-transparent background surface, visibility lifecycle, multi-monitor tests |
 | P2 | KDE Plasma 6 WallpaperItem adapter | Per-user install, configuration, daemon lifecycle, static fallback |
 | P2 | Screen-saver adapter | Session idle integration, reduced-motion and power policy |
