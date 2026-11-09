@@ -17,6 +17,34 @@ pub const MAX_PLANE_COUNT: u32 = 4;
 pub const MAX_SLOT_COUNT: u32 = 8;
 pub const MAX_EXTENT: u32 = 16_384;
 
+pub const MEMORY_HINT_DEVICE_LOCAL: u32 = 1 << 0;
+pub const MEMORY_HINT_HOST_VISIBLE: u32 = 1 << 1;
+pub const MEMORY_HINT_SCANOUT: u32 = 1 << 2;
+pub const MEMORY_HINT_PROTECTED: u32 = 1 << 3;
+pub const KNOWN_MEMORY_HINTS: u32 = MEMORY_HINT_DEVICE_LOCAL
+    | MEMORY_HINT_HOST_VISIBLE
+    | MEMORY_HINT_SCANOUT
+    | MEMORY_HINT_PROTECTED;
+
+pub const SYNC_DMABUF_IMPLICIT: u32 = 1 << 0;
+pub const SYNC_SYNCOBJ_BINARY: u32 = 1 << 1;
+pub const SYNC_SYNCOBJ_TIMELINE: u32 = 1 << 2;
+pub const KNOWN_SYNC_CAPS: u32 =
+    SYNC_DMABUF_IMPLICIT | SYNC_SYNCOBJ_BINARY | SYNC_SYNCOBJ_TIMELINE;
+
+pub const COLOR_ENCODING_SRGB: u32 = 1 << 0;
+pub const COLOR_ENCODING_BT709: u32 = 1 << 1;
+pub const COLOR_ENCODING_BT2020: u32 = 1 << 2;
+pub const COLOR_RANGE_FULL: u32 = 1 << 5;
+pub const COLOR_RANGE_LIMITED: u32 = 1 << 6;
+pub const COLOR_ALPHA_PREMULTIPLIED: u32 = 1 << 7;
+pub const COLOR_ALPHA_STRAIGHT: u32 = 1 << 8;
+pub const COLOR_ENCODING_MASK: u32 =
+    COLOR_ENCODING_SRGB | COLOR_ENCODING_BT709 | COLOR_ENCODING_BT2020;
+pub const COLOR_RANGE_MASK: u32 = COLOR_RANGE_FULL | COLOR_RANGE_LIMITED;
+pub const COLOR_ALPHA_MASK: u32 = COLOR_ALPHA_PREMULTIPLIED | COLOR_ALPHA_STRAIGHT;
+pub const KNOWN_COLOR_CAPS: u32 = COLOR_ENCODING_MASK | COLOR_RANGE_MASK | COLOR_ALPHA_MASK;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DrmNode {
     pub major: u32,
@@ -57,6 +85,9 @@ pub struct ProducerCapabilities {
     pub modifiers: Vec<u64>,
     pub plane_counts: Vec<u32>,
     pub max_extent: Extent,
+    pub mem_hints: u32,
+    pub sync_caps: u32,
+    pub color_caps: u32,
 }
 
 impl ProducerCapabilities {
@@ -68,6 +99,10 @@ impl ProducerCapabilities {
             || self.max_extent.height == 0
             || self.max_extent.width > MAX_EXTENT
             || self.max_extent.height > MAX_EXTENT
+            || self.sync_caps == 0
+            || self.sync_caps & !KNOWN_SYNC_CAPS != 0
+            || self.color_caps & !KNOWN_COLOR_CAPS != 0
+            || self.mem_hints & !KNOWN_MEMORY_HINTS != 0
         {
             return Err(ContractError::InvalidCapabilities);
         }
@@ -415,6 +450,9 @@ mod tests {
                 width: 3840,
                 height: 2160,
             },
+            mem_hints: MEMORY_HINT_DEVICE_LOCAL | MEMORY_HINT_HOST_VISIBLE,
+            sync_caps: KNOWN_SYNC_CAPS,
+            color_caps: KNOWN_COLOR_CAPS,
         }
     }
 
