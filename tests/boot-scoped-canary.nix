@@ -71,6 +71,9 @@ in
     systemd.services.sovereign-boot-animation.wantedBy = pkgs.lib.mkForce [ ];
 
     systemd.services.sovereign-boot-physical-canary.serviceConfig.TimeoutStartSec = pkgs.lib.mkForce "3s";
+    # Prove the service scripts do not rely on an interactive/system manager PATH.
+    systemd.services.sovereign-boot-physical-canary.serviceConfig.Environment =
+      pkgs.lib.mkForce [ "PATH=/nonexistent" ];
 
     systemd.services.seed-physical-canary-request = {
       description = "Seed a deterministic physical canary request";
