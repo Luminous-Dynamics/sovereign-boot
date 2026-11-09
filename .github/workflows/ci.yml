@@ -91,6 +91,11 @@ jobs:
       - name: Validate renderer-only Waywallen plugin contract
         run: python tests/waywallen-plugin-contract.py
 
+      - name: Test Waywallen renderer IPC v3 contract model
+        run: |
+          cargo +1.96.0 fmt --manifest-path tools/waywallen-protocol-contract/Cargo.toml -- --check
+          cargo +1.96.0 test --manifest-path tools/waywallen-protocol-contract/Cargo.toml --locked
+
       - name: Check browser host JavaScript syntax
         run: node --input-type=module --check < crates/visual-wasm/www/app.js
 
