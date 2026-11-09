@@ -52,18 +52,32 @@ The scene core never decides whether a display is visible, whether a lock is act
 
 ### Desktop integration decision
 
-KDE Plasma 6's documented wallpaper contract is a QML plugin whose root is a WallpaperItem. A per-user plugin belongs under `~/.local/share/plasma/wallpapers/`; this is the appropriate first target for the NixOS KDE machine.
+**First target: a Waywallen external renderer plugin, not a new Plasma wallpaper plugin.**
 
-Do not assume that a Plasma plugin automatically gives a Rust process a zero-copy GPU surface. The implementation spike must measure the integration boundary rather than silently introduce per-frame GPU readback or an unbounded IPC copy loop.
+The reviewed Waywallen source already has the presentation stack we would otherwise need to own:
+- Rust daemon with an external renderer subprocess registry.
+- Plugin manifests that declare renderer executable, wallpaper types and bounded typed settings.
+- A versioned renderer IPC contract (protocol v3 / spawn v10 at the reviewed upstream revision).
+- `waywallen-bridge`, a MIT-licensed C ABI which owns the DMA-BUF buffer pool, modifier negotiation and release-timeline bookkeeping while exposing a Vulkan `VkImage` to the renderer.
+- Per-frame acquire `SYNC_FD` transfer; buffer release is tracked with the daemon-consumer release timeline.
+- Separate display clients for Plasma 6 / GNOME and layer-shell environments.
 
-Recommended sequence:
+The `waywallen-display` library is a **consumer/presentation client**. The Luminous producer should implement Waywallen's renderer subprocess protocol and use `waywallen-bridge`; it should not pretend that the display library is a generic frame-producer API.
 
-1. Build a **Rust-native Wayland layer-shell presentation spike** for a disposable Plasma Wayland session. Prove background placement, input transparency, display hotplug, visibility pause/resume and clean process teardown.
-2. Build the Plasma WallpaperItem adapter as a thin configuration/lifecycle shell. It must not own scene logic or authoritative simulation state.
-3. Compare a native scene-graph/texture bridge against the layer-shell host on the same machine. Keep the Rust scene state and rendering policy authoritative; use only the minimum Qt/QML or C++/Rust bridge required by the host API.
-4. Choose one primary Plasma path after measured latency, CPU/GPU use, multi-monitor behavior and crash recovery. Retain a static wallpaper fallback.
+The first integration should be a separate Rust executable, `luminous-ouroboros-renderer`, plus a small Waywallen plugin manifest. Keep the semantic simulation, deterministic CPU reference, scene validation, and eventual Vulkan rendering in Luminous code. Use Waywallen for per-display surfaces, compositor lifecycle, buffer import and presentation.
 
-Do not put the desktop GPU process in initrd, do not make it a dependency of boot/recovery, and do not let a wallpaper process implement authentication or input capture.
+Important security boundary: Waywallen's README explicitly warns that plugin Lua entry points execute inside the daemon with the user's privileges. First test a renderer-only manifest with no Lua entry. If a catalogue/source script is unavoidable, keep it first-party, minimal, reviewed, offline and read-only; do not put scene logic or asset downloading in Lua. The renderer itself should be a separate process launched inside a systemd user scope with no IP network, no camera/input device permissions, read-only scene packs and only an allowlisted DRM render node plus the Waywallen Unix IPC socket.
+
+Implementation order:
+1. Pin an exact Waywallen source/bridge revision and confirm the renderer-only manifest path.
+2. Wrap the C bridge ABI in a small safe Rust module, preserving protocol/spawn-version checks and FD ownership.
+3. Make a smoke renderer negotiate buffers, publish a deterministic test frame, observe release points, and shut down cleanly.
+4. Render the CPU Ouroboros reference into an initial Vulkan transfer target to prove the complete DMA-BUF + `SYNC_FD` pipeline.
+5. Replace the staging upload with direct Ash/Vulkan rendering into the bridge-owned `VkImage`; keep the CPU renderer as a static fallback and test oracle.
+6. Test visibility/pause, display hotplug, resolution changes, process kill/restart, sleep/resume and multi-monitor behavior in the disposable KDE VM.
+7. Only consider a direct Plasma WallpaperItem plugin if the Waywallen protocol/packaging path proves inadequate. Keep lock-screen and early-boot adapters completely separate.
+
+The Waywallen renderer protocol is versioned and can change. Record the exact daemon revision, bridge ABI version and spawn version in every evidence bundle; do not treat the current v10 protocol as a timeless contract.
 
 ## 4. Industry comparison and differentiation
 
