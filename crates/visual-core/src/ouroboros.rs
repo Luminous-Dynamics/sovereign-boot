@@ -18,6 +18,10 @@ use crate::contract::{self, StepError};
 const TAU: f32 = std::f32::consts::TAU;
 const MIN_BODY_SAMPLES: u32 = 8;
 const MAX_BODY_SAMPLES: u32 = 4096;
+const CHECKPOINT_MAGIC: [u8; 8] = *b"OUROCKP1";
+const CHECKPOINT_VERSION: u16 = 1;
+const MAX_CHECKPOINT_BYTES: usize = 256;
+const MAX_FORM_VELOCITY: f32 = 1_000.0;
 
 /// Stable semantic expressions of the same Ouroboros identity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -197,6 +201,57 @@ impl FormWeights {
             .all(|value| value.is_finite() && (0.0..=1.0).contains(&value))
     }
 }
+
+/// Content address for one portable Ouroboros scene checkpoint.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OuroborosCheckpointReceipt {
+    pub schema_version: u16,
+    pub scene_contract_version: u16,
+    pub byte_length: u16,
+    pub digest: [u8; 32],
+}
+
+/// Errors from validating, encoding or restoring a portable scene checkpoint.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OuroborosCheckpointError {
+    TooLarge,
+    InvalidMagic,
+    UnsupportedVersion(u16),
+    UnsupportedSceneContract(u16),
+    Truncated,
+    TrailingBytes,
+    InvalidTag(u8),
+    InvalidOptionFlag(u8),
+    InvalidConfiguration,
+    InvalidState,
+}
+
+impl fmt::Display for OuroborosCheckpointError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::TooLarge => write!(f, "Ouroboros checkpoint exceeds the byte limit"),
+            Self::InvalidMagic => write!(f, "invalid Ouroboros checkpoint magic"),
+            Self::UnsupportedVersion(version) => {
+                write!(f, "unsupported Ouroboros checkpoint version {version}")
+            }
+            Self::UnsupportedSceneContract(version) => {
+                write!(f, "unsupported Ouroboros scene contract {version}")
+            }
+            Self::Truncated => write!(f, "Ouroboros checkpoint is truncated"),
+            Self::TrailingBytes => write!(f, "Ouroboros checkpoint contains trailing bytes"),
+            Self::InvalidTag(value) => write!(f, "invalid Ouroboros checkpoint tag {value}"),
+            Self::InvalidOptionFlag(value) => {
+                write!(f, "invalid Ouroboros checkpoint option flag {value}")
+            }
+            Self::InvalidConfiguration => {
+                write!(f, "Ouroboros checkpoint configuration is invalid")
+            }
+            Self::InvalidState => write!(f, "Ouroboros checkpoint state is invalid"),
+        }
+    }
+}
+
+impl Error for OuroborosCheckpointError {}
 
 /// Host-selected animation policy. Reduced mode is a true frozen scene state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
