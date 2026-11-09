@@ -986,10 +986,7 @@ impl OuroborosScene {
         let point = |forward_offset: f32, lateral_offset: f32, up_offset: f32| {
             add3(
                 add3(
-                    add3(
-                        head_anchor,
-                        scale3(forward, radius * forward_offset),
-                    ),
+                    add3(head_anchor, scale3(forward, radius * forward_offset)),
                     scale3(lateral, radius * lateral_offset),
                 ),
                 scale3(up, radius * up_offset),
@@ -1453,11 +1450,7 @@ impl<'a> CheckpointCursor<'a> {
 }
 
 fn add3(left: [f32; 3], right: [f32; 3]) -> [f32; 3] {
-    [
-        left[0] + right[0],
-        left[1] + right[1],
-        left[2] + right[2],
-    ]
+    [left[0] + right[0], left[1] + right[1], left[2] + right[2]]
 }
 
 fn scale3(vector: [f32; 3], scale: f32) -> [f32; 3] {
@@ -1982,9 +1975,7 @@ mod tests {
             scene.set_attention_target(target).unwrap();
             advance_for(&mut scene, 8.0);
             let landmarks = scene.landmarks();
-            let dot = |a: [f32; 3], b: [f32; 3]| {
-                a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-            };
+            let dot = |a: [f32; 3], b: [f32; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
             let length = |v: [f32; 3]| dot(v, v).sqrt();
 
             for axis in [landmarks.forward, landmarks.lateral, landmarks.up] {
