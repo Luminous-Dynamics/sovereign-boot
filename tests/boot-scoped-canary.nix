@@ -2,6 +2,12 @@
 let
   fakeRenderer = pkgs.writeShellScriptBin "quicken-fb" ''
     set -euo pipefail
+    for utility in readlink sleep; do
+      if ! command -v "$utility" >/dev/null 2>&1; then
+        echo "fake quicken-fb: missing runtime utility: $utility (PATH=$PATH)" >&2
+        exit 127
+      fi
+    done
     [[ "$(< /sys/class/tty/tty0/active)" == "tty1" ]]
     [[ "$(readlink /proc/self/fd/0)" == "/dev/tty1" ]]
     is_probe=0
