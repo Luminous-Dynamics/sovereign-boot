@@ -10,7 +10,10 @@ use std::{error::Error, fmt};
 
 use crate::{
     contract::SCENE_CONTRACT_VERSION,
-    ouroboros::{OuroborosCheckpointError, OuroborosCheckpointReceipt},
+    ouroboros::{
+        OuroborosCheckpointError, OuroborosCheckpointReceipt, OuroborosLandmarkReceipt,
+        OuroborosLandmarks,
+    },
     ouroboros_mesh::{
         OuroborosMesh, OuroborosMeshBudget, OuroborosMeshConfig, OuroborosMeshError,
         OuroborosMeshPlan, OuroborosMeshReceipt, OuroborosQualityTier,
@@ -19,8 +22,8 @@ use crate::{
     ouroboros_trace::{OuroborosTrace, ReplayReceipt, TraceError},
 };
 
-const EVIDENCE_MAGIC: [u8; 8] = *b"OUROEVB1";
-const EVIDENCE_VERSION: u16 = 1;
+const EVIDENCE_MAGIC: [u8; 8] = *b"OUROEVB2";
+const EVIDENCE_VERSION: u16 = 2;
 
 /// Failure while assembling a canonical visual-evidence bundle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -81,6 +84,7 @@ pub struct OuroborosEvidenceReceipt {
     pub scene_contract_version: u16,
     pub replay: ReplayReceipt,
     pub checkpoint: OuroborosCheckpointReceipt,
+    pub landmarks: OuroborosLandmarkReceipt,
     pub mesh: OuroborosMeshReceipt,
     pub image: ReferenceImageReceipt,
     pub host_budget: OuroborosMeshBudget,
@@ -103,6 +107,7 @@ pub struct OuroborosEvidenceReceipt {
 pub struct OuroborosEvidenceArtifact {
     pub trace_bytes: Vec<u8>,
     pub checkpoint_bytes: Vec<u8>,
+    pub landmarks: OuroborosLandmarks,
     pub mesh: OuroborosMesh,
     pub pixels: Vec<u8>,
     pub bundle_bytes: Vec<u8>,
@@ -126,6 +131,8 @@ pub fn capture_ouroboros_evidence(
     }
 
     let (checkpoint_bytes, checkpoint_receipt) = replay.scene.encode_checkpoint()?;
+    let landmarks = replay.scene.landmarks();
+    let landmark_receipt = landmarks.receipt();
     if checkpoint_bytes.len() > u16::MAX as usize {
         return Err(OuroborosEvidenceError::SizeOverflow);
     }
@@ -157,6 +164,7 @@ pub fn capture_ouroboros_evidence(
     let bundle_bytes = encode_bundle(
         replay.receipt,
         checkpoint_receipt,
+        landmark_receipt,
         mesh_receipt,
         image_receipt,
         plan,
@@ -166,6 +174,7 @@ pub fn capture_ouroboros_evidence(
         scene_contract_version: SCENE_CONTRACT_VERSION,
         replay: replay.receipt,
         checkpoint: checkpoint_receipt,
+        landmarks: landmark_receipt,
         mesh: mesh_receipt,
         image: image_receipt,
         host_budget: plan.budget,
@@ -181,6 +190,7 @@ pub fn capture_ouroboros_evidence(
     Ok(OuroborosEvidenceArtifact {
         trace_bytes,
         checkpoint_bytes,
+        landmarks,
         mesh,
         pixels,
         bundle_bytes,
@@ -216,6 +226,7 @@ fn mesh_buffer_bytes(vertices: u32, indices: u32) -> Result<u32, OuroborosEviden
 fn encode_bundle(
     replay: ReplayReceipt,
     checkpoint: OuroborosCheckpointReceipt,
+    landmarks: OuroborosLandmarkReceipt,
     mesh: OuroborosMeshReceipt,
     image: ReferenceImageReceipt,
     plan: OuroborosMeshPlan,
@@ -235,6 +246,11 @@ fn encode_bundle(
     bytes.extend_from_slice(&checkpoint.scene_contract_version.to_le_bytes());
     bytes.extend_from_slice(&checkpoint.byte_length.to_le_bytes());
     bytes.extend_from_slice(&checkpoint.digest);
+
+    bytes.extend_from_slice(&landmarks.schema_version.to_le_bytes());
+    bytes.extend_from_slice(&landmarks.scene_contract_version.to_le_bytes());
+    bytes.extend_from_slice(&landmarks.byte_length.to_le_bytes());
+    bytes.extend_from_slice(&landmarks.digest);
 
     bytes.extend_from_slice(&mesh.scene_contract_version.to_le_bytes());
     bytes.extend_from_slice(&mesh.vertex_count.to_le_bytes());
@@ -328,6 +344,14 @@ mod tests {
             let replay = trace.replay().unwrap();
             replay.scene.encode_checkpoint().unwrap().1.digest
         });
+        assert_eq!(
+            first.receipt.landmarks,
+            first.landmarks.receipt()
+        );
+        assert_eq!(
+            first.receipt.landmarks.digest,
+            *blake3::hash(&first.landmarks.canonical_bytes()).as_bytes()
+        );
         assert_eq!(first.receipt.mesh.vertex_count, plan.vertex_count);
         assert_eq!(first.receipt.mesh.index_count, plan.index_count);
         assert_eq!(first.receipt.host_budget, plan.budget);
@@ -337,7 +361,7 @@ mod tests {
             first.receipt.image.pixel_digest,
             *blake3::hash(&first.pixels).as_bytes()
         );
-        assert_eq!(first.bundle_bytes.len(), 251);
+        assert_eq!(first.bundle_bytes.len(), 289);
         assert_eq!(
             first.checkpoint_bytes.len(),
             first.receipt.checkpoint.byte_length as usize
