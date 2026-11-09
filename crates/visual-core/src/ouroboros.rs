@@ -401,7 +401,7 @@ impl OuroborosScene {
     /// checkpoint layout is versioned with the scene contract.
     pub(crate) fn canonical_state_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(160);
-        bytes.extend_from_slice(b"OUROSTA1");
+        bytes.extend_from_slice(b"OUROSTA2");
         bytes.extend_from_slice(&contract::SCENE_CONTRACT_VERSION.to_le_bytes());
 
         for value in [
