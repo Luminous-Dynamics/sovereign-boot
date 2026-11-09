@@ -704,14 +704,33 @@ mod tests {
         let mut scene = scene(OuroborosForm::Nature);
         scene.set_motion_mode(OuroborosMotionMode::Reduced);
         scene.transition_to(OuroborosForm::Humanity);
-        let frozen = scene.frame().form_weights;
+        let frozen = scene.frame();
 
         scene.set_motion_mode(OuroborosMotionMode::Balanced);
-        assert_eq!(scene.frame().form_weights, frozen);
-        assert_eq!(
-            scene.frame().transition_progress,
-            scene.frame().transition_progress
-        );
+        assert_eq!(scene.frame().form_weights, frozen.form_weights);
+        assert_eq!(scene.frame().transition_progress, 1.0);
+        advance_for(&mut scene, 12.0);
+        assert_eq!(scene.frame().form_weights, OuroborosForm::Humanity.weights());
+        assert_eq!(scene.frame().transition_progress, 1.0);
+    }
+
+    #[test]
+    fn resuming_a_frozen_mid_transition_preserves_global_progress() {
+        let mut scene = scene(OuroborosForm::Nature);
+        scene.transition_to(OuroborosForm::Humanity);
+        advance_for(&mut scene, 2.0);
+        let before_reduce = scene.frame();
+
+        scene.set_motion_mode(OuroborosMotionMode::Reduced);
+        let frozen = scene.frame();
+        assert_eq!(frozen.form_weights, before_reduce.form_weights);
+        assert_eq!(frozen.transition_progress, before_reduce.transition_progress);
+
+        scene.set_motion_mode(OuroborosMotionMode::Balanced);
+        let resumed = scene.frame();
+        assert_eq!(resumed.form_weights, frozen.form_weights);
+        assert_eq!(resumed.transition_progress, frozen.transition_progress);
+
         advance_for(&mut scene, 12.0);
         assert_eq!(scene.frame().form_weights, OuroborosForm::Humanity.weights());
         assert_eq!(scene.frame().transition_progress, 1.0);
