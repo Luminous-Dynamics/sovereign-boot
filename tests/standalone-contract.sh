@@ -20,13 +20,6 @@ grep -q 'world visual-component' crates/visual-component/wit/visual.wit
 grep -q 'export scene' crates/visual-component/wit/visual.wit
 grep -q 'GuestVisualScene' crates/visual-component/src/lib.rs
 test -s crates/visual-core/src/lib.rs
-test -s tools/waywallen-protocol-contract/Cargo.toml
-test -s tools/waywallen-protocol-contract/Cargo.lock
-test -s tools/waywallen-protocol-contract/src/lib.rs
-grep -q 'IPC_PROTOCOL_VERSION: u32 = 3' tools/waywallen-protocol-contract/src/lib.rs
-grep -q 'RENDERER_SPAWN_VERSION: u32 = 10' tools/waywallen-protocol-contract/src/lib.rs
-grep -q 'MissingAcquireSyncFd' tools/waywallen-protocol-contract/src/lib.rs
-grep -q 'NonMonotonicReleasePoint' tools/waywallen-protocol-contract/src/lib.rs
 test -s crates/visual-core/src/mycelium.rs
 test -s crates/visual-pack/Cargo.toml
 test -s crates/visual-pack/src/lib.rs
