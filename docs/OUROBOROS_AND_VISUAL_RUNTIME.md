@@ -44,7 +44,7 @@ Keep scene semantics portable and host capabilities separate.
 | Reference renderer | Rust CPU RGBA | Mycelial scene plus new stylized Ouroboros CPU reference rasterizer; golden capture qualification is pending |
 | Desktop renderer | Rust + wgpu | Headless reference path exists on the separate Visual Genome branch; not a desktop presentation adapter |
 | Boot adapter | Rust DRM/KMS + NixOS service | Existing renderer, VM/hardware qualification remains separate |
-| Desktop host adapter | Plasma 6 / Wayland | Not implemented |
+| Desktop host adapter | Waywallen renderer subprocess + pinned bridge; Waywallen Display owns Plasma/Wayland presentation | Not implemented |
 | Screen-saver adapter | User-session lifecycle | Not implemented |
 | Lock-screen background | Existing compositor/lock UI only | Not implemented; separate security qualification required |
 
@@ -182,9 +182,9 @@ Ouroboros is a first exemplar. Future scenes could embody civic commons, ecologi
 | P0 | Resolve portable visual-core/Scene Pack integration | Versioned contract and positive/negative fixtures, no ambiguous settings authority |
 | P1 | CPU reference renderer for Ouroboros | **Source implemented**; exact-head tests, golden artifacts and human visual review remain pending |
 | P1 | WGPU Ouroboros renderer | Same semantic fixtures, GPU shader validation, reference comparisons and named-device performance evidence |
-| P1 | Rust Wayland presentation spike | Input-transparent background surface, visibility lifecycle, multi-monitor tests |
-| P2 | KDE Plasma 6 WallpaperItem adapter | Per-user install, configuration, daemon lifecycle, static fallback |
-| P2 | Screen-saver adapter | Session idle integration, reduced-motion and power policy |
+| P1 | Waywallen bridge smoke renderer | Exact protocol handshake, buffer negotiation, DMA-BUF publication, SYNC_FD and release-point lifecycle |
+| P2 | Sandboxed Ouroboros Waywallen plugin | Per-user plugin install, typed scene settings, renderer process sandbox, static fallback and daemon lifecycle |
+| P2 | Waywallen idle/screen-saver integration | Session idle integration, hidden-state pause, reduced-motion and power policy |
 | P3 | Lock-screen background adapter | Independent security review and lock/unlock transition capture |
 | P3 | Sovereign Boot visual handoff | VM handoff gates, then separate physical canary evidence |
 
