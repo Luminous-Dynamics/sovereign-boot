@@ -138,9 +138,8 @@ impl FormWeights {
             let h00 = 2.0 * t3 - 3.0 * t2 + 1.0;
             let h10 = t3 - 2.0 * t2 + t;
             let h01 = -2.0 * t3 + 3.0 * t2;
-            output[index] = h00 * starts[index]
-                + h10 * duration * velocities[index]
-                + h01 * ends[index];
+            output[index] =
+                h00 * starts[index] + h10 * duration * velocities[index] + h01 * ends[index];
         }
         Self {
             nature: output[0],
@@ -182,10 +181,9 @@ impl FormWeights {
             let d00 = 6.0 * t2 - 6.0 * t;
             let d10 = 3.0 * t2 - 4.0 * t + 1.0;
             let d01 = -6.0 * t2 + 6.0 * t;
-            output[index] = (d00 * starts[index]
-                + d10 * duration * velocities[index]
-                + d01 * ends[index])
-                / duration;
+            output[index] =
+                (d00 * starts[index] + d10 * duration * velocities[index] + d01 * ends[index])
+                    / duration;
         }
         Self {
             nature: output[0],
@@ -202,14 +200,9 @@ impl FormWeights {
     }
 
     fn is_finite_and_limited(self, limit: f32) -> bool {
-        [
-            self.nature,
-            self.humanity,
-            self.digital,
-            self.enlightenment,
-        ]
-        .into_iter()
-        .all(|value| value.is_finite() && value.abs() <= limit)
+        [self.nature, self.humanity, self.digital, self.enlightenment]
+            .into_iter()
+            .all(|value| value.is_finite() && value.abs() <= limit)
     }
 }
 
@@ -608,19 +601,18 @@ impl OuroborosScene {
             return Err(OuroborosCheckpointError::InvalidConfiguration);
         }
         if !self.from_weights.is_finite_and_bounded()
-            || !self.transition_start_velocity.is_finite_and_limited(MAX_FORM_VELOCITY)
+            || !self
+                .transition_start_velocity
+                .is_finite_and_limited(MAX_FORM_VELOCITY)
             || !self.transition_start_progress.is_finite()
             || !(0.0..=1.0).contains(&self.transition_start_progress)
             || !self.transition_elapsed.is_finite()
             || self.transition_elapsed < 0.0
-            || !self
-                .transition_durations
-                .iter()
-                .all(|duration| {
-                    duration.is_finite()
-                        && *duration > 0.0
-                        && *duration <= self.config.transition_seconds
-                })
+            || !self.transition_durations.iter().all(|duration| {
+                duration.is_finite()
+                    && *duration > 0.0
+                    && *duration <= self.config.transition_seconds
+            })
             || self.transition_elapsed > max_transition_duration(self.transition_durations)
             || !hermite_segments_are_bounded(
                 self.from_weights,
@@ -643,15 +635,11 @@ impl OuroborosScene {
             self.frozen_progress,
             self.frozen_velocity,
         ) {
-            (
-                OuroborosMotionMode::Reduced,
-                Some(weights),
-                Some(progress),
-                Some(velocity),
-            ) if weights.is_finite_and_bounded()
-                && progress.is_finite()
-                && (0.0..=1.0).contains(&progress)
-                && velocity.is_finite_and_limited(MAX_FORM_VELOCITY) => {}
+            (OuroborosMotionMode::Reduced, Some(weights), Some(progress), Some(velocity))
+                if weights.is_finite_and_bounded()
+                    && progress.is_finite()
+                    && (0.0..=1.0).contains(&progress)
+                    && velocity.is_finite_and_limited(MAX_FORM_VELOCITY) => {}
             (OuroborosMotionMode::Reduced, _, _, _) => {
                 return Err(OuroborosCheckpointError::InvalidState);
             }
@@ -660,7 +648,9 @@ impl OuroborosScene {
         }
 
         if !self.current_weights().is_finite_and_bounded()
-            || !self.current_velocity().is_finite_and_limited(MAX_FORM_VELOCITY)
+            || !self
+                .current_velocity()
+                .is_finite_and_limited(MAX_FORM_VELOCITY)
         {
             return Err(OuroborosCheckpointError::InvalidState);
         }
@@ -801,7 +791,8 @@ impl OuroborosScene {
                         self.transition_start_velocity = FormWeights::ZERO;
                         self.transition_start_progress = 0.0;
                         self.transition_durations = [self.config.transition_seconds; 4];
-                        self.transition_elapsed = max_transition_duration(self.transition_durations);
+                        self.transition_elapsed =
+                            max_transition_duration(self.transition_durations);
                     } else {
                         self.transition_start_progress = progress;
                         let preferred = self.config.transition_seconds * (1.0 - progress);
@@ -1026,7 +1017,12 @@ fn bounded_transition_durations(
     start_velocity: FormWeights,
     preferred: f32,
 ) -> [f32; 4] {
-    let starts = [start.nature, start.humanity, start.digital, start.enlightenment];
+    let starts = [
+        start.nature,
+        start.humanity,
+        start.digital,
+        start.enlightenment,
+    ];
     let targets = [
         target.nature,
         target.humanity,
@@ -1073,7 +1069,12 @@ fn hermite_segments_are_bounded(
     durations: [f32; 4],
 ) -> bool {
     [
-        (start.nature, target.nature, start_velocity.nature, durations[0]),
+        (
+            start.nature,
+            target.nature,
+            start_velocity.nature,
+            durations[0],
+        ),
         (
             start.humanity,
             target.humanity,
@@ -1693,12 +1694,7 @@ mod tests {
                         before_weights.digital,
                         before_weights.enlightenment,
                     ];
-                    let following = [
-                        next.nature,
-                        next.humanity,
-                        next.digital,
-                        next.enlightenment,
-                    ];
+                    let following = [next.nature, next.humanity, next.digital, next.enlightenment];
                     for channel in 0..4 {
                         let observed = (following[channel] - current[channel]) / scene_time_delta;
                         assert!(
@@ -1749,10 +1745,12 @@ mod tests {
             random = random.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
             let target = OuroborosForm::ALL[(random as usize) % OuroborosForm::ALL.len()];
             scene.transition_to(target);
-            assert!(scene
-                .transition_durations
-                .iter()
-                .all(|duration| duration.is_finite() && *duration > 0.0));
+            assert!(
+                scene
+                    .transition_durations
+                    .iter()
+                    .all(|duration| duration.is_finite() && *duration > 0.0)
+            );
             assert!(hermite_segments_are_bounded(
                 scene.from_weights,
                 scene.target_form.weights(),
