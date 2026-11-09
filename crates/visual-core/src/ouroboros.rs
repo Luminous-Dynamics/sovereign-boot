@@ -105,17 +105,6 @@ impl FormWeights {
         enlightenment: 0.0,
     };
 
-    fn lerp(self, other: Self, t: f32) -> Self {
-        let t = t.clamp(0.0, 1.0);
-        let channel = |a: f32, b: f32| a + (b - a) * t;
-        Self {
-            nature: channel(self.nature, other.nature),
-            humanity: channel(self.humanity, other.humanity),
-            digital: channel(self.digital, other.digital),
-            enlightenment: channel(self.enlightenment, other.enlightenment),
-        }
-    }
-
     fn hermite(self, target: Self, start_velocity: Self, duration: f32, t: f32) -> Self {
         let t = t.clamp(0.0, 1.0);
         let t2 = t * t;
@@ -878,6 +867,7 @@ mod tests {
         let frame = scene.frame();
         assert_eq!(frame.form_weights, OuroborosForm::Enlightenment.weights());
         assert_eq!(frame.transition_progress, 1.0);
+        assert_eq!(scene.current_velocity(), FormWeights::ZERO);
         assert_eq!(frame.head_anchor, [0.38, 0.0, 0.0]);
     }
 
@@ -891,6 +881,93 @@ mod tests {
         scene.transition_to(OuroborosForm::Digital);
         let after = scene.frame().form_weights;
         assert_eq!(before, after);
+    }
+
+    #[test]
+    fn retargeting_preserves_each_form_channel_velocity() {
+        for initial in OuroborosForm::ALL {
+            for target in OuroborosForm::ALL {
+                for next_target in OuroborosForm::ALL {
+                    let mut scene = scene(initial);
+                    scene.transition_to(target);
+                    advance_for(&mut scene, 2.5);
+
+                    let before_weights = scene.current_weights();
+                    let before_velocity = scene.current_velocity();
+                    scene.transition_to(next_target);
+
+                    assert_eq!(scene.current_weights(), before_weights);
+                    let after_velocity = scene.current_velocity();
+                    let before = [
+                        before_velocity.nature,
+                        before_velocity.humanity,
+                        before_velocity.digital,
+                        before_velocity.enlightenment,
+                    ];
+                    let after = [
+                        after_velocity.nature,
+                        after_velocity.humanity,
+                        after_velocity.digital,
+                        after_velocity.enlightenment,
+                    ];
+                    for channel in 0..4 {
+                        assert!(
+                            (before[channel] - after[channel]).abs() <= 1.0e-6,
+                            "velocity discontinuity: {initial:?}->{target:?}->{next_target:?}, channel {channel}"
+                        );
+                    }
+
+                    // Confirm the analytic derivative also matches a short
+                    // finite-difference observation immediately after retarget.
+                    let dt = 0.001;
+                    let scene_time_delta = dt * scene.motion_mode.time_scale();
+                    scene.advance(dt).unwrap();
+                    let next = scene.current_weights();
+                    let current = [
+                        before_weights.nature,
+                        before_weights.humanity,
+                        before_weights.digital,
+                        before_weights.enlightenment,
+                    ];
+                    let following = [
+                        next.nature,
+                        next.humanity,
+                        next.digital,
+                        next.enlightenment,
+                    ];
+                    for channel in 0..4 {
+                        let observed = (following[channel] - current[channel]) / scene_time_delta;
+                        assert!(
+                            (observed - after[channel]).abs() <= 5.0e-3,
+                            "finite-difference velocity mismatch: {initial:?}->{target:?}->{next_target:?}, channel {channel}, observed={observed}, analytic={}",
+                            after[channel]
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn repeated_retargets_keep_all_form_weights_finite_and_bounded() {
+        for initial in OuroborosForm::ALL {
+            for first_target in OuroborosForm::ALL {
+                for second_target in OuroborosForm::ALL {
+                    let mut scene = scene(initial);
+                    scene.transition_to(first_target);
+                    advance_for(&mut scene, 2.0);
+                    scene.transition_to(second_target);
+
+                    for _ in 0..240 {
+                        scene.advance(0.025).unwrap();
+                        let weights = scene.frame().form_weights;
+                        assert!(weights.is_finite_and_bounded());
+                    }
+                    assert_eq!(scene.frame().form_weights, second_target.weights());
+                    assert_eq!(scene.current_velocity(), FormWeights::ZERO);
+                }
+            }
+        }
     }
 
     #[test]
@@ -1005,6 +1082,7 @@ mod tests {
         advance_for(&mut scene, 2.0);
         let before_reduce = scene.frame();
 
+        let velocity_before_reduce = scene.current_velocity();
         scene.set_motion_mode(OuroborosMotionMode::Reduced);
         let frozen = scene.frame();
         assert_eq!(frozen.form_weights, before_reduce.form_weights);
@@ -1012,11 +1090,13 @@ mod tests {
             frozen.transition_progress,
             before_reduce.transition_progress
         );
+        assert_eq!(scene.current_velocity(), velocity_before_reduce);
 
         scene.set_motion_mode(OuroborosMotionMode::Balanced);
         let resumed = scene.frame();
         assert_eq!(resumed.form_weights, frozen.form_weights);
         assert_eq!(resumed.transition_progress, frozen.transition_progress);
+        assert_eq!(scene.current_velocity(), velocity_before_reduce);
 
         advance_for(&mut scene, 12.0);
         assert_eq!(
