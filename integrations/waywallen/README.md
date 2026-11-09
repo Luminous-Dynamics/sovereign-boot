@@ -13,6 +13,17 @@ This directory contains a **renderer-only plugin manifest template**. It is not 
 
 The released v0.5.0 tag is a separate compatibility target. Do not assume the moving `main` branch and v0.5.0 have identical bridge APIs or lifecycle behaviour. Re-pin this document and run the adapter conformance suite when changing the upstream commit.
 
+
+### Current color-capability compatibility limit
+
+The reviewed source contains a color-bit mapping discrepancy that must be resolved before advertising non-sRGB formats:
+
+- The C bridge header `bridge/include/waywallen-bridge/protocol_bits.h` (blob `ed233605b52251d796c01ff26325fded298fab47`) assigns sRGB/BT.709/BT.2020 to bits 0/1/2.
+- The daemon's Rust negotiator `src/wallframe/dma/negotiate.rs` (blob `1e24d22e7377ef195705c11462ef653363aa1fbd`) assigns sRGB/linear/BT.601/BT.709/BT.2020 to bits 0/1/2/3/4.
+- The C bridge Vulkan pool currently advertises only sRGB + limited range + premultiplied alpha (blob `96bcf1726180be3312b9ef7fb1917ea27244ce0b`), so the initial default path is compatible.
+
+Ouroboros therefore keeps its initial producer color declaration sRGB-only. Do not advertise BT.709, BT.2020, linear or BT.601 until the C and Rust definitions are reconciled with a cross-language IPC conformance test. Tracking issue: [sovereign-boot #22](https://github.com/Luminous-Dynamics/sovereign-boot/issues/22).
+
 ## Security boundary
 
 The manifest intentionally omits `plugin.entry` and `plugin.entry_version`. Waywallen's Lua entry point executes inside the daemon with the user's privileges. Ouroboros scene logic belongs in the standalone renderer process, never in daemon-loaded Lua.
@@ -36,7 +47,7 @@ The process should not receive network, camera, input-device or general filesyst
    - Send the producer-owned release sync-object timeline and format capabilities.
    - Receive negotiated buffer directives, allocate/apply the pool and send `BindBuffers`.
    - Submit frames with monotonically increasing sequence numbers, a per-frame acquire `SYNC_FD`, and a valid release-point value.
-4. Implement render-target capability/result messages and validate revision ordering before supporting automatic display sizing.
+4. Implement render-target capability/result messages and validate revision ordering before supporting automatic display sizing. The pure protocol oracle now models this state machine, but the real adapter is not implemented.
 5. First prove process lifecycle and buffer/fence correctness using a minimal clear-color frame. Only then add direct Vulkan rendering of the Ouroboros mesh.
 6. Verify pause/covered behaviour, stop/restart, resize, hot-unplug and producer failure while preserving the CPU/static fallback.
 
@@ -48,4 +59,4 @@ Cross-GPU paths must be tested separately from same-device zero-copy paths. Unkn
 
 ## Packaging
 
-The plugin must ship a newline-separated `files.txt`. Its binary path is relative to the plugin directory and mirrors the upstream glTF plugin's packaging layout. The initial manifest deliberately omits the special `resolution = -2` setting, because it requests the daemon's Auto resolution policy. Add Auto sizing only after the renderer implements render-target capabilities, revision ordering and result messages and those paths have been qualified.
+The plugin must ship a newline-separated `files.txt`. Its binary path is relative to the plugin directory and mirrors the upstream glTF plugin's packaging layout. The initial manifest deliberately omits the special `resolution = -2` setting, because it requests the daemon's Auto resolution policy. Add Auto sizing only after the renderer implements render-target capabilities, revision ordering, exact pool-generation result checks and those paths have been qualified.
