@@ -54,6 +54,9 @@ The fourth core module, `crates/visual-core/src/ouroboros_mesh.rs`, converts the
 
 The mesh is a geometry artifact, not a final character model or shader. It has no face sculpt, material graph, animation rig, GPU upload path, shadowing or physically based lighting. Its test coverage is authored but not yet qualified on this exact PR head.
 
+
+The mesh API also exposes deterministic host-budget planning. The host supplies projected ring/tube pixel radii plus maximum vertex, index and byte budgets. The core selects the highest feasible tessellation tier (Economy, Balanced or Cinematic) using a quantized ring/tube ladder and exact resource estimates. If even the minimum mesh cannot fit, it returns `BudgetTooSmall`; the host must choose a CPU/static fallback. This keeps display/GPU discovery out of the scene core while allowing predictable resolution/power scaling. The same budget input produces the same plan, and the plan reports exact counts and estimated geometry bytes.
+
 **Motion-quality boundary:** the source now uses bounded cubic-Hermite segments. A retarget carries the current form-weight derivative into the new segment and uses a zero-velocity terminal condition. Candidate segment duration is shortened until analytic cubic extrema remain inside the validated weight range; no per-frame allocation is introduced. Reduced mode freezes and restores the kinematic state. C1 tests cover all 64 initial/target/retarget triples, finite-difference derivative agreement, repeated retarget bounds, freeze/resume and zero terminal velocity. These tests are authored but not yet qualified on the exact PR head; C1 is an implementation claim awaiting exact-head test evidence and visual review. Acceleration continuity (C2) is not claimed.
 
 ## 3. Architecture
@@ -65,7 +68,8 @@ Keep scene semantics portable and host capabilities separate.
 | Scene identity and state | Rust visual core | Ouroboros v0.1 state model now added |
 | Scene pack / visual contract | Versioned data + Rust validation | Existing Scene Pack work is a separate integration track |
 | Reference renderer | Rust CPU RGBA | Mycelial scene plus stylized Ouroboros CPU reference rasterizer; content-addressed capture receipts authored, golden artifact review pending |
-| Geometry | Rust CPU indexed mesh | Closed Ouroboros tube mesh, invariant topology, deterministic UV seams, normals and mesh receipt authored; exact-head geometry tests pending |
+| Geometry | Rust CPU indexed mesh | Closed Ouroboros tube mesh, invariant topology, deterministic UV seams, normals, hostile-input validation and mesh receipt authored; exact-head geometry tests pending |
+| Quality planning | Host-provided projected size and resource ceilings | Deterministic Economy/Balanced/Cinematic mesh planner with exact vertex/index/byte estimates; exact-head budget tests pending |
 | Replay/evidence | Canonical Rust event trace + BLAKE3 | Versioned input trace and full internal state digest authored; exact-head tests/replay receipts pending |
 | Persistence | Canonical Rust checkpoint + BLAKE3 | Bounded `OUROCKP1` checkpoint API and active/Reduced restore tests authored; exact-head qualification pending |
 | Desktop renderer | Rust + wgpu | Headless reference path exists on the separate Visual Genome branch; not a desktop presentation adapter |
@@ -220,6 +224,7 @@ Ouroboros is a first exemplar. Future scenes could embody civic commons, ecologi
 | P0 | Resolve portable visual-core/Scene Pack integration | Versioned contract and positive/negative fixtures, no ambiguous settings authority |
 | P1 | CPU reference renderer for Ouroboros | **Source implemented** with pixel receipts; exact-head tests, saved golden artifacts and human visual review remain pending |
 | P1 | Deterministic Ouroboros tube mesh | **Source implemented** with topology/mesh receipts; exact-head geometry tests and visual review pending |
+| P1 | Host-budgeted deterministic LOD | **Source implemented** with Economy/Balanced/Cinematic selection and hard budget checks; exact-head planning tests pending |
 | P1 | Portable Ouroboros checkpoint | **Source implemented** with `OUROCKP1` schema and active/Reduced restore tests; exact-head tests and p95 encode/decode measurements pending |
 | P1 | WGPU Ouroboros renderer | Same semantic fixtures, GPU shader validation, reference comparisons and named-device performance evidence |
 | P1 | Waywallen bridge smoke renderer | Exact protocol handshake, buffer negotiation, DMA-BUF publication, SYNC_FD and release-point lifecycle |
