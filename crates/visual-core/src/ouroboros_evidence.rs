@@ -344,10 +344,7 @@ mod tests {
             let replay = trace.replay().unwrap();
             replay.scene.encode_checkpoint().unwrap().1.digest
         });
-        assert_eq!(
-            first.receipt.landmarks,
-            first.landmarks.receipt()
-        );
+        assert_eq!(first.receipt.landmarks, first.landmarks.receipt());
         assert_eq!(
             first.receipt.landmarks.digest,
             *blake3::hash(&first.landmarks.canonical_bytes()).as_bytes()
