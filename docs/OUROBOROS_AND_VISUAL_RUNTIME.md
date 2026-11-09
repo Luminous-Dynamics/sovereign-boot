@@ -1,6 +1,6 @@
 # Ouroboros and the Luminous Visual Runtime
 
-**Status:** portable scene state and a deterministic CPU reference rasterizer are implemented on `feat/ouroboros-identity-core-v1`; tests are authored but not yet executed on this branch. No WGPU desktop renderer or Plasma adapter is claimed by this document.
+**Status:** portable scene state, a deterministic CPU reference rasterizer, canonical event traces and content-addressed replay/capture receipts are implemented on `feat/ouroboros-identity-core-v1`. Tests are authored but have not yet been executed successfully on this exact branch head. No WGPU desktop renderer or Waywallen adapter is claimed by this document.
 
 ## 1. Product thesis
 
@@ -33,6 +33,15 @@ The additional `crates/visual-core/src/ouroboros_render.rs` module now produces 
 
 This is still a **stylized 2D CPU reference**, not finished art. It does not yet produce a volumetric mesh, sculpted facial geometry, physically based materials, advanced lighting, a WGPU renderer, a wallpaper surface, or a screensaver. Its tests are authored, not yet executed on the exact PR head, and no screenshots have received human visual review.
 
+A third core module, `crates/visual-core/src/ouroboros_trace.rs`, defines a versioned, bounded, canonical little-endian event trace. It captures initial configuration/form, host time steps, target-form changes, normalized attention targets and motion-policy changes. Replaying the trace produces:
+- A BLAKE3 digest of the canonical trace bytes.
+- A BLAKE3 digest of the **complete internal scene state**, including pending attention and transition/frozen state—not merely the visible frame.
+- The final renderer-facing scene, usable by the CPU reference renderer.
+
+The CPU renderer also exposes `render_reference_artifact`, which binds RGBA bytes to width, height, scene-contract version and a BLAKE3 pixel digest. These receipts make a run inspectable and replayable; they do not establish cross-architecture floating-point parity, GPU parity, visual quality or authenticity without a separately verified source/build and capture process.
+
+**Motion-quality boundary:** interrupted morphs are currently C0 position-continuous (the four form weights do not jump). The segment uses smoothstep and can exhibit a velocity discontinuity when retargeted. C1 velocity-continuity work is explicitly tracked in [issue #18](https://github.com/Luminous-Dynamics/sovereign-boot/issues/18); it is not yet implemented or claimed.
+
 ## 3. Architecture
 
 Keep scene semantics portable and host capabilities separate.
@@ -41,7 +50,8 @@ Keep scene semantics portable and host capabilities separate.
 |---|---|---|
 | Scene identity and state | Rust visual core | Ouroboros v0.1 state model now added |
 | Scene pack / visual contract | Versioned data + Rust validation | Existing Scene Pack work is a separate integration track |
-| Reference renderer | Rust CPU RGBA | Mycelial scene plus new stylized Ouroboros CPU reference rasterizer; golden capture qualification is pending |
+| Reference renderer | Rust CPU RGBA | Mycelial scene plus new stylized Ouroboros CPU reference rasterizer; content-addressed capture receipts authored, golden artifact review pending |
+| Replay/evidence | Canonical Rust event trace + BLAKE3 | Versioned input trace and full internal state digest authored; exact-head tests/replay receipts pending |
 | Desktop renderer | Rust + wgpu | Headless reference path exists on the separate Visual Genome branch; not a desktop presentation adapter |
 | Boot adapter | Rust DRM/KMS + NixOS service | Existing renderer, VM/hardware qualification remains separate |
 | Desktop host adapter | Waywallen renderer subprocess + pinned bridge; Waywallen Display owns Plasma/Wayland presentation | Not implemented |
@@ -90,7 +100,7 @@ The competitive set has moved beyond simple video wallpaper players:
 | Waywallen | KDE/GNOME integration, layer-shell desktops, hardware video decoding, plugins and external Wallpaper Engine Scene/Web integration | Treat desktop-shell integration, input routing, auto-pause and renderer health as table stakes. Differentiate through shared Rust scene semantics and evidence-backed accessibility/resource behavior. |
 | Luminous Visual Runtime | Portable Rust state model, typed bounded settings, CPU reference, browser/WASI slices and separate boot renderer | Build a persistent semantic entity model, reproducible scene evidence and a strict separation between visual capability and host authority. |
 
-Wallpaper Engine's publisher lists Windows 10/11 and Android, and its support FAQ says Linux/macOS are not currently supported. OpenWallpaper and Waywallen are therefore the more relevant Linux desktop comparators, not proof that the Linux market is empty.
+Wallpaper Engine's publisher lists Windows 10/11 and Android, and its support FAQ says Linux/macOS are not currently supported; third-party KDE/Plasma Scene/Web/Video integrations nevertheless exist and must be treated as real Linux competitors. OpenWallpaper and Waywallen are therefore the more relevant native Linux runtime comparators, not proof that the Linux market is empty.
 
 ### What we should not claim
 
@@ -178,9 +188,10 @@ Ouroboros is a first exemplar. Future scenes could embody civic commons, ecologi
 
 | Priority | Deliverable | Exit condition |
 |---|---|---|
-| P0 | Qualify this Ouroboros core slice | Exact-head formatting, compile, unit tests and deterministic replay receipts |
+| P0 | Qualify this Ouroboros core slice | Exact-head formatting, compile, unit tests, frozen/resume/retarget tests and deterministic replay/capture receipts |
+| P0 | Establish C1 morph contract | Issue #18: bounded retarget algorithm, velocity continuity, zero overshoot and adversarial replay tests |
 | P0 | Resolve portable visual-core/Scene Pack integration | Versioned contract and positive/negative fixtures, no ambiguous settings authority |
-| P1 | CPU reference renderer for Ouroboros | **Source implemented**; exact-head tests, golden artifacts and human visual review remain pending |
+| P1 | CPU reference renderer for Ouroboros | **Source implemented** with pixel receipts; exact-head tests, saved golden artifacts and human visual review remain pending |
 | P1 | WGPU Ouroboros renderer | Same semantic fixtures, GPU shader validation, reference comparisons and named-device performance evidence |
 | P1 | Waywallen bridge smoke renderer | Exact protocol handshake, buffer negotiation, DMA-BUF publication, SYNC_FD and release-point lifecycle |
 | P2 | Sandboxed Ouroboros Waywallen plugin | Per-user plugin install, typed scene settings, renderer process sandbox, static fallback and daemon lifecycle |
@@ -196,6 +207,6 @@ The new branch is stacked on the open standalone visual-core hardening PR. It is
 - KDE Plasma WallpaperItem API: https://api.kde.org/qml-org-kde-plasma-plasmoid-wallpaperitem.html
 - wgpu cross-platform Rust graphics API: https://wgpu.rs/doc/wgpu/
 - OpenWallpaper: https://openwallpaper.org/
-- Waywallen: https://waywallen.github.io/
+- Waywallen: https://waywallen.github.io/ (v0.5.0, released 2026-10-20, reviewed for the renderer/desktop architecture)
 - Wallpaper Engine platform support FAQ: https://help.wallpaperengine.io/en/functionality/linuxmacos.html
 - Sovereign Boot visual benchmarks: https://github.com/Luminous-Dynamics/sovereign-boot/blob/research/visual-genome-v1/docs/VISUAL_BENCHMARKS.md
