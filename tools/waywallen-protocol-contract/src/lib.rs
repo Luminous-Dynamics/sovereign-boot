@@ -198,6 +198,7 @@ pub enum ContractError {
     RenderTargetRequestInFlight,
     RenderTargetAspectMismatch,
     InvalidRenderTargetOutcome,
+    InvalidRenderTargetConfig,
 }
 
 #[derive(Debug, Clone)]
