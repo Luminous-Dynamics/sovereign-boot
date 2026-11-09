@@ -12,7 +12,7 @@ use std::fmt;
 use crate::{
     contract::{self, SCENE_CONTRACT_VERSION},
     ouroboros::{
-        AttentionTarget, FormWeights, OuroborosConfig, OuroborosError, OuroborosForm,
+        AttentionTarget, OuroborosConfig, OuroborosError, OuroborosForm,
         OuroborosFrame, OuroborosMotionMode, OuroborosScene,
     },
 };
@@ -471,7 +471,7 @@ mod tests {
         let decoded = OuroborosTrace::decode(&encoded).unwrap();
         assert_eq!(decoded, trace);
         assert_eq!(decoded.encode().unwrap(), encoded);
-        assert_eq!(encoded.len(), HEADER_SIZE + 16 * 5 + 4 + 5 + 9 + 2);
+        assert_eq!(encoded.len(), HEADER_SIZE + 16 * 5 + 2 + 2 + 9 + 2);
     }
 
     #[test]
