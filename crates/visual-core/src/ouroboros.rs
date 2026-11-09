@@ -503,9 +503,10 @@ impl OuroborosScene {
     }
 
     fn transition_progress(&self) -> f32 {
-        if self.frozen_weights.is_some() {
-            return 1.0;
-        }
+        // Freezing a scene must preserve the actual transition position.
+        // A transition requested while already Reduced sets elapsed to its
+        // terminal value, while reducing mid-transition preserves partial
+        // progress without advancing it.
         (self.transition_elapsed / self.config.transition_seconds).clamp(0.0, 1.0)
     }
 
@@ -620,6 +621,37 @@ mod tests {
             scene.advance(0.26),
             Err(OuroborosError::InvalidStep(StepError::InvalidDelta))
         );
+    }
+
+    #[test]
+    fn invalid_configuration_is_rejected_before_scene_creation() {
+        let config = OuroborosConfig {
+            face_response: f32::NAN,
+            ..OuroborosConfig::default()
+        };
+        assert_eq!(
+            OuroborosScene::new(config, OuroborosForm::Nature).err(),
+            Some(OuroborosError::InvalidConfiguration)
+        );
+    }
+
+    #[test]
+    fn reduced_mode_freezes_a_mid_transition_at_its_actual_progress() {
+        let mut scene = scene(OuroborosForm::Nature);
+        scene.transition_to(OuroborosForm::Humanity);
+        advance_for(&mut scene, 2.0);
+        let visible = scene.frame();
+
+        scene.set_motion_mode(OuroborosMotionMode::Reduced);
+        let frozen = scene.frame();
+        assert_eq!(frozen.form_weights, visible.form_weights);
+        assert_eq!(frozen.transition_progress, visible.transition_progress);
+        assert!(frozen.transition_progress < 1.0);
+
+        for _ in 0..60 {
+            scene.advance(0.1).unwrap();
+        }
+        assert_eq!(scene.frame(), frozen);
     }
 
     #[test]
