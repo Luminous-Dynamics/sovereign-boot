@@ -1178,7 +1178,10 @@ mod tests {
             "1.2.3+build.7",
             "1.2.3-rc.1+build.42",
         ] {
-            assert!(validate_semver("sceneVersion", version).is_ok(), "{version}");
+            assert!(
+                validate_semver("sceneVersion", version).is_ok(),
+                "{version}"
+            );
         }
 
         for version in [
@@ -1197,7 +1200,10 @@ mod tests {
             "1.2.3-alpha+build+extra",
             "1.2.3-\u{00DF}",
         ] {
-            assert!(validate_semver("sceneVersion", version).is_err(), "{version}");
+            assert!(
+                validate_semver("sceneVersion", version).is_err(),
+                "{version}"
+            );
         }
     }
 
