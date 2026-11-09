@@ -43,6 +43,16 @@ A fifth core API adds a bounded portable scene checkpoint (`OUROCKP1`) independe
 
 Checkpoint source and tests are authored, not yet exact-head qualified. The current target is <=256 bytes, p95 encode/decode <=100 microseconds over 1,000 in-process round trips, and zero same-build state/frame divergence over 1,000 fixed steps after restore.
 
+
+A sixth core module, `crates/visual-core/src/ouroboros_evidence.rs`, seals a reproducible CPU evidence run. Given a validated event trace, a host-budgeted mesh plan and image dimensions, it:
+- Replays the canonical trace and retains the exact trace bytes and replay receipt.
+- Encodes the final semantic scene checkpoint, including C1 velocity and motion-policy state.
+- Generates and validates the planned mesh, binding its canonical geometry receipt.
+- Renders the deterministic CPU reference image and retains its RGBA8 bytes and pixel receipt.
+- Encodes the sub-receipts, scene-contract versions, requested/selected LOD and exact resource estimate into a canonical `OUROEVB1` metadata bundle; BLAKE3 over that bundle is the evidence root.
+
+The returned artifact includes trace bytes, checkpoint bytes, mesh geometry, pixels, bundle bytes and receipts. It is a content-addressed evidence root, **not a digital signature or authenticated provenance**. Build/commit identity, GPU driver, host measurements, compositor presentation and physical hardware evidence must be attached by a separately qualified host/attestation layer. Exact-head evidence-sealer tests are authored but not yet qualified.
+
 The CPU renderer also exposes `render_reference_artifact`, which binds RGBA bytes to width, height, scene-contract version and a BLAKE3 pixel digest. These receipts make a run inspectable and replayable; they do not establish cross-architecture floating-point parity, GPU parity, visual quality or authenticity without a separately verified source/build and capture process.
 
 The fourth core module, `crates/visual-core/src/ouroboros_mesh.rs`, converts the semantic centerline into a bounded closed tube mesh:
@@ -70,8 +80,8 @@ Keep scene semantics portable and host capabilities separate.
 | Reference renderer | Rust CPU RGBA | Mycelial scene plus stylized Ouroboros CPU reference rasterizer; content-addressed capture receipts authored, golden artifact review pending |
 | Geometry | Rust CPU indexed mesh | Closed Ouroboros tube mesh, invariant topology, deterministic UV seams, normals, hostile-input validation and mesh receipt authored; exact-head geometry tests pending |
 | Quality planning | Host-provided projected size and resource ceilings | Deterministic Economy/Balanced/Cinematic mesh planner with exact vertex/index/byte estimates; exact-head budget tests pending |
-| Replay/evidence | Canonical Rust event trace + BLAKE3 | Versioned input trace and full internal state digest authored; exact-head tests/replay receipts pending |
-| Persistence | Canonical Rust checkpoint + BLAKE3 | Bounded `OUROCKP1` checkpoint API and active/Reduced restore tests authored; exact-head qualification pending |
+| Replay/evidence | Canonical Rust event trace + BLAKE3 | Versioned input trace, full internal state digest and sealed replay/checkpoint/mesh/image evidence root authored; exact-head tests pending |
+| Persistence | Canonical Rust checkpoint + BLAKE3 | Bounded `OUROCKP1` checkpoint API, active/Reduced restore tests and evidence-bundle integration authored; exact-head qualification pending |
 | Desktop renderer | Rust + wgpu | Headless reference path exists on the separate Visual Genome branch; not a desktop presentation adapter |
 | Boot adapter | Rust DRM/KMS + NixOS service | Existing renderer, VM/hardware qualification remains separate |
 | Desktop host adapter | Waywallen renderer subprocess + pinned bridge; Waywallen Display owns Plasma/Wayland presentation | Not implemented |
@@ -216,6 +226,15 @@ Do not compare products from marketing claims or different machines. Freeze one 
 
 The identity metric is intentionally not just a pixel similarity score: materials are supposed to change substantially. We should measure persistent landmarks, silhouette/topology continuity and human recognition separately.
 
+### Reproducible visual evidence
+
+- One evidence bundle must bind the event trace, final internal-state digest, portable checkpoint, mesh receipt, pixel receipt and selected/requested LOD.
+- All embedded scene-contract and artifact schema versions must be explicit.
+- Re-sealing identical trace, plan, image dimensions and same-build inputs must produce identical sub-artifacts and bundle root.
+- A changed trace, pixel, mesh, checkpoint or plan must change the corresponding sub-receipt and evidence root.
+- The evidence bundle is content-addressed, not signed. Authenticity requires an independently verified build/source attestation and a trusted capture path.
+- CPU reference, GPU output and compositor-presented captures remain distinct backends; never treat equal dimensions or a shared scene contract as proof of pixel parity.
+
 ### Persistence and handoff
 
 - Active C1 trajectories must resume with identical per-channel values, velocities and subsequent state on the same build/target.
@@ -285,6 +304,7 @@ Ouroboros is a first exemplar. Future scenes could embody civic commons, ecologi
 | P1 | Deterministic Ouroboros tube mesh | **Source implemented** with topology/mesh receipts; exact-head geometry tests and visual review pending |
 | P1 | Host-budgeted deterministic LOD | **Source implemented** with Economy/Balanced/Cinematic selection and hard budget checks; exact-head planning tests pending |
 | P1 | Portable Ouroboros checkpoint | **Source implemented** with `OUROCKP1` schema and active/Reduced restore tests; exact-head tests and p95 encode/decode measurements pending |
+| P1 | Sealed visual-evidence bundle | **Source implemented** with `OUROEVB1` binding trace, checkpoint, mesh, CPU pixels and LOD plan; exact-head tests and cross-backend comparison pending |
 | P1 | WGPU Ouroboros renderer | Same semantic fixtures, GPU shader validation, reference comparisons and named-device performance evidence |
 | P1 | Waywallen bridge smoke renderer | Exact protocol handshake, buffer negotiation, DMA-BUF publication, SYNC_FD and release-point lifecycle |
 | P2 | Sandboxed Ouroboros Waywallen plugin | Per-user plugin install, typed scene settings, renderer process sandbox, static fallback and daemon lifecycle |
@@ -300,6 +320,6 @@ The new branch is stacked on the open standalone visual-core hardening PR. It is
 - KDE Plasma WallpaperItem API: https://api.kde.org/qml-org-kde-plasma-plasmoid-wallpaperitem.html
 - wgpu cross-platform Rust graphics API: https://wgpu.rs/doc/wgpu/
 - OpenWallpaper: https://openwallpaper.org/
-- Waywallen: https://waywallen.github.io/ (v0.5.0, released 2026-10-20, reviewed for the renderer/desktop architecture)
+- Waywallen source reviewed at commit `e2ed0b0adc6be6477c7bcc5015c76f4a1bb2b437` (package version 0.6.0, renderer IPC v3, spawn v10); the v0.5.0 release is a separate compatibility target
 - Wallpaper Engine platform support FAQ: https://help.wallpaperengine.io/en/functionality/linuxmacos.html
 - Sovereign Boot visual benchmarks: https://github.com/Luminous-Dynamics/sovereign-boot/blob/research/visual-genome-v1/docs/VISUAL_BENCHMARKS.md
