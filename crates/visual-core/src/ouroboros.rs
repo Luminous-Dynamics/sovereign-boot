@@ -105,25 +105,44 @@ impl FormWeights {
         enlightenment: 0.0,
     };
 
-    fn hermite(self, target: Self, start_velocity: Self, duration: f32, t: f32) -> Self {
-        let t = t.clamp(0.0, 1.0);
-        let t2 = t * t;
-        let t3 = t2 * t;
-        let h00 = 2.0 * t3 - 3.0 * t2 + 1.0;
-        let h10 = t3 - 2.0 * t2 + t;
-        let h01 = -2.0 * t3 + 3.0 * t2;
-        let channel = |start: f32, end: f32, velocity: f32| {
-            h00 * start + h10 * duration * velocity + h01 * end
-        };
+    fn hermite(
+        self,
+        target: Self,
+        start_velocity: Self,
+        durations: [f32; 4],
+        elapsed: f32,
+    ) -> Self {
+        let starts = [self.nature, self.humanity, self.digital, self.enlightenment];
+        let ends = [
+            target.nature,
+            target.humanity,
+            target.digital,
+            target.enlightenment,
+        ];
+        let velocities = [
+            start_velocity.nature,
+            start_velocity.humanity,
+            start_velocity.digital,
+            start_velocity.enlightenment,
+        ];
+        let mut output = [0.0; 4];
+        for index in 0..4 {
+            let duration = durations[index];
+            let t = (elapsed / duration).clamp(0.0, 1.0);
+            let t2 = t * t;
+            let t3 = t2 * t;
+            let h00 = 2.0 * t3 - 3.0 * t2 + 1.0;
+            let h10 = t3 - 2.0 * t2 + t;
+            let h01 = -2.0 * t3 + 3.0 * t2;
+            output[index] = h00 * starts[index]
+                + h10 * duration * velocities[index]
+                + h01 * ends[index];
+        }
         Self {
-            nature: channel(self.nature, target.nature, start_velocity.nature),
-            humanity: channel(self.humanity, target.humanity, start_velocity.humanity),
-            digital: channel(self.digital, target.digital, start_velocity.digital),
-            enlightenment: channel(
-                self.enlightenment,
-                target.enlightenment,
-                start_velocity.enlightenment,
-            ),
+            nature: output[0],
+            humanity: output[1],
+            digital: output[2],
+            enlightenment: output[3],
         }
     }
 
@@ -131,26 +150,44 @@ impl FormWeights {
         self,
         target: Self,
         start_velocity: Self,
-        duration: f32,
-        t: f32,
+        durations: [f32; 4],
+        elapsed: f32,
     ) -> Self {
-        let t = t.clamp(0.0, 1.0);
-        let t2 = t * t;
-        let d00 = 6.0 * t2 - 6.0 * t;
-        let d10 = 3.0 * t2 - 4.0 * t + 1.0;
-        let d01 = -6.0 * t2 + 6.0 * t;
-        let channel = |start: f32, end: f32, velocity: f32| {
-            (d00 * start + d10 * duration * velocity + d01 * end) / duration
-        };
+        let starts = [self.nature, self.humanity, self.digital, self.enlightenment];
+        let ends = [
+            target.nature,
+            target.humanity,
+            target.digital,
+            target.enlightenment,
+        ];
+        let velocities = [
+            start_velocity.nature,
+            start_velocity.humanity,
+            start_velocity.digital,
+            start_velocity.enlightenment,
+        ];
+        let mut output = [0.0; 4];
+        for index in 0..4 {
+            let duration = durations[index];
+            let t = (elapsed / duration).clamp(0.0, 1.0);
+            if t >= 1.0 {
+                output[index] = 0.0;
+                continue;
+            }
+            let t2 = t * t;
+            let d00 = 6.0 * t2 - 6.0 * t;
+            let d10 = 3.0 * t2 - 4.0 * t + 1.0;
+            let d01 = -6.0 * t2 + 6.0 * t;
+            output[index] = (d00 * starts[index]
+                + d10 * duration * velocities[index]
+                + d01 * ends[index])
+                / duration;
+        }
         Self {
-            nature: channel(self.nature, target.nature, start_velocity.nature),
-            humanity: channel(self.humanity, target.humanity, start_velocity.humanity),
-            digital: channel(self.digital, target.digital, start_velocity.digital),
-            enlightenment: channel(
-                self.enlightenment,
-                target.enlightenment,
-                start_velocity.enlightenment,
-            ),
+            nature: output[0],
+            humanity: output[1],
+            digital: output[2],
+            enlightenment: output[3],
         }
     }
 
@@ -355,7 +392,7 @@ pub struct OuroborosScene {
     from_weights: FormWeights,
     target_form: OuroborosForm,
     transition_elapsed: f32,
-    transition_duration: f32,
+    transition_durations: [f32; 4],
     transition_start_progress: f32,
     transition_start_velocity: FormWeights,
     attention_target: AttentionTarget,
@@ -378,7 +415,7 @@ impl OuroborosScene {
             from_weights: weights,
             target_form: initial_form,
             transition_elapsed: config.transition_seconds,
-            transition_duration: config.transition_seconds,
+            transition_durations: [config.transition_seconds; 4],
             transition_start_progress: 0.0,
             transition_start_velocity: FormWeights::ZERO,
             attention_target: AttentionTarget::CENTER,
@@ -418,7 +455,10 @@ impl OuroborosScene {
             self.from_weights.digital,
             self.from_weights.enlightenment,
             self.transition_elapsed,
-            self.transition_duration,
+            self.transition_durations[0],
+            self.transition_durations[1],
+            self.transition_durations[2],
+            self.transition_durations[3],
             self.transition_start_progress,
             self.transition_start_velocity.nature,
             self.transition_start_velocity.humanity,
@@ -523,12 +563,12 @@ impl OuroborosScene {
                     if progress >= 1.0 {
                         self.transition_start_velocity = FormWeights::ZERO;
                         self.transition_start_progress = 0.0;
-                        self.transition_duration = self.config.transition_seconds;
-                        self.transition_elapsed = self.transition_duration;
+                        self.transition_durations = [self.config.transition_seconds; 4];
+                        self.transition_elapsed = max_transition_duration(self.transition_durations);
                     } else {
                         self.transition_start_progress = progress;
                         let preferred = self.config.transition_seconds * (1.0 - progress);
-                        self.transition_duration = bounded_transition_duration(
+                        self.transition_durations = bounded_transition_durations(
                             self.from_weights,
                             self.target_form.weights(),
                             self.transition_start_velocity,
@@ -556,7 +596,7 @@ impl OuroborosScene {
         self.transition_start_velocity = velocity;
         self.transition_elapsed = 0.0;
         self.transition_start_progress = 0.0;
-        self.transition_duration = bounded_transition_duration(
+        self.transition_durations = bounded_transition_durations(
             self.from_weights,
             self.target_form.weights(),
             self.transition_start_velocity,
@@ -569,7 +609,7 @@ impl OuroborosScene {
             let target = form.weights();
             self.from_weights = target;
             self.transition_start_velocity = FormWeights::ZERO;
-            self.transition_elapsed = self.transition_duration;
+            self.transition_elapsed = max_transition_duration(self.transition_durations);
             self.frozen_weights = Some(target);
             self.frozen_progress = Some(1.0);
             self.frozen_velocity = Some(FormWeights::ZERO);
@@ -590,7 +630,8 @@ impl OuroborosScene {
         }
 
         let dt = dt_seconds * time_scale;
-        self.transition_elapsed = (self.transition_elapsed + dt).min(self.transition_duration);
+        self.transition_elapsed =
+            (self.transition_elapsed + dt).min(max_transition_duration(self.transition_durations));
 
         let target_yaw = self.attention_target.x * self.config.max_yaw_radians;
         let target_pitch = -self.attention_target.y * self.config.max_pitch_radians;
@@ -675,7 +716,40 @@ impl OuroborosScene {
         if let Some(progress) = self.frozen_progress {
             return progress;
         }
-        let local = (self.transition_elapsed / self.transition_duration).clamp(0.0, 1.0);
+        let starts = [
+            self.from_weights.nature,
+            self.from_weights.humanity,
+            self.from_weights.digital,
+            self.from_weights.enlightenment,
+        ];
+        let targets = [
+            self.target_form.weights().nature,
+            self.target_form.weights().humanity,
+            self.target_form.weights().digital,
+            self.target_form.weights().enlightenment,
+        ];
+        let velocities = [
+            self.transition_start_velocity.nature,
+            self.transition_start_velocity.humanity,
+            self.transition_start_velocity.digital,
+            self.transition_start_velocity.enlightenment,
+        ];
+        let mut slowest_active_progress = 1.0_f32;
+        let mut has_active_channel = false;
+        for index in 0..4 {
+            if starts[index] == targets[index] && velocities[index] == 0.0 {
+                continue;
+            }
+            has_active_channel = true;
+            let channel_progress =
+                (self.transition_elapsed / self.transition_durations[index]).clamp(0.0, 1.0);
+            slowest_active_progress = slowest_active_progress.min(channel_progress);
+        }
+        let local = if has_active_channel {
+            slowest_active_progress
+        } else {
+            1.0
+        };
         self.transition_start_progress + (1.0 - self.transition_start_progress) * local
     }
 
@@ -683,12 +757,11 @@ impl OuroborosScene {
         if let Some(weights) = self.frozen_weights {
             return weights;
         }
-        let local = (self.transition_elapsed / self.transition_duration).clamp(0.0, 1.0);
         self.from_weights.hermite(
             self.target_form.weights(),
             self.transition_start_velocity,
-            self.transition_duration,
-            local,
+            self.transition_durations,
+            self.transition_elapsed,
         )
     }
 
@@ -696,71 +769,98 @@ impl OuroborosScene {
         if let Some(velocity) = self.frozen_velocity {
             return velocity;
         }
-        let local = (self.transition_elapsed / self.transition_duration).clamp(0.0, 1.0);
-        if local >= 1.0 {
-            return FormWeights::ZERO;
-        }
         self.from_weights.hermite_velocity(
             self.target_form.weights(),
             self.transition_start_velocity,
-            self.transition_duration,
-            local,
+            self.transition_durations,
+            self.transition_elapsed,
         )
     }
 }
 
-/// Find a finite Hermite duration whose exact cubic extrema stay in [0, 1].
+/// Find a safe duration independently for each semantic weight channel.
 ///
-/// Shrinking the segment duration reduces the positional contribution of an
-/// inherited velocity while preserving its exact initial derivative. Existing
-/// scene transitions maintain the boundary tangent-cone invariant: a channel
-/// at zero never carries negative velocity, and a channel at one never carries
-/// positive velocity.
-fn bounded_transition_duration(
+/// A nearly-zero residual channel must not force the entire entity to snap.
+/// Each channel preserves its exact initial derivative, uses a zero terminal
+/// derivative, and gets its own analytically bounded cubic segment.
+fn bounded_transition_durations(
     start: FormWeights,
     target: FormWeights,
     start_velocity: FormWeights,
     preferred: f32,
-) -> f32 {
-    let mut duration = preferred.max(1.0e-6);
-    for _ in 0..32 {
-        if hermite_segment_is_bounded(start, target, start_velocity, duration) {
-            return duration;
+) -> [f32; 4] {
+    let starts = [start.nature, start.humanity, start.digital, start.enlightenment];
+    let targets = [
+        target.nature,
+        target.humanity,
+        target.digital,
+        target.enlightenment,
+    ];
+    let velocities = [
+        start_velocity.nature,
+        start_velocity.humanity,
+        start_velocity.digital,
+        start_velocity.enlightenment,
+    ];
+    let mut durations = [preferred.max(1.0e-6); 4];
+    for index in 0..4 {
+        for _ in 0..32 {
+            if cubic_channel_is_bounded(
+                starts[index],
+                targets[index],
+                velocities[index],
+                durations[index],
+            ) {
+                break;
+            }
+            durations[index] *= 0.5;
         }
-        duration *= 0.5;
+        debug_assert!(cubic_channel_is_bounded(
+            starts[index],
+            targets[index],
+            velocities[index],
+            durations[index]
+        ));
     }
-
-    // This is unreachable for scenes produced through the public transition
-    // API. Keep an explicit assertion in debug/test builds instead of silently
-    // clamping a weight and destroying C1 continuity.
-    debug_assert!(hermite_segment_is_bounded(
-        start,
-        target,
-        start_velocity,
-        duration
-    ));
-    duration
+    durations
 }
 
-fn hermite_segment_is_bounded(
+fn max_transition_duration(durations: [f32; 4]) -> f32 {
+    durations.into_iter().fold(0.0_f32, f32::max)
+}
+
+fn hermite_segments_are_bounded(
     start: FormWeights,
     target: FormWeights,
     start_velocity: FormWeights,
-    duration: f32,
+    durations: [f32; 4],
 ) -> bool {
     [
-        (start.nature, target.nature, start_velocity.nature),
-        (start.humanity, target.humanity, start_velocity.humanity),
-        (start.digital, target.digital, start_velocity.digital),
+        (start.nature, target.nature, start_velocity.nature, durations[0]),
+        (
+            start.humanity,
+            target.humanity,
+            start_velocity.humanity,
+            durations[1],
+        ),
+        (
+            start.digital,
+            target.digital,
+            start_velocity.digital,
+            durations[2],
+        ),
         (
             start.enlightenment,
             target.enlightenment,
             start_velocity.enlightenment,
+            durations[3],
         ),
     ]
     .into_iter()
-    .all(|(p0, p1, velocity)| {
-        cubic_channel_is_bounded(p0, p1, velocity, duration)
+    .all(|(p0, p1, velocity, duration)| {
+        duration.is_finite()
+            && duration > 0.0
+            && cubic_channel_is_bounded(p0, p1, velocity, duration)
     })
 }
 
@@ -779,7 +879,7 @@ fn cubic_channel_is_bounded(p0: f32, p1: f32, velocity: f32, duration: f32) -> b
     }
 
     // A cubic can only leave its endpoint range at an interior derivative
-    // root. Solve that quadratic in f64 to avoid a sampled/aliasing guard.
+    // root. Solve that quadratic in f64 rather than sampling and aliasing it.
     let qa = 3.0 * a;
     let qb = 2.0 * b;
     let qc = c;
@@ -985,13 +1085,15 @@ mod tests {
             random = random.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
             let target = OuroborosForm::ALL[(random as usize) % OuroborosForm::ALL.len()];
             scene.transition_to(target);
-            assert!(scene.transition_duration.is_finite());
-            assert!(scene.transition_duration > 0.0);
-            assert!(hermite_segment_is_bounded(
+            assert!(scene
+                .transition_durations
+                .iter()
+                .all(|duration| duration.is_finite() && *duration > 0.0));
+            assert!(hermite_segments_are_bounded(
                 scene.from_weights,
                 scene.target_form.weights(),
                 scene.transition_start_velocity,
-                scene.transition_duration
+                scene.transition_durations
             ));
 
             random = random.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
