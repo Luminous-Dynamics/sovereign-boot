@@ -1439,72 +1439,72 @@ mod tests {
 
         let mut bad_magic = encoded.clone();
         bad_magic[0] ^= 0xff;
-        assert_eq!(
+        assert!(matches!(
             OuroborosScene::restore_checkpoint(&bad_magic),
             Err(OuroborosCheckpointError::InvalidMagic)
-        );
+        ));
 
         let mut bad_version = encoded.clone();
         bad_version[8..10].copy_from_slice(&99_u16.to_le_bytes());
-        assert_eq!(
+        assert!(matches!(
             OuroborosScene::restore_checkpoint(&bad_version),
             Err(OuroborosCheckpointError::UnsupportedVersion(99))
-        );
+        ));
 
         let mut bad_contract = encoded.clone();
         bad_contract[10..12].copy_from_slice(&99_u16.to_le_bytes());
-        assert_eq!(
+        assert!(matches!(
             OuroborosScene::restore_checkpoint(&bad_contract),
             Err(OuroborosCheckpointError::UnsupportedSceneContract(99))
-        );
+        ));
 
         let mut bad_form = encoded.clone();
         bad_form[60] = 0xff;
-        assert_eq!(
+        assert!(matches!(
             OuroborosScene::restore_checkpoint(&bad_form),
             Err(OuroborosCheckpointError::InvalidTag(0xff))
-        );
+        ));
 
         let mut bad_motion = encoded.clone();
         bad_motion[61] = 0xff;
-        assert_eq!(
+        assert!(matches!(
             OuroborosScene::restore_checkpoint(&bad_motion),
             Err(OuroborosCheckpointError::InvalidTag(0xff))
-        );
+        ));
 
         // An active scene has three absent optional fields at bytes 118..121.
         let mut bad_option = encoded.clone();
         bad_option[118] = 2;
-        assert_eq!(
+        assert!(matches!(
             OuroborosScene::restore_checkpoint(&bad_option),
             Err(OuroborosCheckpointError::InvalidOptionFlag(2))
-        );
+        ));
 
         let mut non_finite = encoded.clone();
         non_finite[12..16].copy_from_slice(&f32::NAN.to_bits().to_le_bytes());
-        assert_eq!(
+        assert!(matches!(
             OuroborosScene::restore_checkpoint(&non_finite),
             Err(OuroborosCheckpointError::InvalidConfiguration)
-        );
+        ));
 
         let mut trailing = encoded.clone();
         trailing.push(0);
-        assert_eq!(
+        assert!(matches!(
             OuroborosScene::restore_checkpoint(&trailing),
             Err(OuroborosCheckpointError::TrailingBytes)
-        );
+        ));
 
         let oversized = vec![0_u8; MAX_CHECKPOINT_BYTES + 1];
-        assert_eq!(
+        assert!(matches!(
             OuroborosScene::restore_checkpoint(&oversized),
             Err(OuroborosCheckpointError::TooLarge)
-        );
+        ));
 
         for length in 0..encoded.len() {
-            assert_eq!(
+            assert!(matches!(
                 OuroborosScene::restore_checkpoint(&encoded[..length]),
                 Err(OuroborosCheckpointError::Truncated)
-            );
+            ));
         }
     }
 
