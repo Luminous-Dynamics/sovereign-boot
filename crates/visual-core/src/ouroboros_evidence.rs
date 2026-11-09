@@ -12,8 +12,8 @@ use crate::{
     contract::SCENE_CONTRACT_VERSION,
     ouroboros::{OuroborosCheckpointError, OuroborosCheckpointReceipt},
     ouroboros_mesh::{
-        OuroborosMesh, OuroborosMeshError, OuroborosMeshPlan,
-        OuroborosMeshReceipt, OuroborosQualityTier,
+        OuroborosMesh, OuroborosMeshBudget, OuroborosMeshConfig, OuroborosMeshError,
+        OuroborosMeshPlan, OuroborosMeshReceipt, OuroborosQualityTier,
     },
     ouroboros_render::{self, OuroborosRenderError, ReferenceImageReceipt},
     ouroboros_trace::{OuroborosTrace, ReplayReceipt, TraceError},
@@ -83,6 +83,7 @@ pub struct OuroborosEvidenceReceipt {
     pub checkpoint: OuroborosCheckpointReceipt,
     pub mesh: OuroborosMeshReceipt,
     pub image: ReferenceImageReceipt,
+    pub host_budget: OuroborosMeshBudget,
     pub selected_tier: OuroborosQualityTier,
     pub requested_ring_segments: u32,
     pub requested_tube_segments: u32,
@@ -117,10 +118,9 @@ pub fn capture_ouroboros_evidence(
     width: u32,
     height: u32,
 ) -> Result<OuroborosEvidenceArtifact, OuroborosEvidenceError> {
-    validate_plan_shape(plan)?;
-
     let trace_bytes = trace.encode()?;
     let replay = trace.replay()?;
+    validate_plan_shape(&replay.scene, plan)?;
     if replay.receipt.scene_contract_version != SCENE_CONTRACT_VERSION {
         return Err(OuroborosEvidenceError::InvalidPlan);
     }
@@ -168,6 +168,7 @@ pub fn capture_ouroboros_evidence(
         checkpoint: checkpoint_receipt,
         mesh: mesh_receipt,
         image: image_receipt,
+        host_budget: plan.budget,
         selected_tier: plan.tier,
         requested_ring_segments: plan.requested_ring_segments,
         requested_tube_segments: plan.requested_tube_segments,
@@ -187,34 +188,17 @@ pub fn capture_ouroboros_evidence(
     })
 }
 
-fn validate_plan_shape(plan: OuroborosMeshPlan) -> Result<(), OuroborosEvidenceError> {
-    let config = plan.config;
-    let valid_ring = |segments| matches!(segments, 32 | 64 | 128 | 256 | 512 | 1024 | 2048);
-    let valid_tube = |segments| matches!(segments, 6 | 8 | 12 | 16 | 24 | 32 | 48 | 64);
-    if !valid_ring(config.ring_segments)
-        || !valid_tube(config.tube_segments)
-        || !valid_ring(plan.requested_ring_segments)
-        || !valid_tube(plan.requested_tube_segments)
-        || !config.tube_radius.is_finite()
-        || !(0.001..=0.08).contains(&config.tube_radius)
-        || plan.requested_ring_segments < config.ring_segments
-        || plan.requested_tube_segments < config.tube_segments
-    {
-        return Err(OuroborosEvidenceError::InvalidPlan);
-    }
-
-    let expected_tier = if config.ring_segments <= 128 && config.tube_segments <= 8 {
-        OuroborosQualityTier::Economy
-    } else if config.ring_segments <= 512 && config.tube_segments <= 24 {
-        OuroborosQualityTier::Balanced
-    } else {
-        OuroborosQualityTier::Cinematic
-    };
-    if plan.tier != expected_tier {
-        return Err(OuroborosEvidenceError::InvalidPlan);
-    }
-    let expected = mesh_buffer_bytes(plan.vertex_count, plan.index_count)?;
-    if expected != plan.estimated_buffer_bytes {
+fn validate_plan_shape(
+    scene: &crate::ouroboros::OuroborosScene,
+    plan: OuroborosMeshPlan,
+) -> Result<(), OuroborosEvidenceError> {
+    let canonical = OuroborosMeshConfig::plan_for_budget(
+        scene,
+        plan.config.tube_radius,
+        plan.budget,
+    )
+    .map_err(|_| OuroborosEvidenceError::InvalidPlan)?;
+    if canonical != plan {
         return Err(OuroborosEvidenceError::InvalidPlan);
     }
     Ok(())
@@ -265,6 +249,11 @@ fn encode_bundle(
     bytes.extend_from_slice(&image.height.to_le_bytes());
     bytes.extend_from_slice(&image.pixel_digest);
 
+    bytes.extend_from_slice(&plan.budget.projected_major_radius_px.to_le_bytes());
+    bytes.extend_from_slice(&plan.budget.projected_tube_radius_px.to_le_bytes());
+    bytes.extend_from_slice(&plan.budget.max_vertices.to_le_bytes());
+    bytes.extend_from_slice(&plan.budget.max_indices.to_le_bytes());
+    bytes.extend_from_slice(&plan.budget.max_buffer_bytes.to_le_bytes());
     bytes.push(match plan.tier {
         OuroborosQualityTier::Economy => 0,
         OuroborosQualityTier::Balanced => 1,
@@ -347,13 +336,14 @@ mod tests {
         );
         assert_eq!(first.receipt.mesh.vertex_count, plan.vertex_count);
         assert_eq!(first.receipt.mesh.index_count, plan.index_count);
+        assert_eq!(first.receipt.host_budget, plan.budget);
         assert_eq!(first.receipt.image.width, 320);
         assert_eq!(first.receipt.image.height, 320);
         assert_eq!(
             first.receipt.image.pixel_digest,
             *blake3::hash(&first.pixels).as_bytes()
         );
-        assert_eq!(first.bundle_bytes.len(), 231);
+        assert_eq!(first.bundle_bytes.len(), 251);
         assert_eq!(first.checkpoint_bytes.len(), first.receipt.checkpoint.byte_length as usize);
         assert_eq!(first.trace_bytes, trace.encode().unwrap());
         assert_eq!(
