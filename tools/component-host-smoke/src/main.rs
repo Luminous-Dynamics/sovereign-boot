@@ -384,8 +384,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             io::Error::other("component accepted a branch limit above the contract").into(),
         );
     }
-    if (scene_api.call_width(&mut store, unchanged_scene)?,
-        scene_api.call_height(&mut store, unchanged_scene)?) != (16, 16)
+    if (
+        scene_api.call_width(&mut store, unchanged_scene)?,
+        scene_api.call_height(&mut store, unchanged_scene)?,
+    ) != (16, 16)
     {
         return Err(
             io::Error::other("failed configure partially mutated scene dimensions").into(),
@@ -394,7 +396,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     if scene_api.call_branch_count(&mut store, unchanged_scene)? != unchanged_before_branches {
         return Err(io::Error::other("failed configure mutated the branch count").into());
     }
-    if scene_api.call_render(&mut store, unchanged_scene)?.rgba.as_slice()
+    if scene_api
+        .call_render(&mut store, unchanged_scene)?
+        .rgba
+        .as_slice()
         != unchanged_before_rgba.as_slice()
     {
         return Err(io::Error::other("failed configure mutated the rendered frame").into());
