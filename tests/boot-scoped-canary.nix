@@ -111,6 +111,19 @@ in
     result = machine.succeed(
         "cat /var/lib/sovereign-boot/physical-canary.result"
     )
+    if "status=PASS" not in result:
+        print("physical-canary service status:")
+        print(
+            machine.succeed(
+                "systemctl status sovereign-boot-physical-canary.service --no-pager --full || true"
+            )
+        )
+        print("physical-canary service journal:")
+        print(
+            machine.succeed(
+                "journalctl -b -u sovereign-boot-physical-canary.service --no-pager -o cat || true"
+            )
+        )
     assert "status=PASS" in result, result
     assert "device=/dev/dri/card99" in result, result
     assert "seconds=1" in result, result
