@@ -312,6 +312,8 @@ pub struct OuroborosScene {
     from_weights: FormWeights,
     target_form: OuroborosForm,
     transition_elapsed: f32,
+    transition_duration: f32,
+    transition_start_progress: f32,
     attention_target: AttentionTarget,
     head_pose: HeadPose,
     motion_mode: OuroborosMotionMode,
@@ -331,6 +333,8 @@ impl OuroborosScene {
             from_weights: weights,
             target_form: initial_form,
             transition_elapsed: config.transition_seconds,
+            transition_duration: config.transition_seconds,
+            transition_start_progress: 0.0,
             attention_target: AttentionTarget::CENTER,
             head_pose: HeadPose::default(),
             motion_mode: OuroborosMotionMode::Balanced,
@@ -378,11 +382,20 @@ impl OuroborosScene {
             }
             _ => {
                 if let Some(frozen) = self.frozen_weights.take() {
-                    // Resume continuously from the frozen composition toward
-                    // the currently selected semantic form.
+                    // Continue the remaining fraction of the original
+                    // transition without a visual snap or false progress reset.
+                    let progress = self.frozen_progress.take().unwrap_or(0.0);
                     self.from_weights = frozen;
-                    self.transition_elapsed = 0.0;
-                    self.frozen_progress = None;
+                    if progress >= 1.0 {
+                        self.transition_start_progress = 0.0;
+                        self.transition_duration = self.config.transition_seconds;
+                        self.transition_elapsed = self.transition_duration;
+                    } else {
+                        self.transition_start_progress = progress;
+                        self.transition_duration =
+                            self.config.transition_seconds * (1.0 - progress);
+                        self.transition_elapsed = 0.0;
+                    }
                 }
             }
         }
@@ -398,12 +411,14 @@ impl OuroborosScene {
         self.target_form = form;
         self.from_weights = current;
         self.transition_elapsed = 0.0;
+        self.transition_duration = self.config.transition_seconds;
+        self.transition_start_progress = 0.0;
 
         if self.motion_mode == OuroborosMotionMode::Reduced {
             self.frozen_weights = Some(form.weights());
             self.frozen_progress = Some(1.0);
             self.from_weights = form.weights();
-            self.transition_elapsed = self.config.transition_seconds;
+            self.transition_elapsed = self.transition_duration;
         } else {
             self.frozen_weights = None;
             self.frozen_progress = None;
@@ -421,8 +436,7 @@ impl OuroborosScene {
         }
 
         let dt = dt_seconds * time_scale;
-        self.transition_elapsed =
-            (self.transition_elapsed + dt).min(self.config.transition_seconds);
+        self.transition_elapsed = (self.transition_elapsed + dt).min(self.transition_duration);
 
         let target_yaw = self.attention_target.x * self.config.max_yaw_radians;
         let target_pitch = -self.attention_target.y * self.config.max_pitch_radians;
@@ -512,16 +526,19 @@ impl OuroborosScene {
         if let Some(progress) = self.frozen_progress {
             return progress;
         }
-        (self.transition_elapsed / self.config.transition_seconds).clamp(0.0, 1.0)
+        let local = (self.transition_elapsed / self.transition_duration).clamp(0.0, 1.0);
+        self.transition_start_progress + (1.0 - self.transition_start_progress) * local
     }
 
     fn current_weights(&self) -> FormWeights {
         if let Some(weights) = self.frozen_weights {
             return weights;
         }
-        let t = self.transition_progress();
-        // Smoothstep has zero velocity at both endpoints.
-        let eased = t * t * (3.0 - 2.0 * t);
+        // A resumed transition starts from its frozen weights and traverses
+        // only the remaining local segment; reported progress retains the
+        // original transition's global fraction.
+        let local = (self.transition_elapsed / self.transition_duration).clamp(0.0, 1.0);
+        let eased = local * local * (3.0 - 2.0 * local);
         self.from_weights.lerp(self.target_form.weights(), eased)
     }
 }
@@ -691,8 +708,13 @@ mod tests {
 
         scene.set_motion_mode(OuroborosMotionMode::Balanced);
         assert_eq!(scene.frame().form_weights, frozen);
+        assert_eq!(
+            scene.frame().transition_progress,
+            scene.frame().transition_progress
+        );
         advance_for(&mut scene, 12.0);
         assert_eq!(scene.frame().form_weights, OuroborosForm::Humanity.weights());
+        assert_eq!(scene.frame().transition_progress, 1.0);
     }
 
     #[test]
