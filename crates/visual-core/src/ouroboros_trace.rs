@@ -369,10 +369,7 @@ impl<'a> Cursor<'a> {
     }
 
     fn take<const N: usize>(&mut self) -> Result<[u8; N], TraceError> {
-        let end = self
-            .offset
-            .checked_add(N)
-            .ok_or(TraceError::Truncated)?;
+        let end = self.offset.checked_add(N).ok_or(TraceError::Truncated)?;
         let slice = self
             .bytes
             .get(self.offset..end)
@@ -409,10 +406,7 @@ mod tests {
     use super::*;
 
     fn representative_trace() -> OuroborosTrace {
-        let mut trace = OuroborosTrace::new(
-            OuroborosConfig::default(),
-            OuroborosForm::Nature,
-        );
+        let mut trace = OuroborosTrace::new(OuroborosConfig::default(), OuroborosForm::Nature);
         trace
             .push(OuroborosEvent::SetMotionMode {
                 mode: OuroborosMotionMode::Cinematic,
@@ -459,7 +453,10 @@ mod tests {
 
         assert_eq!(left.receipt, right.receipt);
         assert_eq!(left.scene.frame(), right.scene.frame());
-        assert_eq!(left.receipt.trace_digest, *blake3::hash(&trace.encode().unwrap()).as_bytes());
+        assert_eq!(
+            left.receipt.trace_digest,
+            *blake3::hash(&trace.encode().unwrap()).as_bytes()
+        );
     }
 
     #[test]
@@ -491,14 +488,8 @@ mod tests {
 
     #[test]
     fn internal_state_digest_includes_pending_attention_even_before_motion() {
-        let still = OuroborosTrace::new(
-            OuroborosConfig::default(),
-            OuroborosForm::Nature,
-        );
-        let mut pending = OuroborosTrace::new(
-            OuroborosConfig::default(),
-            OuroborosForm::Nature,
-        );
+        let still = OuroborosTrace::new(OuroborosConfig::default(), OuroborosForm::Nature);
+        let mut pending = OuroborosTrace::new(OuroborosConfig::default(), OuroborosForm::Nature);
         pending
             .push(OuroborosEvent::SetAttentionTarget {
                 target: AttentionTarget::new(0.8, -0.4).unwrap(),
@@ -542,10 +533,8 @@ mod tests {
 
     #[test]
     fn encoder_and_decoder_reject_non_finite_or_out_of_range_inputs() {
-        let mut invalid_delta = OuroborosTrace::new(
-            OuroborosConfig::default(),
-            OuroborosForm::Nature,
-        );
+        let mut invalid_delta =
+            OuroborosTrace::new(OuroborosConfig::default(), OuroborosForm::Nature);
         invalid_delta.events.push(OuroborosEvent::Advance {
             dt_seconds: f32::NAN,
         });
@@ -556,13 +545,13 @@ mod tests {
             )))
         );
 
-        let mut invalid_target = OuroborosTrace::new(
-            OuroborosConfig::default(),
-            OuroborosForm::Nature,
-        );
-        invalid_target.events.push(OuroborosEvent::SetAttentionTarget {
-            target: AttentionTarget { x: 2.0, y: 0.0 },
-        });
+        let mut invalid_target =
+            OuroborosTrace::new(OuroborosConfig::default(), OuroborosForm::Nature);
+        invalid_target
+            .events
+            .push(OuroborosEvent::SetAttentionTarget {
+                target: AttentionTarget { x: 2.0, y: 0.0 },
+            });
         assert_eq!(
             invalid_target.encode(),
             Err(TraceError::InvalidAttentionTarget)
@@ -579,11 +568,8 @@ mod tests {
                 OuroborosMotionMode::Cinematic,
             ] {
                 let mut trace = OuroborosTrace::new(OuroborosConfig::default(), form);
-                trace
-                    .push(OuroborosEvent::SetMotionMode { mode })
-                    .unwrap();
-                trace
-                    .push(OuroborosEvent::TransitionTo {
+                trace.push(OuroborosEvent::SetMotionMode { mode }).unwrap();
+                trace.push(OuroborosEvent::TransitionTo {
                         form: OuroborosForm::ALL[(form_tag(form) as usize + 1) % 4],
                     })
                     .unwrap();
@@ -601,12 +587,11 @@ mod tests {
 
     #[test]
     fn trace_event_count_is_bounded() {
-        let mut trace = OuroborosTrace::new(
-            OuroborosConfig::default(),
-            OuroborosForm::Nature,
-        );
+        let mut trace = OuroborosTrace::new(OuroborosConfig::default(), OuroborosForm::Nature);
         for _ in 0..MAX_EVENTS {
-            trace.events.push(OuroborosEvent::Advance { dt_seconds: 0.0 });
+            trace
+                .events
+                .push(OuroborosEvent::Advance { dt_seconds: 0.0 });
         }
         assert_eq!(
             trace.push(OuroborosEvent::Advance { dt_seconds: 0.0 }),
