@@ -1353,6 +1353,206 @@ mod tests {
     }
 
     #[test]
+    fn active_checkpoint_restores_the_exact_c1_trajectory() {
+        let mut original = scene(OuroborosForm::Nature);
+        original.transition_to(OuroborosForm::Digital);
+        advance_for(&mut original, 2.35);
+        original
+            .set_attention_target(AttentionTarget::new(0.6, -0.35).unwrap())
+            .unwrap();
+        original.advance(0.12).unwrap();
+
+        let (bytes, receipt) = original.encode_checkpoint().unwrap();
+        assert!(bytes.len() <= MAX_CHECKPOINT_BYTES);
+        assert_eq!(receipt.byte_length as usize, bytes.len());
+        assert_eq!(receipt.digest, *blake3::hash(&bytes).as_bytes());
+
+        let (mut restored, restored_receipt) = OuroborosScene::restore_checkpoint(&bytes).unwrap();
+        assert_eq!(receipt, restored_receipt);
+        assert_eq!(original.frame(), restored.frame());
+        assert_eq!(original.current_velocity(), restored.current_velocity());
+        assert_eq!(
+            original.canonical_state_bytes(),
+            restored.canonical_state_bytes()
+        );
+
+        for _ in 0..1_000 {
+            original.advance(1.0 / 60.0).unwrap();
+            restored.advance(1.0 / 60.0).unwrap();
+            assert_eq!(original.frame(), restored.frame());
+            assert_eq!(original.current_velocity(), restored.current_velocity());
+            assert_eq!(
+                original.canonical_state_bytes(),
+                restored.canonical_state_bytes()
+            );
+        }
+    }
+
+    #[test]
+    fn reduced_checkpoint_restores_frozen_kinematics_and_resume() {
+        let mut original = scene(OuroborosForm::Humanity);
+        original.transition_to(OuroborosForm::Enlightenment);
+        advance_for(&mut original, 1.75);
+        original.set_motion_mode(OuroborosMotionMode::Reduced);
+
+        let (bytes, receipt) = original.encode_checkpoint().unwrap();
+        let (mut restored, restored_receipt) = OuroborosScene::restore_checkpoint(&bytes).unwrap();
+        assert_eq!(receipt, restored_receipt);
+        assert_eq!(restored.motion_mode(), OuroborosMotionMode::Reduced);
+        assert_eq!(original.frame(), restored.frame());
+        assert_eq!(original.current_velocity(), restored.current_velocity());
+        assert_eq!(
+            original.canonical_state_bytes(),
+            restored.canonical_state_bytes()
+        );
+
+        // Reduced scenes remain completely frozen until the host explicitly
+        // resumes them. The restored kinematics must match the source exactly.
+        for _ in 0..1_000 {
+            original.advance(0.025).unwrap();
+            restored.advance(0.025).unwrap();
+        }
+        assert_eq!(original.frame(), restored.frame());
+        assert_eq!(original.current_velocity(), restored.current_velocity());
+
+        original.set_motion_mode(OuroborosMotionMode::Cinematic);
+        restored.set_motion_mode(OuroborosMotionMode::Cinematic);
+        assert_eq!(original.frame(), restored.frame());
+        assert_eq!(original.current_velocity(), restored.current_velocity());
+
+        for _ in 0..1_000 {
+            original.advance(0.025).unwrap();
+            restored.advance(0.025).unwrap();
+            assert_eq!(original.frame(), restored.frame());
+            assert_eq!(original.current_velocity(), restored.current_velocity());
+            assert_eq!(
+                original.canonical_state_bytes(),
+                restored.canonical_state_bytes()
+            );
+        }
+    }
+
+    #[test]
+    fn checkpoint_decoder_rejects_malformed_and_unsupported_inputs() {
+        let scene = scene(OuroborosForm::Nature);
+        let encoded = scene.encode_checkpoint().unwrap().0;
+
+        let mut bad_magic = encoded.clone();
+        bad_magic[0] ^= 0xff;
+        assert_eq!(
+            OuroborosScene::restore_checkpoint(&bad_magic),
+            Err(OuroborosCheckpointError::InvalidMagic)
+        );
+
+        let mut bad_version = encoded.clone();
+        bad_version[8..10].copy_from_slice(&99_u16.to_le_bytes());
+        assert_eq!(
+            OuroborosScene::restore_checkpoint(&bad_version),
+            Err(OuroborosCheckpointError::UnsupportedVersion(99))
+        );
+
+        let mut bad_contract = encoded.clone();
+        bad_contract[10..12].copy_from_slice(&99_u16.to_le_bytes());
+        assert_eq!(
+            OuroborosScene::restore_checkpoint(&bad_contract),
+            Err(OuroborosCheckpointError::UnsupportedSceneContract(99))
+        );
+
+        let mut bad_form = encoded.clone();
+        bad_form[60] = 0xff;
+        assert_eq!(
+            OuroborosScene::restore_checkpoint(&bad_form),
+            Err(OuroborosCheckpointError::InvalidTag(0xff))
+        );
+
+        let mut bad_motion = encoded.clone();
+        bad_motion[61] = 0xff;
+        assert_eq!(
+            OuroborosScene::restore_checkpoint(&bad_motion),
+            Err(OuroborosCheckpointError::InvalidTag(0xff))
+        );
+
+        // An active scene has three absent optional fields at bytes 118..121.
+        let mut bad_option = encoded.clone();
+        bad_option[118] = 2;
+        assert_eq!(
+            OuroborosScene::restore_checkpoint(&bad_option),
+            Err(OuroborosCheckpointError::InvalidOptionFlag(2))
+        );
+
+        let mut non_finite = encoded.clone();
+        non_finite[12..16].copy_from_slice(&f32::NAN.to_bits().to_le_bytes());
+        assert_eq!(
+            OuroborosScene::restore_checkpoint(&non_finite),
+            Err(OuroborosCheckpointError::InvalidConfiguration)
+        );
+
+        let mut trailing = encoded.clone();
+        trailing.push(0);
+        assert_eq!(
+            OuroborosScene::restore_checkpoint(&trailing),
+            Err(OuroborosCheckpointError::TrailingBytes)
+        );
+
+        let oversized = vec![0_u8; MAX_CHECKPOINT_BYTES + 1];
+        assert_eq!(
+            OuroborosScene::restore_checkpoint(&oversized),
+            Err(OuroborosCheckpointError::TooLarge)
+        );
+
+        for length in 0..encoded.len() {
+            assert_eq!(
+                OuroborosScene::restore_checkpoint(&encoded[..length]),
+                Err(OuroborosCheckpointError::Truncated)
+            );
+        }
+    }
+
+    #[test]
+    fn checkpoint_validation_rejects_out_of_range_kinematics() {
+        let mut scene = scene(OuroborosForm::Nature);
+        scene.transition_to(OuroborosForm::Digital);
+        advance_for(&mut scene, 1.0);
+
+        let mut invalid_velocity = scene.clone();
+        invalid_velocity.transition_start_velocity.digital = f32::INFINITY;
+        assert_eq!(
+            invalid_velocity.encode_checkpoint(),
+            Err(OuroborosCheckpointError::InvalidState)
+        );
+
+        let mut invalid_timing = scene;
+        invalid_timing.transition_durations[2] = f32::NAN;
+        assert_eq!(
+            invalid_timing.encode_checkpoint(),
+            Err(OuroborosCheckpointError::InvalidState)
+        );
+    }
+
+    #[test]
+    fn checkpoint_schema_and_size_are_stable_for_active_and_reduced_states() {
+        let mut active = scene(OuroborosForm::Nature);
+        active.transition_to(OuroborosForm::Humanity);
+        advance_for(&mut active, 1.0);
+        let (active_bytes, active_receipt) = active.encode_checkpoint().unwrap();
+
+        let mut reduced = active;
+        reduced.set_motion_mode(OuroborosMotionMode::Reduced);
+        let (reduced_bytes, reduced_receipt) = reduced.encode_checkpoint().unwrap();
+
+        assert_eq!(active_receipt.schema_version, CHECKPOINT_VERSION);
+        assert_eq!(
+            active_receipt.scene_contract_version,
+            contract::SCENE_CONTRACT_VERSION
+        );
+        assert_eq!(reduced_receipt.schema_version, CHECKPOINT_VERSION);
+        assert!(active_bytes.len() <= 256);
+        assert!(reduced_bytes.len() <= 256);
+        assert!(reduced_bytes.len() > active_bytes.len());
+        assert_ne!(active_receipt.digest, reduced_receipt.digest);
+    }
+
+    #[test]
     fn every_form_has_a_stable_round_trip_id() {
         for form in OuroborosForm::ALL {
             assert_eq!(OuroborosForm::from_id(form.id()), Some(form));
