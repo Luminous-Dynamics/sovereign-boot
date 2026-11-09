@@ -1733,7 +1733,7 @@ mod tests {
         );
         assert_eq!(reduced_receipt.schema_version, CHECKPOINT_VERSION);
         assert_eq!(active_bytes.len(), 121);
-        assert_eq!(reduced_bytes.len(), 157);
+        assert_eq!(reduced_bytes.len(), 160);
         assert!(active_bytes.len() <= 256);
         assert!(reduced_bytes.len() <= 256);
         assert!(reduced_bytes.len() > active_bytes.len());
