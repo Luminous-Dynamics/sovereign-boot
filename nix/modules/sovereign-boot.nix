@@ -80,7 +80,7 @@ let
     if [[ -e "$result" ]]; then
       result_request_id="$(${pkgs.gnused}/bin/sed -n 's/^request_id=//p' "$result")"
     fi
-    if [[ "$result_request_id" == "$request_id" ]] && [[ "\${SERVICE_RESULT:-unknown}" == "success" ]]; then
+    if [[ "$result_request_id" == "$request_id" ]] && [[ "''${SERVICE_RESULT:-unknown}" == "success" ]]; then
       if [[ "$request_id" =~ ^[0-9a-f]{32}$ ]]; then
         mkdir -p "$archive_dir"
         if [[ -e "$archive_dir/$request_id.request" || -e "$archive_dir/$request_id.result" || -e "$archive_dir/$request_id.probe" || -e "$archive_dir/$request_id.output" || -e "$archive_dir/$request_id.preboot-probe" ]]; then
@@ -98,13 +98,13 @@ let
       exit 0
     fi
 
-    case "\${SERVICE_RESULT:-unknown}" in
+    case "''${SERVICE_RESULT:-unknown}" in
       timeout) status="FAIL_SERVICE_TIMEOUT" ;;
       *) status="FAIL_SERVICE_ABORTED" ;;
     esac
 
     printf 'status=%s\nboot_id=%s\nrequest_id=%s\narmed_at_unix_s=%s\ndevice=%s\nservice_result=%s\nexit_code=%s\nexit_status=%s\n' \
-      "$status" "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$armed_at_unix_s" "$device" "\${SERVICE_RESULT:-unknown}" "\${EXIT_CODE:-unknown}" "\${EXIT_STATUS:-unknown}" | write_atomic "$result"
+      "$status" "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$armed_at_unix_s" "$device" "''${SERVICE_RESULT:-unknown}" "''${EXIT_CODE:-unknown}" "''${EXIT_STATUS:-unknown}" | write_atomic "$result"
 
     if [[ "$request_id" =~ ^[0-9a-f]{32}$ ]]; then
       mkdir -p "$archive_dir"
