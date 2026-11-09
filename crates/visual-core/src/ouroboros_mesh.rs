@@ -110,8 +110,12 @@ impl fmt::Display for OuroborosMeshError {
             Self::SizeLimitExceeded => write!(f, "Ouroboros mesh exceeds the vertex/index budget"),
             Self::AllocationFailed => write!(f, "unable to reserve bounded Ouroboros mesh storage"),
             Self::Scene(error) => write!(f, "invalid Ouroboros scene: {error}"),
-            Self::DegenerateCenterline => write!(f, "Ouroboros centerline has a degenerate tangent"),
-            Self::InvalidGeneratedGeometry => write!(f, "generated Ouroboros mesh failed validation"),
+            Self::DegenerateCenterline => {
+                write!(f, "Ouroboros centerline has a degenerate tangent")
+            }
+            Self::InvalidGeneratedGeometry => {
+                write!(f, "generated Ouroboros mesh failed validation")
+            }
         }
     }
 }
@@ -157,8 +161,8 @@ impl OuroborosMesh {
         for index in 0..ring_count {
             let previous = centers[(index + ring_count - 1) % ring_count];
             let next = centers[(index + 1) % ring_count];
-            let tangent = normalize(sub(next, previous))
-                .ok_or(OuroborosMeshError::DegenerateCenterline)?;
+            let tangent =
+                normalize(sub(next, previous)).ok_or(OuroborosMeshError::DegenerateCenterline)?;
             tangents.push(tangent);
         }
 
@@ -176,8 +180,8 @@ impl OuroborosMesh {
             .map_err(|_| OuroborosMeshError::AllocationFailed)?;
 
         for tangent in &tangents {
-            let radial = normalize(cross(*tangent, up))
-                .ok_or(OuroborosMeshError::DegenerateCenterline)?;
+            let radial =
+                normalize(cross(*tangent, up)).ok_or(OuroborosMeshError::DegenerateCenterline)?;
             let binormal = normalize(cross(radial, *tangent))
                 .ok_or(OuroborosMeshError::DegenerateCenterline)?;
             radial_frames.push(radial);
@@ -231,12 +235,7 @@ impl OuroborosMesh {
                 let c = ring_index * row + tube_index + 1;
                 let d = (ring_index + 1) * row + tube_index + 1;
                 indices.extend_from_slice(&[
-                    a as u32,
-                    b as u32,
-                    c as u32,
-                    b as u32,
-                    d as u32,
-                    c as u32,
+                    a as u32, b as u32, c as u32, b as u32, d as u32, c as u32,
                 ]);
             }
         }
@@ -431,8 +430,7 @@ mod tests {
     #[test]
     fn mesh_has_bounded_closed_topology() {
         let scene = scene(OuroborosForm::Nature);
-        let (mesh, receipt) =
-            OuroborosMesh::build(&scene, OuroborosMeshConfig::default()).unwrap();
+        let (mesh, receipt) = OuroborosMesh::build(&scene, OuroborosMeshConfig::default()).unwrap();
         let ring = 256_usize;
         let tube = 16_usize;
 
@@ -468,18 +466,17 @@ mod tests {
 
     #[test]
     fn mesh_normals_are_unit_and_triangle_winding_points_outward() {
-        let (mesh, _) =
-            OuroborosMesh::build(&scene(OuroborosForm::Digital), OuroborosMeshConfig::default())
-                .unwrap();
+        let (mesh, _) = OuroborosMesh::build(
+            &scene(OuroborosForm::Digital),
+            OuroborosMeshConfig::default(),
+        )
+        .unwrap();
 
         for triangle in mesh.indices.chunks_exact(3).step_by(17) {
             let a = mesh.vertices[triangle[0] as usize];
             let b = mesh.vertices[triangle[1] as usize];
             let c = mesh.vertices[triangle[2] as usize];
-            let geometric = cross(
-                sub(b.position, a.position),
-                sub(c.position, a.position),
-            );
+            let geometric = cross(sub(b.position, a.position), sub(c.position, a.position));
             let expected = add(add(a.normal, b.normal), c.normal);
             assert!(dot(geometric, expected) > 0.0);
         }
@@ -487,9 +484,11 @@ mod tests {
 
     #[test]
     fn both_uv_seams_duplicate_geometry_exactly() {
-        let (mesh, _) =
-            OuroborosMesh::build(&scene(OuroborosForm::Humanity), OuroborosMeshConfig::default())
-                .unwrap();
+        let (mesh, _) = OuroborosMesh::build(
+            &scene(OuroborosForm::Humanity),
+            OuroborosMeshConfig::default(),
+        )
+        .unwrap();
         let ring = mesh.config.ring_segments as usize;
         let tube = mesh.config.tube_segments as usize;
         let row = tube + 1;
