@@ -137,15 +137,7 @@ pub fn render_reference_rgba(
                 palette.with_opacity(0.18),
                 7.0,
             );
-            draw_line(
-                &mut pixels,
-                width,
-                height,
-                start,
-                point,
-                palette,
-                2.25,
-            );
+            draw_line(&mut pixels, width, height, start, point, palette, 2.25);
         } else {
             first = Some(point);
         }
@@ -163,15 +155,7 @@ pub fn render_reference_rgba(
             palette.with_opacity(0.18),
             7.0,
         );
-        draw_line(
-            &mut pixels,
-            width,
-            height,
-            last,
-            first,
-            palette,
-            2.25,
-        );
+        draw_line(&mut pixels, width, height, last, first, palette, 2.25);
     }
 
     // Nature: paired leaf/node motifs grow from the same ring centerline.
@@ -188,31 +172,10 @@ pub fn render_reference_rgba(
             ];
             let normal = normalized([point[0] - center[0], point[1] - center[1]]);
             let tangent = [-normal[1], normal[0]];
-            let leaf = [
-                point[0] + normal[0] * 4.5,
-                point[1] + normal[1] * 4.5,
-            ];
-            let stem = [
-                leaf[0] + tangent[0] * 2.0,
-                leaf[1] + tangent[1] * 2.0,
-            ];
-            draw_line(
-                &mut pixels,
-                width,
-                height,
-                point,
-                leaf,
-                color,
-                1.25,
-            );
-            draw_disc(
-                &mut pixels,
-                width,
-                height,
-                stem,
-                2.1,
-                color,
-            );
+            let leaf = [point[0] + normal[0] * 4.5, point[1] + normal[1] * 4.5];
+            let stem = [leaf[0] + tangent[0] * 2.0, leaf[1] + tangent[1] * 2.0];
+            draw_line(&mut pixels, width, height, point, leaf, color, 1.25);
+            draw_disc(&mut pixels, width, height, stem, 2.1, color);
         }
     }
 
@@ -229,19 +192,8 @@ pub fn render_reference_rgba(
                 center[1] + sample.centerline[1] * scale,
             ];
             let normal = normalized([point[0] - center[0], point[1] - center[1]]);
-            let endpoint = [
-                point[0] + normal[0] * 6.0,
-                point[1] + normal[1] * 6.0,
-            ];
-            draw_line(
-                &mut pixels,
-                width,
-                height,
-                point,
-                endpoint,
-                node,
-                1.0,
-            );
+            let endpoint = [point[0] + normal[0] * 6.0, point[1] + normal[1] * 6.0];
+            draw_line(&mut pixels, width, height, point, endpoint, node, 1.0);
             draw_disc(&mut pixels, width, height, endpoint, 2.2, node);
         }
     }
@@ -250,15 +202,9 @@ pub fn render_reference_rgba(
     let humanity_strength = weights.humanity.clamp(0.0, 1.0);
     if humanity_strength > 0.02 {
         let head = frame.head_anchor;
-        let forward = face_forward(
-            frame.head_pose.yaw_radians,
-            frame.head_pose.pitch_radians,
-        );
+        let forward = face_forward(frame.head_pose.yaw_radians, frame.head_pose.pitch_radians);
         let lateral = [-forward[1], forward[0]];
-        let anchor = [
-            center[0] + head[0] * scale,
-            center[1] + head[1] * scale,
-        ];
+        let anchor = [center[0] + head[0] * scale, center[1] + head[1] * scale];
         let cheek_color = HUMANITY.with_opacity((70.0 + 155.0 * humanity_strength) / 255.0);
         for side in [-1.0_f32, 1.0] {
             let cheek = [
@@ -273,10 +219,7 @@ pub fn render_reference_rgba(
     // every other form; it is not a replacement scene or a flash.
     if halo_strength > 0.02 {
         let head = frame.head_anchor;
-        let anchor = [
-            center[0] + head[0] * scale,
-            center[1] + head[1] * scale,
-        ];
+        let anchor = [center[0] + head[0] * scale, center[1] + head[1] * scale];
         let ray_color = ENLIGHTENMENT.with_opacity((40.0 + 95.0 * halo_strength) / 255.0);
         for index in 0..8 {
             let angle = std::f32::consts::TAU * index as f32 / 8.0;
@@ -289,15 +232,7 @@ pub fn render_reference_rgba(
                 anchor[0] + direction[0] * 17.0,
                 anchor[1] + direction[1] * 17.0,
             ];
-            draw_line(
-                &mut pixels,
-                width,
-                height,
-                start,
-                end,
-                ray_color,
-                0.9,
-            );
+            draw_line(&mut pixels, width, height, start, end, ray_color, 0.9);
         }
     }
 
@@ -307,20 +242,10 @@ pub fn render_reference_rgba(
         center[0] + frame.head_anchor[0] * scale,
         center[1] + frame.head_anchor[1] * scale,
     ];
-    let forward = face_forward(
-        frame.head_pose.yaw_radians,
-        frame.head_pose.pitch_radians,
-    );
+    let forward = face_forward(frame.head_pose.yaw_radians, frame.head_pose.pitch_radians);
     let lateral = [-forward[1], forward[0]];
     let head_color = Rgba::lerp(palette, HUMANITY, 0.28);
-    draw_disc(
-        &mut pixels,
-        width,
-        height,
-        anchor,
-        9.0,
-        head_color,
-    );
+    draw_disc(&mut pixels, width, height, anchor, 9.0, head_color);
     draw_circle(
         &mut pixels,
         width,
@@ -338,10 +263,7 @@ pub fn render_reference_rgba(
             anchor[1] + forward[1] * 2.0 + lateral[1] * side * 3.1,
         ];
         draw_disc(&mut pixels, width, height, eye, 1.45, DARK_INK);
-        let pupil = [
-            eye[0] + forward[0] * 0.75,
-            eye[1] + forward[1] * 0.75,
-        ];
+        let pupil = [eye[0] + forward[0] * 0.75, eye[1] + forward[1] * 0.75];
         draw_disc(&mut pixels, width, height, pupil, 0.55, STARLIGHT);
     }
 
@@ -419,8 +341,7 @@ fn blend_pixel(buffer: &mut [u8], width: u32, height: u32, x: i32, y: i32, color
         buffer[index + 3],
     );
     let result = color.over(destination);
-    buffer[index..index + 4]
-        .copy_from_slice(&[result.0, result.1, result.2, 255]);
+    buffer[index..index + 4].copy_from_slice(&[result.0, result.1, result.2, 255]);
 }
 
 fn draw_disc(
@@ -506,25 +427,14 @@ fn draw_circle(
     if segments < 8 || segments > 1024 || !radius.is_finite() || radius <= 0.0 {
         return;
     }
-    let mut previous = [
-        center[0] + radius,
-        center[1],
-    ];
+    let mut previous = [center[0] + radius, center[1]];
     for index in 1..=segments {
         let angle = std::f32::consts::TAU * index as f32 / segments as f32;
         let point = [
             center[0] + radius * angle.cos(),
             center[1] + radius * angle.sin(),
         ];
-        draw_line(
-            buffer,
-            width,
-            height,
-            previous,
-            point,
-            color,
-            thickness,
-        );
+        draw_line(buffer, width, height, previous, point, color, thickness);
         previous = point;
     }
 }
@@ -535,11 +445,8 @@ mod tests {
     use crate::ouroboros::{OuroborosForm, OuroborosMotionMode};
 
     fn scene(form: OuroborosForm) -> OuroborosScene {
-        OuroborosScene::new(
-            crate::ouroboros::OuroborosConfig::default(),
-            form,
-        )
-        .expect("default scene config is valid")
+        OuroborosScene::new(crate::ouroboros::OuroborosConfig::default(), form)
+            .expect("default scene config is valid")
     }
 
     #[test]
@@ -550,10 +457,16 @@ mod tests {
         assert_eq!(left, right);
         assert_eq!(left_pixels, right_pixels);
         assert_eq!(left.pixel_digest, *blake3::hash(&left_pixels).as_bytes());
-        assert_eq!(left.scene_contract_version, crate::contract::SCENE_CONTRACT_VERSION);
+        assert_eq!(
+            left.scene_contract_version,
+            crate::contract::SCENE_CONTRACT_VERSION
+        );
         assert_ne!(
             left.pixel_digest,
-            render_reference_artifact(&scene, 160, 128).unwrap().1.pixel_digest
+            render_reference_artifact(&scene, 160, 128)
+                .unwrap()
+                .1
+                .pixel_digest
         );
     }
 
@@ -596,9 +509,7 @@ mod tests {
         let first = render_reference_rgba(&scene, 128, 128).unwrap();
 
         scene
-            .set_attention_target(
-                crate::ouroboros::AttentionTarget::new(1.0, -1.0).unwrap(),
-            )
+            .set_attention_target(crate::ouroboros::AttentionTarget::new(1.0, -1.0).unwrap())
             .unwrap();
         for _ in 0..60 {
             scene.advance(0.1).unwrap();
@@ -611,7 +522,9 @@ mod tests {
     fn invalid_dimensions_are_rejected_before_allocation() {
         assert!(matches!(
             render_reference_rgba(&scene(OuroborosForm::Nature), 0, 128),
-            Err(OuroborosRenderError::InvalidDimensions(DimensionsError::Zero))
+            Err(OuroborosRenderError::InvalidDimensions(
+                DimensionsError::Zero
+            ))
         ));
         assert!(render_reference_rgba(&scene(OuroborosForm::Nature), 4096, 4096).is_err());
     }
@@ -621,9 +534,7 @@ mod tests {
         let mut scene = scene(OuroborosForm::Humanity);
         let centered = render_reference_rgba(&scene, 160, 160).unwrap();
         scene
-            .set_attention_target(
-                crate::ouroboros::AttentionTarget::new(1.0, 0.8).unwrap(),
-            )
+            .set_attention_target(crate::ouroboros::AttentionTarget::new(1.0, 0.8).unwrap())
             .unwrap();
         for _ in 0..20 {
             scene.advance(0.1).unwrap();
