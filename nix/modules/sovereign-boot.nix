@@ -377,8 +377,8 @@ in
 
 
     systemd.tmpfiles.rules = [
-      "d ${runtimeDir} 0755 root root -",
-      "d ${canaryRequestDir} 0700 root root -",
+      "d ${runtimeDir} 0755 root root -"
+      "d ${canaryRequestDir} 0700 root root -"
       "d ${canaryArchiveDir} 0700 root root -"
     ];
 
