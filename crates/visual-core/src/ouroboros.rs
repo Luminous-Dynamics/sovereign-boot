@@ -618,7 +618,8 @@ impl OuroborosScene {
                 .iter()
                 .all(|duration| {
                     duration.is_finite()
-                        && (1.0e-6..=self.config.transition_seconds).contains(duration)
+                        && *duration > 0.0
+                        && *duration <= self.config.transition_seconds
                 })
             || self.transition_elapsed > max_transition_duration(self.transition_durations)
             || !hermite_segments_are_bounded(
