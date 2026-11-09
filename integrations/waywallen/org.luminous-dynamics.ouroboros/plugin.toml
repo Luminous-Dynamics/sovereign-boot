@@ -12,7 +12,5 @@ spawn_version = 10
 
 [renderers.luminous-ouroboros.settings]
 fps = { type = "u32", default = 60, min = 1, max = 120, step = 1, identity = true }
-resolution = { type = "i32", default = -2, choices = ["-2", "-1", "0", "1", "2", "3", "4"], identity = true }
-custom_extent = { type = "u32", default = 1080, min = 1, max = 8192, step = 1, identity = true }
 quality = { type = "string", default = "balanced", choices = ["economy", "balanced", "cinematic"], identity = false }
 motion = { type = "string", default = "balanced", choices = ["reduced", "low_power", "balanced", "cinematic"], identity = false }
