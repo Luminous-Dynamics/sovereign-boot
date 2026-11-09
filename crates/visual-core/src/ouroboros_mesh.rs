@@ -933,7 +933,8 @@ mod tests {
                                 tube_segments: 6,
                                 tube_radius: 0.025,
                             };
-                            let (vertices, indices, bytes) = mesh_resource_estimate(minimum).unwrap();
+                            let (vertices, indices, bytes) =
+                                mesh_resource_estimate(minimum).unwrap();
                             assert!(
                                 vertices > max_vertices
                                     || indices > max_indices
