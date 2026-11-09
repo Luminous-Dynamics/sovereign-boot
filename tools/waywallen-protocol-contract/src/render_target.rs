@@ -5,7 +5,9 @@
 //! The host supplies hardware limits and the currently published pool identity.
 
 use super::{
-    ContractError, Extent, FormatCapability, ProducerCapabilities, MAX_EXTENT, MAX_SLOT_COUNT,
+    ContractError, Extent, FormatCapability, ProducerCapabilities, COLOR_ALPHA_MASK,
+    COLOR_ENCODING_MASK, COLOR_RANGE_MASK, KNOWN_COLOR_CAPS, KNOWN_MEMORY_HINTS, KNOWN_SYNC_CAPS,
+    MAX_EXTENT, MAX_SLOT_COUNT,
 };
 
 /// Wire values 1 and 2 from render_target_capabilities.mode.
@@ -332,6 +334,7 @@ impl RenderTargetSession {
         if !(1..=MAX_SLOT_COUNT).contains(&config.slot_count) {
             return Err(ContractError::InvalidSlotCount);
         }
+        validate_scheme_caps(config, producer)?;
 
         self.last_config_revision = config.revision;
         self.pending = Some(config);
@@ -402,6 +405,39 @@ impl RenderTargetSession {
     }
 }
 
+fn validate_scheme_caps(
+    config: RenderTargetConfig,
+    producer: &ProducerCapabilities,
+) -> Result<(), ContractError> {
+    if config.sync_mode == 0
+        || config.sync_mode.count_ones() != 1
+        || config.sync_mode & !KNOWN_SYNC_CAPS != 0
+        || config.sync_mode & producer.sync_caps == 0
+    {
+        return Err(ContractError::InvalidRenderTargetConfig);
+    }
+
+    let encoding = config.color & COLOR_ENCODING_MASK;
+    let range = config.color & COLOR_RANGE_MASK;
+    let alpha = config.color & COLOR_ALPHA_MASK;
+    if config.color & !KNOWN_COLOR_CAPS != 0
+        || encoding.count_ones() != 1
+        || range.count_ones() != 1
+        || alpha.count_ones() != 1
+        || config.color & !producer.color_caps != 0
+    {
+        return Err(ContractError::InvalidRenderTargetConfig);
+    }
+
+    if config.memory_hint & !KNOWN_MEMORY_HINTS != 0
+        || config.memory_hint.count_ones() > 1
+        || config.memory_hint & !producer.mem_hints != 0
+    {
+        return Err(ContractError::InvalidRenderTargetConfig);
+    }
+    Ok(())
+}
+
 fn valid_extent(extent: Extent) -> bool {
     extent.width > 0
         && extent.height > 0
@@ -433,6 +469,10 @@ mod tests {
             modifiers: vec![0],
             plane_counts: vec![1],
             max_extent: Extent { width: 3_840, height: 2_160 },
+            mem_hints: super::super::MEMORY_HINT_DEVICE_LOCAL
+                | super::super::MEMORY_HINT_HOST_VISIBLE,
+            sync_caps: super::super::KNOWN_SYNC_CAPS,
+            color_caps: super::super::KNOWN_COLOR_CAPS,
         }
     }
 
@@ -442,9 +482,11 @@ mod tests {
             capabilities_revision,
             extent: Extent { width, height },
             format: FormatCapability { fourcc: AB24, modifier: 0, plane_count: 1 },
-            sync_mode: 1,
-            color: 0,
-            memory_hint: 0,
+            sync_mode: super::super::SYNC_SYNCOBJ_TIMELINE,
+            color: super::super::COLOR_ENCODING_SRGB
+                | super::super::COLOR_RANGE_LIMITED
+                | super::super::COLOR_ALPHA_PREMULTIPLIED,
+            memory_hint: super::super::MEMORY_HINT_HOST_VISIBLE,
             slot_count: 3,
             path: RenderTargetPath::CompatLinear,
             memory_source: RenderTargetMemorySource::GpuLinear,
