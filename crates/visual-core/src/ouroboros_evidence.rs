@@ -12,7 +12,7 @@ use crate::{
     contract::SCENE_CONTRACT_VERSION,
     ouroboros::{OuroborosCheckpointError, OuroborosCheckpointReceipt},
     ouroboros_mesh::{
-        OuroborosMesh, OuroborosMeshConfig, OuroborosMeshError, OuroborosMeshPlan,
+        OuroborosMesh, OuroborosMeshError, OuroborosMeshPlan,
         OuroborosMeshReceipt, OuroborosQualityTier,
     },
     ouroboros_render::{self, OuroborosRenderError, ReferenceImageReceipt},
@@ -100,6 +100,9 @@ pub struct OuroborosEvidenceReceipt {
 /// This bundle is content-addressed, not signed or authenticated.
 #[derive(Debug, Clone, PartialEq)]
 pub struct OuroborosEvidenceArtifact {
+    pub trace_bytes: Vec<u8>,
+    pub checkpoint_bytes: Vec<u8>,
+    pub mesh: OuroborosMesh,
     pub pixels: Vec<u8>,
     pub bundle_bytes: Vec<u8>,
     pub receipt: OuroborosEvidenceReceipt,
@@ -116,6 +119,7 @@ pub fn capture_ouroboros_evidence(
 ) -> Result<OuroborosEvidenceArtifact, OuroborosEvidenceError> {
     validate_plan_shape(plan)?;
 
+    let trace_bytes = trace.encode()?;
     let replay = trace.replay()?;
     if replay.receipt.scene_contract_version != SCENE_CONTRACT_VERSION {
         return Err(OuroborosEvidenceError::InvalidPlan);
@@ -174,6 +178,9 @@ pub fn capture_ouroboros_evidence(
     };
 
     Ok(OuroborosEvidenceArtifact {
+        trace_bytes,
+        checkpoint_bytes,
+        mesh,
         pixels,
         bundle_bytes,
         receipt,
@@ -275,7 +282,7 @@ mod tests {
     use super::*;
     use crate::{
         ouroboros::{OuroborosConfig, OuroborosForm},
-        ouroboros_mesh::{OuroborosMeshBudget, OuroborosQualityTier},
+        ouroboros_mesh::{OuroborosMeshBudget, OuroborosMeshConfig, OuroborosQualityTier},
         ouroboros_trace::{OuroborosEvent, OuroborosMotionMode},
     };
 
@@ -344,7 +351,9 @@ mod tests {
             first.receipt.image.pixel_digest,
             *blake3::hash(&first.pixels).as_bytes()
         );
-        assert_eq!(first.bundle_bytes.len(), 225);
+        assert_eq!(first.bundle_bytes.len(), 231);
+        assert_eq!(first.checkpoint_bytes.len(), first.receipt.checkpoint.byte_length as usize);
+        assert_eq!(first.trace_bytes.len() > 0, true);
     }
 
     #[test]
