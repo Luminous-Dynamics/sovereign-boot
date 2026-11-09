@@ -1207,7 +1207,6 @@ mod tests {
         }
     }
 
-
     #[test]
     fn parses_pinned_first_germination_profile() {
         let pack = parse_scene_pack_v1(FIXTURE.as_bytes()).unwrap();
