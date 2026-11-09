@@ -37,6 +37,40 @@ impl Default for OuroborosMeshConfig {
     }
 }
 
+/// Host-supplied presentation/resource budget.
+///
+/// The scene core never queries a monitor or GPU. The renderer host computes
+/// these values and asks for a deterministic geometry plan.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OuroborosMeshBudget {
+    /// Projected radius of the visible Ouroboros ring, in pixels.
+    pub projected_major_radius_px: u32,
+    /// Projected radius of the tube cross-section, in pixels.
+    pub projected_tube_radius_px: u32,
+    pub max_vertices: u32,
+    pub max_indices: u32,
+    /// Maximum canonical vertex/index storage estimate, in bytes.
+    pub max_buffer_bytes: u32,
+}
+
+/// Coarse, reproducible quality tier derived from the selected tessellation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OuroborosQualityTier {
+    Economy,
+    Balanced,
+    Cinematic,
+}
+
+/// A deterministic mesh selection and its exact resource estimate.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct OuroborosMeshPlan {
+    pub tier: OuroborosQualityTier,
+    pub config: OuroborosMeshConfig,
+    pub vertex_count: u32,
+    pub index_count: u32,
+    pub estimated_buffer_bytes: u32,
+}
+
 impl OuroborosMeshConfig {
     pub fn validate(self, scene: &OuroborosScene) -> Result<(), OuroborosMeshError> {
         if !(32..=2048).contains(&self.ring_segments)
@@ -61,6 +95,140 @@ impl OuroborosMeshConfig {
         }
         Ok(())
     }
+}
+
+impl OuroborosMeshConfig {
+    /// Select the highest deterministic quality tier allowed by host budgets.
+    ///
+    /// Projected size determines the desired tessellation. Resource ceilings
+    /// then select the best feasible ring/tube pair. No monitor, GPU, refresh
+    /// rate or frame clock is queried by this pure planning function.
+    pub fn plan_for_budget(
+        scene: &OuroborosScene,
+        tube_radius: f32,
+        budget: OuroborosMeshBudget,
+    ) -> Result<OuroborosMeshPlan, OuroborosMeshError> {
+        if !tube_radius.is_finite()
+            || !(0.001..=0.08).contains(&tube_radius)
+            || tube_radius > scene.config().major_radius * 0.20
+            || budget.max_vertices == 0
+            || budget.max_indices == 0
+            || budget.max_buffer_bytes == 0
+        {
+            return Err(OuroborosMeshError::InvalidConfiguration);
+        }
+
+        let desired_ring = desired_ring_segments(budget.projected_major_radius_px);
+        let desired_tube = desired_tube_segments(budget.projected_tube_radius_px);
+        let mut ring = desired_ring;
+        loop {
+            let mut tube = desired_tube;
+            loop {
+                let config = OuroborosMeshConfig {
+                    ring_segments: ring,
+                    tube_segments: tube,
+                    tube_radius,
+                };
+                let (vertices, indices, bytes) = mesh_resource_estimate(config)?;
+                if vertices <= budget.max_vertices
+                    && indices <= budget.max_indices
+                    && bytes <= budget.max_buffer_bytes
+                    && config.validate(scene).is_ok()
+                {
+                    let tier = if ring <= 128 && tube <= 8 {
+                        OuroborosQualityTier::Economy
+                    } else if ring <= 512 && tube <= 24 {
+                        OuroborosQualityTier::Balanced
+                    } else {
+                        OuroborosQualityTier::Cinematic
+                    };
+                    return Ok(OuroborosMeshPlan {
+                        tier,
+                        config,
+                        vertex_count: vertices,
+                        index_count: indices,
+                        estimated_buffer_bytes: bytes,
+                    });
+                }
+                if tube == 6 {
+                    break;
+                }
+                tube = previous_tube_tier(tube);
+            }
+            if ring == 32 {
+                break;
+            }
+            ring /= 2;
+        }
+
+        Err(OuroborosMeshError::BudgetTooSmall)
+    }
+}
+
+fn desired_ring_segments(projected_radius_px: u32) -> u32 {
+    // Keep projected centerline spacing near or below 0.75 px.
+    let desired = (std::f64::consts::TAU * f64::from(projected_radius_px) / 0.75)
+        .ceil()
+        .clamp(32.0, 2048.0) as u32;
+    let mut selected = 32_u32;
+    while selected.saturating_mul(2) <= desired {
+        selected *= 2;
+    }
+    selected
+}
+
+fn desired_tube_segments(projected_radius_px: u32) -> u32 {
+    match projected_radius_px {
+        0..=1 => 6,
+        2 => 8,
+        3..=4 => 12,
+        5..=8 => 16,
+        9..=12 => 24,
+        13..=20 => 32,
+        21..=32 => 48,
+        _ => 64,
+    }
+}
+
+fn previous_tube_tier(value: u32) -> u32 {
+    match value {
+        64 => 48,
+        48 => 32,
+        32 => 24,
+        24 => 16,
+        16 => 12,
+        12 => 8,
+        _ => 6,
+    }
+}
+
+fn mesh_resource_estimate(
+    config: OuroborosMeshConfig,
+) -> Result<(u32, u32, u32), OuroborosMeshError> {
+    let ring = config.ring_segments as usize;
+    let tube = config.tube_segments as usize;
+    let vertices = (ring + 1)
+        .checked_mul(tube + 1)
+        .ok_or(OuroborosMeshError::SizeOverflow)?;
+    let indices = ring
+        .checked_mul(tube)
+        .and_then(|quads| quads.checked_mul(6))
+        .ok_or(OuroborosMeshError::SizeOverflow)?;
+    // 12 f32 values per vertex (48 bytes) plus 32-bit indices.
+    let vertex_bytes = vertices
+        .checked_mul(48)
+        .ok_or(OuroborosMeshError::SizeOverflow)?;
+    let index_bytes = indices
+        .checked_mul(4)
+        .ok_or(OuroborosMeshError::SizeOverflow)?;
+    let bytes = vertex_bytes
+        .checked_add(index_bytes)
+        .ok_or(OuroborosMeshError::SizeOverflow)?;
+    Ok((
+        u32::try_from(vertices).map_err(|_| OuroborosMeshError::SizeLimitExceeded)?,
+        u32::try_from(indices).map_err(|_| OuroborosMeshError::SizeLimitExceeded)?,
+        u32::try_from(bytes).map_err(|_| OuroborosMeshError::SizeLimitExceeded)?,
+    ))
 }
 
 /// One vertex on the closed Ouroboros tube.
@@ -98,6 +266,7 @@ pub enum OuroborosMeshError {
     InvalidConfiguration,
     SizeOverflow,
     SizeLimitExceeded,
+    BudgetTooSmall,
     AllocationFailed,
     Scene(OuroborosError),
     DegenerateCenterline,
@@ -110,6 +279,7 @@ impl fmt::Display for OuroborosMeshError {
             Self::InvalidConfiguration => write!(f, "invalid Ouroboros mesh configuration"),
             Self::SizeOverflow => write!(f, "Ouroboros mesh size arithmetic overflowed"),
             Self::SizeLimitExceeded => write!(f, "Ouroboros mesh exceeds the vertex/index budget"),
+            Self::BudgetTooSmall => write!(f, "host mesh budget cannot hold the minimum Ouroboros geometry"),
             Self::AllocationFailed => write!(f, "unable to reserve bounded Ouroboros mesh storage"),
             Self::Scene(error) => write!(f, "invalid Ouroboros scene: {error}"),
             Self::DegenerateCenterline => {
@@ -657,6 +827,73 @@ mod tests {
         assert_eq!(
             mesh.validate(),
             Err(OuroborosMeshError::InvalidGeneratedGeometry)
+        );
+    }
+
+    #[test]
+    fn host_budget_selects_deterministic_screen_size_aware_mesh_plans() {
+        let scene = scene(OuroborosForm::Nature);
+        let budget = OuroborosMeshBudget {
+            projected_major_radius_px: 160,
+            projected_tube_radius_px: 4,
+            max_vertices: 40_000,
+            max_indices: 240_000,
+            max_buffer_bytes: 2_000_000,
+        };
+        let first =
+            OuroborosMeshConfig::plan_for_budget(&scene, 0.025, budget).unwrap();
+        let second =
+            OuroborosMeshConfig::plan_for_budget(&scene, 0.025, budget).unwrap();
+        assert_eq!(first, second);
+        assert!(first.vertex_count <= budget.max_vertices);
+        assert!(first.index_count <= budget.max_indices);
+        assert!(first.estimated_buffer_bytes <= budget.max_buffer_bytes);
+        assert_eq!(
+            mesh_resource_estimate(first.config).unwrap(),
+            (
+                first.vertex_count,
+                first.index_count,
+                first.estimated_buffer_bytes
+            )
+        );
+
+        let small = OuroborosMeshBudget {
+            projected_major_radius_px: 24,
+            projected_tube_radius_px: 1,
+            ..budget
+        };
+        let small_plan =
+            OuroborosMeshConfig::plan_for_budget(&scene, 0.025, small).unwrap();
+        assert!(small_plan.config.ring_segments <= first.config.ring_segments);
+        assert!(small_plan.config.tube_segments <= first.config.tube_segments);
+
+        let large = OuroborosMeshBudget {
+            projected_major_radius_px: 800,
+            projected_tube_radius_px: 24,
+            ..budget
+        };
+        let large_plan =
+            OuroborosMeshConfig::plan_for_budget(&scene, 0.025, large).unwrap();
+        assert!(large_plan.config.ring_segments >= first.config.ring_segments);
+        assert!(large_plan.config.tube_segments >= first.config.tube_segments);
+    }
+
+    #[test]
+    fn host_budget_rejects_limits_below_minimum_geometry() {
+        let scene = scene(OuroborosForm::Humanity);
+        assert_eq!(
+            OuroborosMeshConfig::plan_for_budget(
+                &scene,
+                0.025,
+                OuroborosMeshBudget {
+                    projected_major_radius_px: 100,
+                    projected_tube_radius_px: 8,
+                    max_vertices: 200,
+                    max_indices: 1_000,
+                    max_buffer_bytes: 10_000,
+                }
+            ),
+            Err(OuroborosMeshError::BudgetTooSmall)
         );
     }
 
