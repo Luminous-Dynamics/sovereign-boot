@@ -1,6 +1,6 @@
 # Ouroboros and the Luminous Visual Runtime
 
-**Status:** portable scene state, a deterministic CPU reference rasterizer, canonical event traces and content-addressed replay/capture receipts are implemented on `feat/ouroboros-identity-core-v1`. Tests are authored but have not yet been executed successfully on this exact branch head. No WGPU desktop renderer or Waywallen adapter is claimed by this document.
+**Status:** portable scene state, deterministic CPU rasterization, a bounded 3D tube mesh, canonical event traces and content-addressed replay/image/mesh receipts are implemented on `feat/ouroboros-identity-core-v1`. Tests are authored but have not yet been executed successfully on this exact branch head. No WGPU desktop renderer or Waywallen adapter is claimed by this document.
 
 ## 1. Product thesis
 
@@ -40,6 +40,15 @@ A third core module, `crates/visual-core/src/ouroboros_trace.rs`, defines a vers
 
 The CPU renderer also exposes `render_reference_artifact`, which binds RGBA bytes to width, height, scene-contract version and a BLAKE3 pixel digest. These receipts make a run inspectable and replayable; they do not establish cross-architecture floating-point parity, GPU parity, visual quality or authenticity without a separately verified source/build and capture process.
 
+The fourth core module, `crates/visual-core/src/ouroboros_mesh.rs`, converts the semantic centerline into a bounded closed tube mesh:
+- Stable ring/tube tessellation with explicit resource ceilings (ring 32–2048, tube 6–64 segments).
+- A deterministic low-twist frame projected from the scene's bounded centerline tangent.
+- Unit normals, a closed periodic centerline, duplicated UV seam vertices with byte-identical positions/normals, and stable indices across every semantic form.
+- An explicit outward triangle winding contract.
+- Canonical little-endian mesh serialization and a BLAKE3 receipt binding the scene-contract version, tessellation, vertices, normals, UVs, form weights and indices.
+
+The mesh is a geometry artifact, not a final character model or shader. It has no face sculpt, material graph, animation rig, GPU upload path, shadowing or physically based lighting. Its test coverage is authored but not yet qualified on this exact PR head.
+
 **Motion-quality boundary:** interrupted morphs are currently C0 position-continuous (the four form weights do not jump). The segment uses smoothstep and can exhibit a velocity discontinuity when retargeted. C1 velocity-continuity work is explicitly tracked in [issue #18](https://github.com/Luminous-Dynamics/sovereign-boot/issues/18); it is not yet implemented or claimed.
 
 ## 3. Architecture
@@ -50,7 +59,8 @@ Keep scene semantics portable and host capabilities separate.
 |---|---|---|
 | Scene identity and state | Rust visual core | Ouroboros v0.1 state model now added |
 | Scene pack / visual contract | Versioned data + Rust validation | Existing Scene Pack work is a separate integration track |
-| Reference renderer | Rust CPU RGBA | Mycelial scene plus new stylized Ouroboros CPU reference rasterizer; content-addressed capture receipts authored, golden artifact review pending |
+| Reference renderer | Rust CPU RGBA | Mycelial scene plus stylized Ouroboros CPU reference rasterizer; content-addressed capture receipts authored, golden artifact review pending |
+| Geometry | Rust CPU indexed mesh | Closed Ouroboros tube mesh, invariant topology, deterministic UV seams, normals and mesh receipt authored; exact-head geometry tests pending |
 | Replay/evidence | Canonical Rust event trace + BLAKE3 | Versioned input trace and full internal state digest authored; exact-head tests/replay receipts pending |
 | Desktop renderer | Rust + wgpu | Headless reference path exists on the separate Visual Genome branch; not a desktop presentation adapter |
 | Boot adapter | Rust DRM/KMS + NixOS service | Existing renderer, VM/hardware qualification remains separate |
@@ -192,6 +202,7 @@ Ouroboros is a first exemplar. Future scenes could embody civic commons, ecologi
 | P0 | Establish C1 morph contract | Issue #18: bounded retarget algorithm, velocity continuity, zero overshoot and adversarial replay tests |
 | P0 | Resolve portable visual-core/Scene Pack integration | Versioned contract and positive/negative fixtures, no ambiguous settings authority |
 | P1 | CPU reference renderer for Ouroboros | **Source implemented** with pixel receipts; exact-head tests, saved golden artifacts and human visual review remain pending |
+| P1 | Deterministic Ouroboros tube mesh | **Source implemented** with topology/mesh receipts; exact-head geometry tests and visual review pending |
 | P1 | WGPU Ouroboros renderer | Same semantic fixtures, GPU shader validation, reference comparisons and named-device performance evidence |
 | P1 | Waywallen bridge smoke renderer | Exact protocol handshake, buffer negotiation, DMA-BUF publication, SYNC_FD and release-point lifecycle |
 | P2 | Sandboxed Ouroboros Waywallen plugin | Per-user plugin install, typed scene settings, renderer process sandbox, static fallback and daemon lifecycle |
