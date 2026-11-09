@@ -1434,6 +1434,35 @@ mod tests {
     }
 
     #[test]
+    fn checkpoints_round_trip_every_active_motion_policy() {
+        for form in OuroborosForm::ALL {
+            for mode in [
+                OuroborosMotionMode::Reduced,
+                OuroborosMotionMode::LowPower,
+                OuroborosMotionMode::Balanced,
+                OuroborosMotionMode::Cinematic,
+            ] {
+                let mut source = scene(form);
+                let target = OuroborosForm::ALL[(checkpoint_form_tag(form) as usize + 1) % 4];
+                source.transition_to(target);
+                advance_for(&mut source, 1.25);
+                source.set_motion_mode(mode);
+
+                let (bytes, receipt) = source.encode_checkpoint().unwrap();
+                let (restored, restored_receipt) =
+                    OuroborosScene::restore_checkpoint(&bytes).unwrap();
+                assert_eq!(receipt, restored_receipt);
+                assert_eq!(source.frame(), restored.frame());
+                assert_eq!(source.current_velocity(), restored.current_velocity());
+                assert_eq!(
+                    source.canonical_state_bytes(),
+                    restored.canonical_state_bytes()
+                );
+            }
+        }
+    }
+
+    #[test]
     fn checkpoint_decoder_rejects_malformed_and_unsupported_inputs() {
         let scene = scene(OuroborosForm::Nature);
         let encoded = scene.encode_checkpoint().unwrap().0;
@@ -1522,10 +1551,17 @@ mod tests {
             Err(OuroborosCheckpointError::InvalidState)
         );
 
-        let mut invalid_timing = scene;
+        let mut invalid_timing = scene.clone();
         invalid_timing.transition_durations[2] = f32::NAN;
         assert_eq!(
             invalid_timing.encode_checkpoint(),
+            Err(OuroborosCheckpointError::InvalidState)
+        );
+
+        let mut invalid_pose = scene;
+        invalid_pose.head_pose.yaw_radians = f32::INFINITY;
+        assert_eq!(
+            invalid_pose.encode_checkpoint(),
             Err(OuroborosCheckpointError::InvalidState)
         );
     }
@@ -1547,6 +1583,8 @@ mod tests {
             contract::SCENE_CONTRACT_VERSION
         );
         assert_eq!(reduced_receipt.schema_version, CHECKPOINT_VERSION);
+        assert_eq!(active_bytes.len(), 121);
+        assert_eq!(reduced_bytes.len(), 157);
         assert!(active_bytes.len() <= 256);
         assert!(reduced_bytes.len() <= 256);
         assert!(reduced_bytes.len() > active_bytes.len());
