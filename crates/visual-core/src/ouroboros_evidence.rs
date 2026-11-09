@@ -371,6 +371,37 @@ mod tests {
     }
 
     #[test]
+    fn pose_only_trace_changes_landmark_receipt_without_changing_body_mesh() {
+        let base = OuroborosTrace::new(OuroborosConfig::default(), OuroborosForm::Nature);
+        let mut turned = base.clone();
+        turned
+            .push(OuroborosEvent::SetAttentionTarget {
+                target: crate::ouroboros::AttentionTarget::new(1.0, -1.0).unwrap(),
+            })
+            .unwrap();
+        for _ in 0..20 {
+            turned
+                .push(OuroborosEvent::Advance {
+                    dt_seconds: 0.1,
+                })
+                .unwrap();
+        }
+
+        let selected_plan = plan();
+        let baseline =
+            capture_ouroboros_evidence(&base, selected_plan, 160, 160).unwrap();
+        let posed = capture_ouroboros_evidence(&turned, selected_plan, 160, 160).unwrap();
+
+        assert_ne!(
+            baseline.receipt.landmarks.digest,
+            posed.receipt.landmarks.digest
+        );
+        assert_eq!(baseline.receipt.mesh, posed.receipt.mesh);
+        assert_ne!(baseline.receipt.image.pixel_digest, posed.receipt.image.pixel_digest);
+        assert_ne!(baseline.receipt.bundle_digest, posed.receipt.bundle_digest);
+    }
+
+    #[test]
     fn evidence_bundle_changes_when_the_canonical_trace_changes() {
         let source = trace();
         let first = capture_ouroboros_evidence(&source, plan(), 128, 128).unwrap();
