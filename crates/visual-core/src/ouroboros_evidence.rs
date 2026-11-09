@@ -353,7 +353,11 @@ mod tests {
         );
         assert_eq!(first.bundle_bytes.len(), 231);
         assert_eq!(first.checkpoint_bytes.len(), first.receipt.checkpoint.byte_length as usize);
-        assert_eq!(first.trace_bytes.len() > 0, true);
+        assert_eq!(first.trace_bytes, trace.encode().unwrap());
+        assert_eq!(
+            first.mesh.receipt().unwrap(),
+            first.receipt.mesh
+        );
     }
 
     #[test]
