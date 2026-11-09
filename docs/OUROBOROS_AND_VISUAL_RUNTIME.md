@@ -38,6 +38,11 @@ A third core module, `crates/visual-core/src/ouroboros_trace.rs`, defines a vers
 - A BLAKE3 digest of the **complete internal scene state**, including pending attention and transition/frozen state—not merely the visible frame.
 - The final renderer-facing scene, usable by the CPU reference renderer.
 
+
+A fifth core API adds a bounded portable scene checkpoint (`OUROCKP1`) independently of the event-trace and internal-state digest schemas. The canonical checkpoint captures configuration, current/target form state, independent Hermite channel durations, elapsed time, transition progress, all four C1 start velocities, normalized attention, head pose, motion policy and optional Reduced-mode frozen weights/progress/velocity. It returns a BLAKE3 receipt bound to the checkpoint schema and scene-contract version. Restore rejects malformed or unsupported inputs before returning a scene. It does not serialize renderer/device handles, display identities, process IDs, permissions or other host capabilities.
+
+Checkpoint source and tests are authored, not yet exact-head qualified. The current target is <=256 bytes, p95 encode/decode <=100 microseconds over 1,000 in-process round trips, and zero same-build state/frame divergence over 1,000 fixed steps after restore.
+
 The CPU renderer also exposes `render_reference_artifact`, which binds RGBA bytes to width, height, scene-contract version and a BLAKE3 pixel digest. These receipts make a run inspectable and replayable; they do not establish cross-architecture floating-point parity, GPU parity, visual quality or authenticity without a separately verified source/build and capture process.
 
 The fourth core module, `crates/visual-core/src/ouroboros_mesh.rs`, converts the semantic centerline into a bounded closed tube mesh:
@@ -62,6 +67,7 @@ Keep scene semantics portable and host capabilities separate.
 | Reference renderer | Rust CPU RGBA | Mycelial scene plus stylized Ouroboros CPU reference rasterizer; content-addressed capture receipts authored, golden artifact review pending |
 | Geometry | Rust CPU indexed mesh | Closed Ouroboros tube mesh, invariant topology, deterministic UV seams, normals and mesh receipt authored; exact-head geometry tests pending |
 | Replay/evidence | Canonical Rust event trace + BLAKE3 | Versioned input trace and full internal state digest authored; exact-head tests/replay receipts pending |
+| Persistence | Canonical Rust checkpoint + BLAKE3 | Bounded `OUROCKP1` checkpoint API and active/Reduced restore tests authored; exact-head qualification pending |
 | Desktop renderer | Rust + wgpu | Headless reference path exists on the separate Visual Genome branch; not a desktop presentation adapter |
 | Boot adapter | Rust DRM/KMS + NixOS service | Existing renderer, VM/hardware qualification remains separate |
 | Desktop host adapter | Waywallen renderer subprocess + pinned bridge; Waywallen Display owns Plasma/Wayland presentation | Not implemented |
@@ -156,6 +162,14 @@ Targets below are proposed qualification targets, not results. Every measurement
 
 The identity metric is intentionally not just a pixel similarity score: materials are supposed to change substantially. We should measure persistent landmarks, silhouette/topology continuity and human recognition separately.
 
+### Persistence and handoff
+
+- Active C1 trajectories must resume with identical per-channel values, velocities and subsequent state on the same build/target.
+- Reduced checkpoints must remain frozen until the host explicitly resumes the entity.
+- Snapshot size target <=256 bytes; p95 encode/decode <=100 microseconds for 1,000 in-process operations on the reference laptop CPU.
+- Invalid, oversized, unknown-version, out-of-range and trailing-byte snapshots are rejected before use.
+- Checkpoints contain semantic state only. Renderer handles, file paths, DMA-BUFs, FDs, display identity and permissions are never persisted.
+
 ### Accessibility, safety and privacy
 
 - Reduced mode must be static immediately; no black intro, background simulation or pointer-follow movement.
@@ -206,6 +220,7 @@ Ouroboros is a first exemplar. Future scenes could embody civic commons, ecologi
 | P0 | Resolve portable visual-core/Scene Pack integration | Versioned contract and positive/negative fixtures, no ambiguous settings authority |
 | P1 | CPU reference renderer for Ouroboros | **Source implemented** with pixel receipts; exact-head tests, saved golden artifacts and human visual review remain pending |
 | P1 | Deterministic Ouroboros tube mesh | **Source implemented** with topology/mesh receipts; exact-head geometry tests and visual review pending |
+| P1 | Portable Ouroboros checkpoint | **Source implemented** with `OUROCKP1` schema and active/Reduced restore tests; exact-head tests and p95 encode/decode measurements pending |
 | P1 | WGPU Ouroboros renderer | Same semantic fixtures, GPU shader validation, reference comparisons and named-device performance evidence |
 | P1 | Waywallen bridge smoke renderer | Exact protocol handshake, buffer negotiation, DMA-BUF publication, SYNC_FD and release-point lifecycle |
 | P2 | Sandboxed Ouroboros Waywallen plugin | Per-user plugin install, typed scene settings, renderer process sandbox, static fallback and daemon lifecycle |
