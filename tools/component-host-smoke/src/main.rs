@@ -345,20 +345,25 @@ fn main() -> Result<(), Box<dyn Error>> {
         .call_configure(&mut store, unchanged_scene, 48, 24, under_budget)?
         .is_ok()
     {
-        return Err(
-            io::Error::other("component accepted a scene branch request above the resource ceiling")
-                .into(),
-        );
+        return Err(io::Error::other(
+            "component accepted a scene branch request above the resource ceiling",
+        )
+        .into());
     }
-    if (scene_api.call_width(&mut store, unchanged_scene)?,
-        scene_api.call_height(&mut store, unchanged_scene)?) != (16, 16)
+    if (
+        scene_api.call_width(&mut store, unchanged_scene)?,
+        scene_api.call_height(&mut store, unchanged_scene)?,
+    ) != (16, 16)
     {
         return Err(io::Error::other("under-budget rejection partially mutated scene dimensions").into());
     }
     if scene_api.call_branch_count(&mut store, unchanged_scene)? != unchanged_before_branches {
         return Err(io::Error::other("under-budget rejection mutated the branch count").into());
     }
-    if scene_api.call_render(&mut store, unchanged_scene)?.rgba.as_slice()
+    if scene_api
+        .call_render(&mut store, unchanged_scene)?
+        .rgba
+        .as_slice()
         != unchanged_before_rgba.as_slice()
     {
         return Err(io::Error::other("under-budget rejection mutated the rendered frame").into());
@@ -374,7 +379,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         )?
         .is_ok()
     {
-        return Err(io::Error::other("component accepted a branch limit above the contract").into());
+        return Err(
+            io::Error::other("component accepted a branch limit above the contract").into(),
+        );
     }
     if (scene_api.call_width(&mut store, unchanged_scene)?,
         scene_api.call_height(&mut store, unchanged_scene)?) != (16, 16)
@@ -395,10 +402,15 @@ fn main() -> Result<(), Box<dyn Error>> {
     {
         return Err(io::Error::other("component accepted an unbounded tick batch").into());
     }
-    if (scene_api.call_width(&mut store, unchanged_scene)?,
-        scene_api.call_height(&mut store, unchanged_scene)?) != (16, 16)
+    if (
+        scene_api.call_width(&mut store, unchanged_scene)?,
+        scene_api.call_height(&mut store, unchanged_scene)?,
+    ) != (16, 16)
         || scene_api.call_branch_count(&mut store, unchanged_scene)? != unchanged_before_branches
-        || scene_api.call_render(&mut store, unchanged_scene)?.rgba.as_slice()
+        || scene_api
+            .call_render(&mut store, unchanged_scene)?
+            .rgba
+            .as_slice()
             != unchanged_before_rgba.as_slice()
     {
         return Err(io::Error::other("rejected tick batch mutated the scene").into());
