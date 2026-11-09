@@ -1739,6 +1739,9 @@ mod tests {
                     .into_iter()
                     .all(f32::is_finite)
                 );
+                if frames % 16 == 0 {
+                    assert!(scene.encode_checkpoint().unwrap().0.len() <= MAX_CHECKPOINT_BYTES);
+                }
             }
 
             // Force frequent boundary-adjacent freeze/resume cycles as well
@@ -1761,6 +1764,7 @@ mod tests {
                 scene.set_motion_mode(resume_mode);
                 assert_eq!(scene.current_weights(), reduced_target.weights());
                 assert_eq!(scene.current_velocity(), FormWeights::ZERO);
+                assert!(scene.encode_checkpoint().is_ok());
             }
         }
     }
