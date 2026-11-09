@@ -18,7 +18,7 @@ bindgen!({
 });
 
 use exports::luminous::sovereign_visual::scene::{Rgb, ScenePalette, SceneSettings};
-use sovereign_visual_pack::{parse_scene_pack_v1, PresentationVariant, ValidatedScenePack};
+use sovereign_visual_pack::{PresentationVariant, ValidatedScenePack, parse_scene_pack_v1};
 
 /// Convert the production parser's immutable core settings to the WIT wire
 /// record. The parser owns validation; this helper only adapts data types.
@@ -81,24 +81,18 @@ fn fnv1a64(bytes: &[u8]) -> u64 {
     hash
 }
 
-fn require_guest_ok(
-    result: Result<(), String>,
-    operation: &str,
-) -> Result<(), Box<dyn Error>> {
+fn require_guest_ok(result: Result<(), String>, operation: &str) -> Result<(), Box<dyn Error>> {
     result.map_err(|message| io::Error::other(format!("{operation}: {message}")))?;
     Ok(())
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let component_path = env::args_os()
-        .nth(1)
-        .map(PathBuf::from)
-        .ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "usage: sovereign-visual-component-host-smoke <component.wasm>",
-            )
-        })?;
+    let component_path = env::args_os().nth(1).map(PathBuf::from).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "usage: sovereign-visual-component-host-smoke <component.wasm>",
+        )
+    })?;
 
     // Exercise the production parser on the pinned upstream fixture before
     // any guest calls. The fixture has no assets, so this no-import host needs
@@ -158,10 +152,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         .call_advance_ticks(&mut store, first_scene, 1, ACTIVITY)?
         .is_ok()
     {
-        return Err(
-            io::Error::other("component allowed variable-delta to fixed-tick mode switching")
-                .into(),
-        );
+        return Err(io::Error::other(
+            "component allowed variable-delta to fixed-tick mode switching",
+        )
+        .into());
     }
 
     // Invalid inputs must be rejected rather than silently changing semantics.
@@ -171,7 +165,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     {
         return Err(io::Error::other("component accepted an out-of-range frame delta").into());
     }
-    if scene_api.call_contract(&mut store, first_scene, f32::NAN)?.is_ok() {
+    if scene_api
+        .call_contract(&mut store, first_scene, f32::NAN)?
+        .is_ok()
+    {
         return Err(io::Error::other("component accepted non-finite contraction progress").into());
     }
 
@@ -285,10 +282,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         .call_advance(&mut store, configured_a, DT_SECONDS, ACTIVITY)?
         .is_ok()
     {
-        return Err(
-            io::Error::other("component allowed fixed-tick to variable-delta mode switching")
-                .into(),
-        );
+        return Err(io::Error::other(
+            "component allowed fixed-tick to variable-delta mode switching",
+        )
+        .into());
     }
     let configured_frame = scene_api.call_render(&mut store, configured_a)?;
     let configured_replay = scene_api.call_render(&mut store, configured_b)?;
@@ -331,7 +328,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let configured_branches = scene_api.call_branch_count(&mut store, configured_a)?;
     if configured_branches > aggregate_branch_limit {
-        return Err(io::Error::other("configured WIT scene exceeded aggregate branch limit").into());
+        return Err(
+            io::Error::other("configured WIT scene exceeded aggregate branch limit").into(),
+        );
     }
 
     // Invalid settings must not mutate the existing scene, and catch-up
@@ -355,7 +354,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         scene_api.call_height(&mut store, unchanged_scene)?,
     ) != (16, 16)
     {
-        return Err(io::Error::other("under-budget rejection partially mutated scene dimensions").into());
+        return Err(
+            io::Error::other("under-budget rejection partially mutated scene dimensions").into(),
+        );
     }
     if scene_api.call_branch_count(&mut store, unchanged_scene)? != unchanged_before_branches {
         return Err(io::Error::other("under-budget rejection mutated the branch count").into());
@@ -386,7 +387,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     if (scene_api.call_width(&mut store, unchanged_scene)?,
         scene_api.call_height(&mut store, unchanged_scene)?) != (16, 16)
     {
-        return Err(io::Error::other("failed configure partially mutated scene dimensions").into());
+        return Err(
+            io::Error::other("failed configure partially mutated scene dimensions").into(),
+        );
     }
     if scene_api.call_branch_count(&mut store, unchanged_scene)? != unchanged_before_branches {
         return Err(io::Error::other("failed configure mutated the branch count").into());
