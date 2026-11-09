@@ -168,6 +168,36 @@ Targets below are proposed qualification targets, not results. Every measurement
 | Resume | First valid frame <=250 ms after visibility returns | Repeated cover/uncover and monitor reconnect tests |
 | Stability | 60-minute visible and 60-minute hidden runs without unbounded memory growth | RSS/GPU-memory traces and scene-state receipts |
 
+### Comparative qualification protocol
+
+Do not compare products from marketing claims or different machines. Freeze one matrix and capture the raw evidence for every runtime. Use the following dated software baselines:
+
+| Runtime | Baseline revision/date | Workload class to compare |
+|---|---|---|
+| Waywallen | v0.5.0 release (2026-10-20); separate source pin 0.6.0 commit in the adapter README | Same video file, multi-monitor lifecycle, renderer pause/restart, and the Ouroboros producer when integrated |
+| Fresco | v1.1.54 release (2026-11-01) | Same video/image playback, per-monitor pause, performance mode, battery pause and lock-screen behavior on supported desktops |
+| we-layerd | Current main source reviewed 2026-11-09 | Same Wallpaper Engine scene/video/web workloads where assets are licensed and available; output worker isolation, DMA-BUF/shared-memory behavior and frame pacing |
+| OpenWallpaper | Current official project docs reviewed 2026-11-09 | WASM scene, AOT runtime, multi-output targeting and compositor-specific pause |
+| Ouroboros | Exact PR/release commit plus a pinned adapter/runtime host | Same media workload for playback parity plus a dedicated semantic-entity workload for identity, transition, checkpoint and replay |
+
+**Test controls:** same laptop/GPU/driver/kernel/compositor where the runtime supports it; same output resolution/refresh; AC and battery as separate conditions; same 1080p60 H.264 clip for media parity; identical covered/hidden durations; same display hotplug sequence. Repeat each run at least five times after a documented warm-up, randomize product order and preserve logs and raw timestamps. Record exact app versions and settings. A runtime that does not support the same compositor or workload is marked *not comparable*, never assigned a zero or inferred result.
+
+**Measure separately:** CPU time per process; GPU engine utilization and memory; frames produced, submitted and actually presented; dropped/late frames; time-to-first-valid-presented-frame; hidden-pause latency; resume latency; monitor hotplug recovery; renderer crash recovery; total system power from a wall meter where possible. Package/CPU telemetry is useful diagnostic evidence but is not interchangeable with wall power. Fresco publishes an Intel N150 package-power table and explicitly notes that it lacks a matched idle baseline, so it cannot be treated as a direct marginal wallpaper cost or compared numerically to the RTX 2070 laptop without repeating the measurement.
+
+**The first target is parity, not a fabricated SOTA win:** no worse than the best supported baseline on presented-frame stability, hidden pause, memory growth and recovery for the common video workload; then demonstrate an attributable advantage in semantic identity, C1 continuity, reproducible restore and bounded host-budget degradation. Report median, p95/p99, confidence intervals, hardware/software tuple and every unsupported scenario.
+
+### Multi-display and lifecycle qualification
+
+| Scenario | Acceptance target | Required evidence |
+|---|---|---|
+| 1 display → 2/3 displays | Every display reaches its selected mode; scene simulation is shared when semantics/settings are identical | Per-output present traces, pool generations, total memory and CPU/GPU use |
+| Output hotplug | No stale output identity, stale frame or leaked pool; reconnect <=1 second after host reports the output | Stable output IDs, buffer-generation receipts and process/resource snapshots |
+| Mixed GPU / hybrid graphics | Unknown or cross-GPU topology takes a conservative path; no assumed zero-copy | DRM node identities, negotiated path, modifier, plane counts and fence traces |
+| Covered/fullscreen/hidden | Stop simulation/render work within 1 second, while preserving checkpoint state | Host visibility events, frame counters and CPU/GPU counters |
+| Sleep/resume | First valid presented frame <=250 ms after the compositor reports a usable target; no stale DMA-BUF or FD reuse | Before/after generation IDs, present timestamps and descriptor lifecycle logs |
+| Renderer crash/restart | Static/CPU fallback remains opaque; restart recovers from a validated checkpoint or known initial state | Fault injection, checkpoint digest, process exit/restart trace and first-present receipt |
+| Display resize | Re-negotiate target and pool; never write beyond the negotiated extent | Render-target revision, pool generation and memory bounds |
+
 ### Ouroboros identity and morph quality
 
 | Metric | Acceptance target |
@@ -190,9 +220,18 @@ The identity metric is intentionally not just a pixel similarity score: material
 
 - Active C1 trajectories must resume with identical per-channel values, velocities and subsequent state on the same build/target.
 - Reduced checkpoints must remain frozen until the host explicitly resumes the entity.
-- Snapshot size target <=256 bytes; p95 encode/decode <=100 microseconds for 1,000 in-process operations on the reference laptop CPU.
+- Current canonical schema sizes are 121 bytes for an active checkpoint and 157 bytes for a Reduced checkpoint; the hard format ceiling remains 256 bytes.
+- p95 encode/decode target <=100 microseconds for 1,000 in-process operations on the reference laptop CPU; actual latency remains unmeasured.
 - Invalid, oversized, unknown-version, out-of-range and trailing-byte snapshots are rejected before use.
 - Checkpoints contain semantic state only. Renderer handles, file paths, DMA-BUFs, FDs, display identity and permissions are never persisted.
+
+### Host-budgeted deterministic LOD
+
+- The host—not the scene core—supplies projected pixel size and vertex/index/byte ceilings.
+- Every plan must disclose requested versus selected ring/tube segments, exact geometry counts and estimated bytes.
+- Plans must never exceed a declared ceiling; budgets below the minimum viable mesh must fail closed and select a CPU/static host fallback.
+- Identical inputs must produce identical plan fields; increasing projected ring size with other inputs fixed must not reduce selected ring segments.
+- Extend geometry budgets into a scene-wide budget: simulation CPU time, mesh bytes, material/shader count, texture bytes, render-target pixels and maximum frame rate. The first release should not add adaptive behavior until the host can explain every downgrade.
 
 ### Accessibility, safety and privacy
 
