@@ -192,12 +192,9 @@ fn validate_plan_shape(
     scene: &crate::ouroboros::OuroborosScene,
     plan: OuroborosMeshPlan,
 ) -> Result<(), OuroborosEvidenceError> {
-    let canonical = OuroborosMeshConfig::plan_for_budget(
-        scene,
-        plan.config.tube_radius,
-        plan.budget,
-    )
-    .map_err(|_| OuroborosEvidenceError::InvalidPlan)?;
+    let canonical =
+        OuroborosMeshConfig::plan_for_budget(scene, plan.config.tube_radius, plan.budget)
+            .map_err(|_| OuroborosEvidenceError::InvalidPlan)?;
     if canonical != plan {
         return Err(OuroborosEvidenceError::InvalidPlan);
     }
@@ -327,13 +324,10 @@ mod tests {
             first.receipt.bundle_digest,
             *blake3::hash(&first.bundle_bytes).as_bytes()
         );
-        assert_eq!(
-            first.receipt.checkpoint.digest,
-            {
-                let replay = trace.replay().unwrap();
-                replay.scene.encode_checkpoint().unwrap().1.digest
-            }
-        );
+        assert_eq!(first.receipt.checkpoint.digest, {
+            let replay = trace.replay().unwrap();
+            replay.scene.encode_checkpoint().unwrap().1.digest
+        });
         assert_eq!(first.receipt.mesh.vertex_count, plan.vertex_count);
         assert_eq!(first.receipt.mesh.index_count, plan.index_count);
         assert_eq!(first.receipt.host_budget, plan.budget);
@@ -344,12 +338,12 @@ mod tests {
             *blake3::hash(&first.pixels).as_bytes()
         );
         assert_eq!(first.bundle_bytes.len(), 251);
-        assert_eq!(first.checkpoint_bytes.len(), first.receipt.checkpoint.byte_length as usize);
-        assert_eq!(first.trace_bytes, trace.encode().unwrap());
         assert_eq!(
-            first.mesh.receipt().unwrap(),
-            first.receipt.mesh
+            first.checkpoint_bytes.len(),
+            first.receipt.checkpoint.byte_length as usize
         );
+        assert_eq!(first.trace_bytes, trace.encode().unwrap());
+        assert_eq!(first.mesh.receipt().unwrap(), first.receipt.mesh);
     }
 
     #[test]
