@@ -7,8 +7,8 @@ This directory contains a **renderer-only plugin manifest template**. It is not 
 - Repository: [waywallen/waywallen](https://github.com/waywallen/waywallen)
 - Reviewed source revision: `e2ed0b0adc6be6477c7bcc5015c76f4a1bb2b437`
 - Upstream package version at that revision: `0.6.0`
-- Renderer IPC protocol: v3
-- Renderer spawn version: 10
+- Renderer IPC protocol: v3 (protocol v3)
+- Renderer spawn version: 10 (spawn version 10)
 - Bridge library: MIT-licensed `waywallen-bridge` C ABI in the same upstream repository's `bridge/` directory
 
 The released v0.5.0 tag is a separate compatibility target. Do not assume the moving `main` branch and v0.5.0 have identical bridge APIs or lifecycle behaviour. Re-pin this document and run the adapter conformance suite when changing the upstream commit.
