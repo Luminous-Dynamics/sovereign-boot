@@ -357,7 +357,6 @@ impl OuroborosScene {
         bytes.extend_from_slice(b"OUROSTA1");
         bytes.extend_from_slice(&contract::SCENE_CONTRACT_VERSION.to_le_bytes());
 
-        let mut push = |value: f32| bytes.extend_from_slice(&value.to_bits().to_le_bytes());
         for value in [
             self.config.major_radius,
             self.config.vertical_scale,
@@ -379,7 +378,7 @@ impl OuroborosScene {
             self.head_pose.yaw_radians,
             self.head_pose.pitch_radians,
         ] {
-            push(value);
+            append_state_f32(&mut bytes, value);
         }
 
         bytes.push(match self.target_form {
@@ -403,7 +402,7 @@ impl OuroborosScene {
                     weights.digital,
                     weights.enlightenment,
                 ] {
-                    push(value);
+                    append_state_f32(&mut bytes, value);
                 }
             }
             None => bytes.push(0),
@@ -411,7 +410,7 @@ impl OuroborosScene {
         match self.frozen_progress {
             Some(progress) => {
                 bytes.push(1);
-                push(progress);
+                append_state_f32(&mut bytes, progress);
             }
             None => bytes.push(0),
         }
@@ -612,6 +611,10 @@ impl OuroborosScene {
         let eased = local * local * (3.0 - 2.0 * local);
         self.from_weights.lerp(self.target_form.weights(), eased)
     }
+}
+
+fn append_state_f32(bytes: &mut Vec<u8>, value: f32) {
+    bytes.extend_from_slice(&value.to_bits().to_le_bytes());
 }
 
 #[cfg(test)]
