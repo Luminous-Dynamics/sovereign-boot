@@ -182,8 +182,16 @@ in
     live_sha = machine.succeed(
         "sha256sum ${fakeRenderer}/bin/quicken-fb | cut -d' ' -f1"
     ).strip()
+    armed_at = machine.succeed("date +%s").strip()
+    expires_at = str(int(armed_at) + 900)
     machine.succeed(
-        "printf 'request_id=88888888888888888888888888888888\\ndevice=/dev/dri/card99\\nseconds=1\\nartifact_sha256=%s\\npreboot_probe_sha256=8888888888888888888888888888888888888888888888888888888888888888\\narmed_at_unix_s=%s\\nexpires_at_unix_s=%s\\n' " + live_sha + " \"$(date +%s)\" \"$(($(date +%s) + 900))\" > /var/lib/sovereign-boot/physical-canary.request"
+        "printf 'request_id=88888888888888888888888888888888\\ndevice=/dev/dri/card99\\nseconds=1\\nartifact_sha256=%s\\npreboot_probe_sha256=8888888888888888888888888888888888888888888888888888888888888888\\narmed_at_unix_s=%s\\nexpires_at_unix_s=%s\\n' "
+        + live_sha
+        + " "
+        + armed_at
+        + " "
+        + expires_at
+        + " > /var/lib/sovereign-boot/physical-canary.request"
     )
     machine.succeed("systemctl reset-failed sovereign-boot-physical-canary.service")
     machine.fail("systemctl start sovereign-boot-physical-canary.service")
@@ -201,8 +209,14 @@ in
 
     # A stale/mismatched artifact request must fail closed before the renderer
     # executes, and the request must still be consumed.
+    armed_at = machine.succeed("date +%s").strip()
+    expires_at = str(int(armed_at) + 900)
     machine.succeed(
-        "printf 'request_id=%s\ndevice=/dev/dri/card99\nseconds=1\nartifact_sha256=%064d\npreboot_probe_sha256=%s\narmed_at_unix_s=%s\nexpires_at_unix_s=%s\n' 22222222222222222222222222222222 0 2222222222222222222222222222222222222222222222222222222222222222 "$(date +%s)" "$(($(date +%s) + 900))" > /var/lib/sovereign-boot/physical-canary.request"
+        "printf 'request_id=22222222222222222222222222222222\\ndevice=/dev/dri/card99\\nseconds=1\\nartifact_sha256=%064d\\npreboot_probe_sha256=2222222222222222222222222222222222222222222222222222222222222222\\narmed_at_unix_s=%s\\nexpires_at_unix_s=%s\\n' 0 "
+        + armed_at
+        + " "
+        + expires_at
+        + " > /var/lib/sovereign-boot/physical-canary.request"
     )
     machine.succeed("systemctl reset-failed sovereign-boot-physical-canary.service")
     machine.fail("systemctl start sovereign-boot-physical-canary.service")
@@ -224,8 +238,14 @@ in
 
     # A wrong requested DRM card must fail closed even when an alternate card path exists.
     machine.succeed("touch /dev/dri/card98")
+    armed_at = machine.succeed("date +%s").strip()
+    expires_at = str(int(armed_at) + 900)
     machine.succeed(
-        "printf 'request_id=%s\ndevice=/dev/dri/card98\nseconds=1\nartifact_sha256=0000000000000000000000000000000000000000000000000000000000000000\npreboot_probe_sha256=%s\narmed_at_unix_s=%s\nexpires_at_unix_s=%s\n' 33333333333333333333333333333333 3333333333333333333333333333333333333333333333333333333333333333 "$(date +%s)" "$(($(date +%s) + 900))" > /var/lib/sovereign-boot/physical-canary.request"
+        "printf 'request_id=33333333333333333333333333333333\\ndevice=/dev/dri/card98\\nseconds=1\\nartifact_sha256=0000000000000000000000000000000000000000000000000000000000000000\\npreboot_probe_sha256=3333333333333333333333333333333333333333333333333333333333333333\\narmed_at_unix_s=%s\\nexpires_at_unix_s=%s\\n' "
+        + armed_at
+        + " "
+        + expires_at
+        + " > /var/lib/sovereign-boot/physical-canary.request"
     )
     machine.succeed("systemctl reset-failed sovereign-boot-physical-canary.service")
     machine.fail("systemctl start sovereign-boot-physical-canary.service")
@@ -293,8 +313,16 @@ in
     sha = machine.succeed(
         "sha256sum \${fakeRenderer}/bin/quicken-fb | cut -d' ' -f1"
     ).strip()
+    armed_at = machine.succeed("date +%s").strip()
+    expires_at = str(int(armed_at) + 900)
     machine.succeed(
-        "printf 'request_id=66666666666666666666666666666666\\ndevice=/dev/dri/card99\\nseconds=1\\nartifact_sha256=%s\\npreboot_probe_sha256=32d2589e89bde7b3a00a939e390d74b997b7909307c3ed7ea4b2a07b63b82708\\narmed_at_unix_s=%s\\nexpires_at_unix_s=%s\\n' " + sha + " \"$(date +%s)\" \"$(($(date +%s) + 900))\" > /var/lib/sovereign-boot/physical-canary.request"
+        "printf 'request_id=66666666666666666666666666666666\\ndevice=/dev/dri/card99\\nseconds=1\\nartifact_sha256=%s\\npreboot_probe_sha256=32d2589e89bde7b3a00a939e390d74b997b7909307c3ed7ea4b2a07b63b82708\\narmed_at_unix_s=%s\\nexpires_at_unix_s=%s\\n' "
+        + sha
+        + " "
+        + armed_at
+        + " "
+        + expires_at
+        + " > /var/lib/sovereign-boot/physical-canary.request"
     )
     machine.succeed("systemctl reset-failed sovereign-boot-physical-canary.service")
     machine.fail("systemctl start sovereign-boot-physical-canary.service")
@@ -318,8 +346,16 @@ in
     sha = machine.succeed(
         "sha256sum ${fakeRenderer}/bin/quicken-fb | cut -d' ' -f1"
     ).strip()
+    armed_at = machine.succeed("date +%s").strip()
+    expires_at = str(int(armed_at) + 900)
     machine.succeed(
-        "printf 'request_id=77777777777777777777777777777777\\ndevice=/dev/dri/card99\\nseconds=1\\nartifact_sha256=%s\\npreboot_probe_sha256=32d2589e89bde7b3a00a939e390d74b997b7909307c3ed7ea4b2a07b63b82708\\narmed_at_unix_s=%s\\nexpires_at_unix_s=%s\\n' " + sha + " \"$(date +%s)\" \"$(($(date +%s) + 900))\" > /var/lib/sovereign-boot/physical-canary.request"
+        "printf 'request_id=77777777777777777777777777777777\\ndevice=/dev/dri/card99\\nseconds=1\\nartifact_sha256=%s\\npreboot_probe_sha256=32d2589e89bde7b3a00a939e390d74b997b7909307c3ed7ea4b2a07b63b82708\\narmed_at_unix_s=%s\\nexpires_at_unix_s=%s\\n' "
+        + sha
+        + " "
+        + armed_at
+        + " "
+        + expires_at
+        + " > /var/lib/sovereign-boot/physical-canary.request"
     )
     machine.succeed("systemctl reset-failed sovereign-boot-physical-canary.service")
     machine.fail("systemctl start sovereign-boot-physical-canary.service")
