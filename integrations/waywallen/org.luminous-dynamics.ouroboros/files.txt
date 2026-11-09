@@ -1,0 +1,2 @@
+../../../../bin/luminous-ouroboros-renderer
+plugin.toml
