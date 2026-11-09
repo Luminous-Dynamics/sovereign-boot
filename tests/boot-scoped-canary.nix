@@ -246,13 +246,13 @@ in
     armed_at = machine.succeed("date +%s").strip()
     expires_at = str(int(armed_at) + 900)
     machine.succeed(
-        "printf 'request_id=44444444444444444444444444444444\\\\ndevice=/dev/dri/card99\\\\nseconds=1\\\\nartifact_sha256="
+        "printf 'request_id=44444444444444444444444444444444\\ndevice=/dev/dri/card99\\nseconds=1\\nartifact_sha256="
         + sha
-        + "\\\\npreboot_probe_sha256=32d2589e89bde7b3a00a939e390d74b997b7909307c3ed7ea4b2a07b63b82708\\\\narmed_at_unix_s="
+        + "\\npreboot_probe_sha256=32d2589e89bde7b3a00a939e390d74b997b7909307c3ed7ea4b2a07b63b82708\\narmed_at_unix_s="
         + armed_at
-        + "\\\\nexpires_at_unix_s="
+        + "\\nexpires_at_unix_s="
         + expires_at
-        + "\\\\n' > /var/lib/sovereign-boot/physical-canary.request"
+        + "\\n' > /var/lib/sovereign-boot/physical-canary.request"
     )
     machine.succeed("systemctl reset-failed sovereign-boot-physical-canary.service")
     machine.fail("systemctl start sovereign-boot-physical-canary.service")
