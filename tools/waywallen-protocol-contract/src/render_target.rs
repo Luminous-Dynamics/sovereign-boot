@@ -500,6 +500,15 @@ mod tests {
             Err(ContractError::InvalidRenderTargetOutcome)
         );
 
+        assert_eq!(
+            RenderTargetPath::try_from(4),
+            Err(ContractError::InvalidRenderTargetConfig)
+        );
+        assert_eq!(
+            RenderTargetMemorySource::try_from(3),
+            Err(ContractError::InvalidRenderTargetConfig)
+        );
+
         let mut invalid = capabilities(RenderTargetMode::NativeExtent);
         invalid.alignment.width = 0;
         assert_eq!(invalid.validate(), Err(ContractError::InvalidRenderTargetCapabilities));
