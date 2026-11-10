@@ -124,7 +124,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     store.set_fuel(100_000_000)?;
 
     let bindings = VisualComponent::instantiate(&mut store, &component, &linker)?;
-    let scene_api = bindings.luminous_sovereign_visual_scene();
+    let scene_api = bindings.luminous_sovereign_visual_scene().visual_scene();
 
     const WIDTH: u32 = 32;
     const HEIGHT: u32 = 24;
