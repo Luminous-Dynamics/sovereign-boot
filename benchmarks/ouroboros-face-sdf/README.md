@@ -96,6 +96,36 @@ Hold the semantic input field fixed when comparing extraction algorithms.
 4. **SIGGRAPH 2026 discrete-SDF dual contouring:** evaluate the authors' maintained Gpytoolbox reference implementation as an offline comparison after reviewing license and platform reproducibility.
 5. **Rust-first implementation:** only port or reimplement after the reference corpus identifies a material advantage and provides adversarial fixtures.
 
+### Same-sample extractor comparison (initial 64³ probe)
+
+A separate CPU-only probe now supplies the **same first-axis-fastest signed-int32 microunit field bytes** to two different extractors at 64³, smooth-union width 0.004. The sample SHA-256 is `0ce6069a45f415734f8649f9ef2fe9fb0aa2b269ea69b2ababbd50ca4910853c`.
+
+| Metric | Lewiner marching cubes | Simple finite-gradient QEF dual contouring |
+|---|---:|---:|
+| Vertices | 5,786 | 5,788 |
+| Output quads | 0 | 5,786 |
+| Triangles after fixed 0–2 quad triangulation | 11,568 | 11,572 |
+| Trimesh watertight / winding-consistent | Yes / Yes | Yes / Yes |
+| Connected components / Euler | 1 / 2 | 1 / 2 |
+| p95 residual to the same approximate continuous field | 3.45e-5 | 4.56e-4 |
+| Maximum residual | 9.57e-4 | 3.47e-3 |
+| One observed extraction time | 10.64 ms | 1,074.45 ms |
+| Estimated face bytes after triangle conversion | 347,112 | 347,232 |
+
+The conventional DC reference emits quads; the table triangulates them only to run the common Trimesh topology checks. Its QEF uses finite-difference gradients and a small cell-center regularizer, clamps the solution to the cell, then builds dual faces around sign-changing primal edges.
+
+**Interpretation is deliberately limited.** Both meshes pass these basic topology diagnostics on this fixture, but this simple QEF implementation has higher field residual. Its Python-loop extraction time is not comparable with scikit-image's compiled Cython marching-cubes implementation. These results do not establish that marching cubes is superior to optimized dual contouring, and they do not test the SIGGRAPH 2026 algorithm. See [`extractor-comparison-v1.json`](extractor-comparison-v1.json).
+
+Reproduce with the pinned research environment (not a production dependency):
+
+```sh
+python benchmarks/ouroboros-face-sdf/compare-extractors-reference.py \
+  --resolution 64 --smooth-width 0.004 --trials 3 \
+  --output extractor-comparison-local.json
+```
+
+Install research-only dependencies: NumPy 2.3.5, scikit-image 0.26.0 and Trimesh 4.11.1. The script labels itself an offline Python reference; it is not invoked by production Cargo or runtime code.
+
 ### Maintained API contract and reproducibility
 
 The maintained Gpytoolbox API accepts `S` (one signed-distance value per grid vertex), `GV` (one 3D position per grid vertex), and `nx, ny, nz`. Its documented flattening rule is `i + nx * (j + ny * k)`: the first axis is fastest. The canonical Ouroboros sampling order is therefore forward-fastest, then lateral, then up.
