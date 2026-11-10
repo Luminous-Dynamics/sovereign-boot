@@ -464,7 +464,7 @@ mod tests {
 
     #[test]
     fn any_input_change_changes_the_trace_digest() {
-        let mut left = representative_trace();
+        let left = representative_trace();
         let mut right = representative_trace();
         right.events[2] = OuroborosEvent::SetAttentionTarget {
             target: AttentionTarget::new(-0.45, -0.2).unwrap(),
