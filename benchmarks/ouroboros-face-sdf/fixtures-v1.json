@@ -169,7 +169,14 @@
       "up"
     ],
     "recommendedQuantizationForFutureCanonicalSamples": "signed-int32 microunits",
-    "currentReferenceSampleFormat": "float32"
+    "currentReferenceSampleFormat": "float32",
+    "serializationOrder": "i + nx * (j + ny * k)",
+    "fastestAxis": "forward",
+    "referenceApi": {
+      "name": "gpytoolbox.dual_contouring_of_signed_distance_data",
+      "contract": "SDF samples S and grid vertices GV use row i + nx*(j + ny*k); first axis varies fastest",
+      "output": "vertex positions V and quadrilateral faces F"
+    }
   },
   "algorithmCandidates": [
     "separate-closed-volumes-with-explicit-occlusion",
