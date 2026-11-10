@@ -188,6 +188,17 @@ For Vulkan, query supported presentation timing/synchronization extensions and r
 
 References: [Vulkan Window System Integration](https://docs.vulkan.org/spec/latest/chapters/VK_KHR_surface/wsi.html), [VK_EXT_present_timing proposal](https://docs.vulkan.org/features/latest/features/proposals/VK_EXT_present_timing.html), [WebGPU timestamp-query and device timeline](https://www.w3.org/TR/webgpu/).
 
+### Waywallen host integration: where presentation truth actually lives
+
+A current moving-main review of the public `waywallen-display` documentation and C header clarifies that the Waywallen renderer daemon is not the presentation-feedback owner. `waywallen-display` is a client library used by the desktop integration process: it receives DMA-BUF frames plus acquire/release fences, then the host renders/composes the received content into its desktop surface. Its public callback table exposes `on_frame_ready`, texture/binding/composition callbacks and presentation-state snapshots, but no per-frame compositor-presented callback. A successful `on_frame_ready` callback is therefore not presentation evidence.
+
+The feedback adapter must be attached to the component that owns the actual surface commit:
+- **Layer-shell client:** a standalone Wayland client can request `wp_presentation_feedback` for each commit, when supported by the compositor.
+- **Plasma/Qt QML:** the QML/scene-graph host owns the desktop surface. A bridge must associate the actual Qt/Wayland surface commit with the frame sequence. Do not rely on undocumented Qt internals without pinning Qt and testing the exact adapter.
+- **GNOME Shell/Mutter:** a Shell extension runs inside the compositor's shell environment; do not assume client-side `wp_presentation` can report an internal compositor surface. Investigate an explicit Mutter frame-clock/presentation source. If that source cannot be bound to a specific rendered entity frame, report Unknown/incomplete rather than fabricate a Presented event.
+
+The public upstream source references reviewed for architecture are [waywallen-display BUILD.md](https://github.com/waywallen/waywallen-display/blob/main/BUILD.md), [the public C header](https://github.com/waywallen/waywallen-display/blob/main/include/waywallen_display.h) and [the project README](https://github.com/waywallen/waywallen-display/blob/main/README.md). They point to moving `main`; pin an exact release/commit and record protocol version before implementation. This is separate from the renderer IPC v3/spawn v10 compatibility revision already pinned by the Ouroboros integration work.
+
 ## 5. Evidence graph and trust boundary
 
 The current `OUROEVB4` root is useful: it content-addresses replay, checkpoint, landmarks, geometry plans/meshes and the CPU reference image. It is not signed or authenticated. Preserve this distinction.
