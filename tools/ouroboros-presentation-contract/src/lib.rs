@@ -592,24 +592,67 @@ impl FrameReceipt {
     }
 }
 
-/// Per-session verifier for monotonic frame sequence and exact target-pool
-/// generation. Construct a new guard for each renderer presentation session.
+/// Immutable identity of one presentation session. Output properties may
+/// change only through a strictly newer buffer-pool generation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SessionBinding {
+    pub entity_id: EntityId,
+    pub entity_revision_root: Digest,
+    pub backend_build_digest: Digest,
+    pub session_id: [u8; 16],
+    pub decision_digest: Digest,
+    pub target_format_id: u16,
+    pub width: u32,
+    pub height: u32,
+}
+
+impl SessionBinding {
+    pub fn validate(&self) -> Result<(), ContractError> {
+        if self.entity_id.is_zero()
+            || self.entity_revision_root.iter().all(|byte| *byte == 0)
+            || self.backend_build_digest.iter().all(|byte| *byte == 0)
+            || self.session_id.iter().all(|byte| *byte == 0)
+            || self.decision_digest.iter().all(|byte| *byte == 0)
+            || self.target_format_id == 0
+            || self.width == 0
+            || self.height == 0
+        {
+            return Err(ContractError::InvalidSessionBinding);
+        }
+        Ok(())
+    }
+
+    fn matches(&self, receipt: &FrameReceipt) -> bool {
+        self.entity_id == receipt.entity_id
+            && self.entity_revision_root == receipt.entity_revision_root
+            && self.backend_build_digest == receipt.backend_build_digest
+            && self.session_id == receipt.session_id
+            && self.decision_digest == receipt.decision_digest
+            && self.target_format_id == receipt.target_format_id
+            && self.width == receipt.width
+            && self.height == receipt.height
+    }
+}
+
+/// Per-session verifier. It fences frames to the entity revision, backend
+/// build, negotiated decision, output format/extent and exact pool generation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FrameSequenceGuard {
+    binding: SessionBinding,
     expected_generation: u64,
     last_sequence: u64,
-    session_id: Option<[u8; 16]>,
 }
 
 impl FrameSequenceGuard {
-    pub fn new(expected_generation: u64) -> Result<Self, ContractError> {
+    pub fn new(binding: SessionBinding, expected_generation: u64) -> Result<Self, ContractError> {
+        binding.validate()?;
         if expected_generation == 0 {
             return Err(ContractError::InvalidFrameReceipt);
         }
         Ok(Self {
+            binding,
             expected_generation,
             last_sequence: 0,
-            session_id: None,
         })
     }
 
@@ -618,26 +661,36 @@ impl FrameSequenceGuard {
         if receipt.buffer_generation != self.expected_generation {
             return Err(ContractError::StaleBufferGeneration);
         }
-        if let Some(session_id) = self.session_id {
-            if session_id != receipt.session_id {
-                return Err(ContractError::SessionMismatch);
-            }
+        if !self.binding.matches(receipt) {
+            return Err(ContractError::SessionBindingMismatch);
         }
         if receipt.frame_sequence <= self.last_sequence {
             return Err(ContractError::NonMonotonicFrameSequence);
         }
-        self.session_id = Some(receipt.session_id);
         self.last_sequence = receipt.frame_sequence;
         Ok(())
     }
 
-    /// A new buffer pool must have a strictly newer generation. The sequence
-    /// counter is intentionally not reset across target reconfiguration.
-    pub fn reconfigure(&mut self, new_generation: u64) -> Result<(), ContractError> {
+    /// Reconfiguration may alter target format/extent only when the host
+    /// publishes a strictly newer pool generation. The frame sequence remains
+    /// monotonic across reconfiguration.
+    pub fn reconfigure(
+        &mut self,
+        new_generation: u64,
+        target_format_id: u16,
+        width: u32,
+        height: u32,
+    ) -> Result<(), ContractError> {
         if new_generation <= self.expected_generation {
             return Err(ContractError::StaleBufferGeneration);
         }
+        if target_format_id == 0 || width == 0 || height == 0 {
+            return Err(ContractError::InvalidSessionBinding);
+        }
         self.expected_generation = new_generation;
+        self.binding.target_format_id = target_format_id;
+        self.binding.width = width;
+        self.binding.height = height;
         Ok(())
     }
 }
@@ -658,6 +711,8 @@ pub enum ContractError {
     StaleBufferGeneration,
     NonMonotonicFrameSequence,
     SessionMismatch,
+    InvalidSessionBinding,
+    SessionBindingMismatch,
 }
 
 impl fmt::Display for ContractError {
@@ -978,9 +1033,69 @@ mod tests {
         );
     }
 
+    fn session_binding() -> SessionBinding {
+        SessionBinding {
+            entity_id: EntityId([1; 16]),
+            entity_revision_root: [2; 32],
+            backend_build_digest: [6; 32],
+            session_id: [3; 16],
+            decision_digest: [5; 32],
+            target_format_id: 1,
+            width: 1920,
+            height: 1080,
+        }
+    }
+
     #[test]
-    fn frame_guard_rejects_duplicate_sequence_and_stale_pool() {
-        let mut guard = FrameSequenceGuard::new(4).unwrap();
+    fn frame_guard_binds_entity_revision_backend_decision_and_output() {
+        let mut guard = FrameSequenceGuard::new(session_binding(), 4).unwrap();
+        let mut wrong = receipt(
+            1,
+            4,
+            PresentationStatus::Submitted,
+            EvidenceLevel::HostObserved,
+            None,
+        );
+        wrong.entity_id = EntityId([9; 16]);
+        assert_eq!(
+            guard.observe(&wrong),
+            Err(ContractError::SessionBindingMismatch)
+        );
+        wrong.entity_id = EntityId([1; 16]);
+        wrong.entity_revision_root = [9; 32];
+        assert_eq!(
+            guard.observe(&wrong),
+            Err(ContractError::SessionBindingMismatch)
+        );
+        wrong.entity_revision_root = [2; 32];
+        wrong.backend_build_digest = [9; 32];
+        assert_eq!(
+            guard.observe(&wrong),
+            Err(ContractError::SessionBindingMismatch)
+        );
+        wrong.backend_build_digest = [6; 32];
+        wrong.decision_digest = [9; 32];
+        assert_eq!(
+            guard.observe(&wrong),
+            Err(ContractError::SessionBindingMismatch)
+        );
+        wrong.decision_digest = [5; 32];
+        wrong.target_format_id = 2;
+        assert_eq!(
+            guard.observe(&wrong),
+            Err(ContractError::SessionBindingMismatch)
+        );
+        wrong.target_format_id = 1;
+        wrong.width = 1280;
+        assert_eq!(
+            guard.observe(&wrong),
+            Err(ContractError::SessionBindingMismatch)
+        );
+    }
+
+    #[test]
+    fn frame_guard_rejects_duplicate_sequence_stale_pool_and_foreign_session() {
+        let mut guard = FrameSequenceGuard::new(session_binding(), 4).unwrap();
         let first = receipt(
             1,
             4,
@@ -1003,7 +1118,7 @@ mod tests {
         foreign_session.session_id = [9; 16];
         assert_eq!(
             guard.observe(&foreign_session),
-            Err(ContractError::SessionMismatch)
+            Err(ContractError::SessionBindingMismatch)
         );
         let stale = receipt(
             2,
@@ -1016,7 +1131,7 @@ mod tests {
             guard.observe(&stale),
             Err(ContractError::StaleBufferGeneration)
         );
-        guard.reconfigure(5).unwrap();
+        guard.reconfigure(5, 1, 1920, 1080).unwrap();
         let next = receipt(
             2,
             5,
@@ -1024,6 +1139,27 @@ mod tests {
             EvidenceLevel::HostObserved,
             None,
         );
+        guard.observe(&next).unwrap();
+    }
+
+    #[test]
+    fn frame_guard_reconfiguration_requires_new_generation_and_updates_extent() {
+        let mut guard = FrameSequenceGuard::new(session_binding(), 4).unwrap();
+        assert_eq!(
+            guard.reconfigure(4, 1, 1280, 720),
+            Err(ContractError::StaleBufferGeneration)
+        );
+        guard.reconfigure(5, 2, 1280, 720).unwrap();
+        let mut next = receipt(
+            1,
+            5,
+            PresentationStatus::Submitted,
+            EvidenceLevel::HostObserved,
+            None,
+        );
+        next.target_format_id = 2;
+        next.width = 1280;
+        next.height = 720;
         guard.observe(&next).unwrap();
     }
 }
