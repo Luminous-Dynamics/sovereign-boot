@@ -21,6 +21,7 @@ use sovereign_visual_core::{
         AttentionTarget, OuroborosConfig, OuroborosForm, OuroborosMotionMode, OuroborosScene,
     },
     ouroboros_evidence::capture_ouroboros_evidence,
+    ouroboros_face::{OuroborosFaceMesh, OuroborosFaceMeshConfig},
     ouroboros_mesh::{OuroborosMesh, OuroborosMeshBudget, OuroborosMeshConfig, OuroborosMeshPlan},
     ouroboros_render::render_reference_artifact,
     ouroboros_trace::{OuroborosEvent, OuroborosTrace},
@@ -304,6 +305,23 @@ fn run_benchmarks(options: Options) {
         )
     }));
 
+    measurements.push(measure("face_mesh_build_validate", options, || {
+        let landmarks = replayed_scene.landmarks();
+        let (mesh, receipt) = OuroborosFaceMesh::build(
+            &replayed_scene,
+            landmarks,
+            OuroborosFaceMeshConfig::default(),
+        )
+        .expect("face mesh must build");
+        mesh.validate(&replayed_scene)
+            .expect("face mesh must validate");
+        u64::from_le_bytes(
+            receipt.digest[..8]
+                .try_into()
+                .expect("digest prefix has 8 bytes"),
+        )
+    }));
+
     measurements.push(measure("cpu_reference_capture_320", options, || {
         let (pixels, receipt) = render_reference_artifact(&replayed_scene, 320, 320)
             .expect("320x320 CPU reference capture must render");
@@ -344,6 +362,15 @@ fn run_benchmarks(options: Options) {
     let parallelism = std::thread::available_parallelism()
         .map(|value| value.get())
         .unwrap_or(0);
+    let (face_mesh, face_mesh_receipt) = OuroborosFaceMesh::build(
+        &replayed_scene,
+        replayed_scene.landmarks(),
+        OuroborosFaceMeshConfig::default(),
+    )
+    .expect("benchmark face mesh must build");
+    face_mesh
+        .validate(&replayed_scene)
+        .expect("benchmark face mesh must validate");
 
     println!(
         concat!(
@@ -355,6 +382,7 @@ fn run_benchmarks(options: Options) {
             "\"gpu_driver\":\"{}\",\"compositor\":\"{}\",\"logical_cpus\":{},",
             "\"scene_contract_version\":{},\"trace_bytes\":{},",
             "\"mesh_tier\":\"{:?}\",\"mesh_vertices\":{},\"mesh_indices\":{},",
+            "\"face_mesh_vertices\":{},\"face_mesh_indices\":{},",
             "\"render_dimensions\":\"320x320\",\"evidence_dimensions\":\"128x128\"}}"
         ),
         json_escape(&source_rev),
@@ -375,7 +403,9 @@ fn run_benchmarks(options: Options) {
         trace_bytes.len(),
         plan.tier,
         plan.vertex_count,
-        plan.index_count
+        plan.index_count,
+        face_mesh_receipt.vertex_count,
+        face_mesh_receipt.index_count
     );
     for measurement in &mut measurements {
         println!(
