@@ -127,10 +127,18 @@ impl fmt::Display for OuroborosFaceMeshError {
             Self::InvalidConfiguration => write!(f, "invalid Ouroboros face mesh configuration"),
             Self::InvalidLandmarks(error) => write!(f, "invalid Ouroboros face landmarks: {error}"),
             Self::SizeOverflow => write!(f, "Ouroboros face mesh size arithmetic overflowed"),
-            Self::SizeLimitExceeded => write!(f, "Ouroboros face mesh exceeds its resource ceiling"),
-            Self::BudgetTooSmall => write!(f, "host budget cannot hold the minimum semantic face mesh"),
-            Self::AllocationFailed => write!(f, "unable to reserve bounded Ouroboros face mesh storage"),
-            Self::InvalidGeneratedGeometry => write!(f, "generated Ouroboros face mesh failed validation"),
+            Self::SizeLimitExceeded => {
+                write!(f, "Ouroboros face mesh exceeds its resource ceiling")
+            }
+            Self::BudgetTooSmall => {
+                write!(f, "host budget cannot hold the minimum semantic face mesh")
+            }
+            Self::AllocationFailed => {
+                write!(f, "unable to reserve bounded Ouroboros face mesh storage")
+            }
+            Self::InvalidGeneratedGeometry => {
+                write!(f, "generated Ouroboros face mesh failed validation")
+            }
         }
     }
 }
@@ -218,15 +226,12 @@ impl OuroborosFaceMeshConfig {
                         .map_err(|_| OuroborosFaceMeshError::SizeLimitExceeded)?,
                 };
                 let score = u64::from(latitude) * u64::from(longitude);
-                if best
-                    .as_ref()
-                    .is_none_or(|(best_score, old)| {
-                        score > *best_score
-                            || (score == *best_score
-                                && (latitude, longitude)
-                                    > (old.config.latitude_segments, old.config.longitude_segments))
-                    })
-                {
+                if best.as_ref().is_none_or(|(best_score, old)| {
+                    score > *best_score
+                        || (score == *best_score
+                            && (latitude, longitude)
+                                > (old.config.latitude_segments, old.config.longitude_segments))
+                }) {
                     best = Some((score, plan));
                 }
             }
@@ -237,9 +242,7 @@ impl OuroborosFaceMeshConfig {
     }
 
     /// Reject caller-mutated plans by recomputing the exact deterministic choice.
-    pub fn validate_plan(
-        plan: OuroborosFaceMeshPlan,
-    ) -> Result<(), OuroborosFaceMeshError> {
+    pub fn validate_plan(plan: OuroborosFaceMeshPlan) -> Result<(), OuroborosFaceMeshError> {
         let canonical = Self::plan_for_budget(plan.budget)?;
         if canonical != plan {
             return Err(OuroborosFaceMeshError::InvalidConfiguration);
@@ -338,11 +341,8 @@ impl OuroborosFaceMesh {
         // surface and compare every vertex/index before treating this artifact
         // as validated; counts and outward normals alone do not prove that the
         // geometry still follows its semantic landmark attachments.
-        let (expected_vertices_data, expected_indices_data) = generate_face_geometry(
-            self.landmarks,
-            self.config,
-            self.source_major_radius,
-        )?;
+        let (expected_vertices_data, expected_indices_data) =
+            generate_face_geometry(self.landmarks, self.config, self.source_major_radius)?;
         if self.vertices != expected_vertices_data || self.indices != expected_indices_data {
             return Err(OuroborosFaceMeshError::InvalidGeneratedGeometry);
         }
@@ -428,7 +428,12 @@ impl OuroborosFaceMesh {
         bytes.extend_from_slice(&(self.vertices.len() as u32).to_le_bytes());
         bytes.extend_from_slice(&(self.indices.len() as u32).to_le_bytes());
         for vertex in &self.vertices {
-            for value in vertex.position.into_iter().chain(vertex.normal).chain(vertex.uv) {
+            for value in vertex
+                .position
+                .into_iter()
+                .chain(vertex.normal)
+                .chain(vertex.uv)
+            {
                 bytes.extend_from_slice(&value.to_bits().to_le_bytes());
             }
             bytes.extend_from_slice(&vertex.region_id.to_le_bytes());
@@ -492,7 +497,15 @@ fn generate_face_geometry(
         &mut vertices,
         &mut indices,
         config,
-        point(landmarks.head_anchor, forward, lateral, up, 0.030 * radius, 0.0, 0.0),
+        point(
+            landmarks.head_anchor,
+            forward,
+            lateral,
+            up,
+            0.030 * radius,
+            0.0,
+            0.0,
+        ),
         [forward, lateral, up],
         [0.120 * radius, 0.060 * radius, 0.110 * radius],
         FACE_REGION_HEAD,
@@ -585,8 +598,8 @@ fn append_ellipsoid(
         return Err(OuroborosFaceMeshError::InvalidGeneratedGeometry);
     }
     let [forward, lateral, up] = basis;
-    let base = u32::try_from(vertices.len())
-        .map_err(|_| OuroborosFaceMeshError::SizeLimitExceeded)?;
+    let base =
+        u32::try_from(vertices.len()).map_err(|_| OuroborosFaceMeshError::SizeLimitExceeded)?;
     let latitude = config.latitude_segments as usize;
     let longitude = config.longitude_segments as usize;
     let row = longitude + 1;
@@ -642,8 +655,8 @@ fn append_ellipsoid(
         }
     }
 
-    let bottom_index = u32::try_from(vertices.len())
-        .map_err(|_| OuroborosFaceMeshError::SizeLimitExceeded)?;
+    let bottom_index =
+        u32::try_from(vertices.len()).map_err(|_| OuroborosFaceMeshError::SizeLimitExceeded)?;
     vertices.push(OuroborosFaceVertex {
         position: sub(center, scale(up, radii[2])),
         normal: scale(up, -1.0),
@@ -925,7 +938,10 @@ mod tests {
 
         assert_eq!(mesh, repeat);
         assert_eq!(receipt, repeat_receipt);
-        assert_eq!(receipt.digest, *blake3::hash(&mesh.canonical_bytes().unwrap()).as_bytes());
+        assert_eq!(
+            receipt.digest,
+            *blake3::hash(&mesh.canonical_bytes().unwrap()).as_bytes()
+        );
         assert_eq!(receipt.landmark_digest, landmarks.receipt().digest);
         assert_eq!(receipt.schema_version, FACE_SCHEMA_VERSION);
         mesh.validate(&scene).unwrap();
@@ -942,7 +958,11 @@ mod tests {
                 OuroborosFaceMesh::build(&scene, landmarks, OuroborosFaceMeshConfig::default())
                     .unwrap();
             assert_eq!(mesh.landmarks, landmarks);
-            let regions: Vec<u32> = mesh.vertices.iter().map(|vertex| vertex.region_id).collect();
+            let regions: Vec<u32> = mesh
+                .vertices
+                .iter()
+                .map(|vertex| vertex.region_id)
+                .collect();
             if let Some(indices) = &expected_indices {
                 assert_eq!(&mesh.indices, indices);
                 assert_eq!(Some(&regions), expected_regions.as_ref());
@@ -964,12 +984,18 @@ mod tests {
 
         let neutral_landmarks = neutral.landmarks();
         let turned_landmarks = turned.landmarks();
-        let (neutral_mesh, neutral_receipt) =
-            OuroborosFaceMesh::build(&neutral, neutral_landmarks, OuroborosFaceMeshConfig::default())
-                .unwrap();
-        let (turned_mesh, turned_receipt) =
-            OuroborosFaceMesh::build(&turned, turned_landmarks, OuroborosFaceMeshConfig::default())
-                .unwrap();
+        let (neutral_mesh, neutral_receipt) = OuroborosFaceMesh::build(
+            &neutral,
+            neutral_landmarks,
+            OuroborosFaceMeshConfig::default(),
+        )
+        .unwrap();
+        let (turned_mesh, turned_receipt) = OuroborosFaceMesh::build(
+            &turned,
+            turned_landmarks,
+            OuroborosFaceMeshConfig::default(),
+        )
+        .unwrap();
         assert_eq!(neutral_landmarks.head_anchor, turned_landmarks.head_anchor);
         assert_ne!(neutral_receipt.digest, turned_receipt.digest);
         assert_ne!(neutral_mesh.vertices, turned_mesh.vertices);
