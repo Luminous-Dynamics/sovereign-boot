@@ -42,6 +42,35 @@ impl Default for OuroborosFaceMeshConfig {
     }
 }
 
+/// Host-supplied screen-size and resource budget for the semantic face mesh.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OuroborosFaceMeshBudget {
+    pub projected_face_radius_px: u32,
+    pub max_vertices: u32,
+    pub max_indices: u32,
+    pub max_buffer_bytes: u32,
+}
+
+/// Face quality tier derived from the selected latitude/longitude tessellation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OuroborosFaceQualityTier {
+    Economy,
+    Balanced,
+    Cinematic,
+}
+
+/// Reproducible face-mesh LOD decision, including all original host inputs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OuroborosFaceMeshPlan {
+    pub budget: OuroborosFaceMeshBudget,
+    pub requested: OuroborosFaceMeshConfig,
+    pub config: OuroborosFaceMeshConfig,
+    pub tier: OuroborosFaceQualityTier,
+    pub vertex_count: u32,
+    pub index_count: u32,
+    pub estimated_buffer_bytes: u32,
+}
+
 impl OuroborosFaceMeshConfig {
     pub fn validate(self) -> Result<(), OuroborosFaceMeshError> {
         if !(8..=64).contains(&self.latitude_segments)
@@ -87,6 +116,7 @@ pub enum OuroborosFaceMeshError {
     InvalidLandmarks(OuroborosLandmarkError),
     SizeOverflow,
     SizeLimitExceeded,
+    BudgetTooSmall,
     AllocationFailed,
     InvalidGeneratedGeometry,
 }
@@ -98,6 +128,7 @@ impl fmt::Display for OuroborosFaceMeshError {
             Self::InvalidLandmarks(error) => write!(f, "invalid Ouroboros face landmarks: {error}"),
             Self::SizeOverflow => write!(f, "Ouroboros face mesh size arithmetic overflowed"),
             Self::SizeLimitExceeded => write!(f, "Ouroboros face mesh exceeds its resource ceiling"),
+            Self::BudgetTooSmall => write!(f, "host budget cannot hold the minimum semantic face mesh"),
             Self::AllocationFailed => write!(f, "unable to reserve bounded Ouroboros face mesh storage"),
             Self::InvalidGeneratedGeometry => write!(f, "generated Ouroboros face mesh failed validation"),
         }
@@ -119,6 +150,122 @@ pub struct OuroborosFaceMesh {
     pub landmarks: OuroborosLandmarks,
     pub source_major_radius: f32,
     pub scene_contract_version: u16,
+}
+
+impl OuroborosFaceMeshConfig {
+    /// Choose the highest feasible deterministic face tessellation for the
+    /// projected head radius and host resource ceilings.
+    ///
+    /// The host supplies projected size; the face model never queries a
+    /// display or GPU. Requested segments round up to the face quality ladder.
+    pub fn plan_for_budget(
+        budget: OuroborosFaceMeshBudget,
+    ) -> Result<OuroborosFaceMeshPlan, OuroborosFaceMeshError> {
+        if budget.projected_face_radius_px == 0
+            || budget.max_vertices == 0
+            || budget.max_indices == 0
+            || budget.max_buffer_bytes == 0
+        {
+            return Err(OuroborosFaceMeshError::InvalidConfiguration);
+        }
+
+        let requested = OuroborosFaceMeshConfig {
+            latitude_segments: requested_face_latitude(budget.projected_face_radius_px),
+            longitude_segments: requested_face_longitude(budget.projected_face_radius_px),
+        };
+        let latitude_ladder = [8_u32, 12, 16, 24, 32, 48, 64];
+        let longitude_ladder = [16_u32, 24, 32, 48, 64, 96, 128];
+        let mut best: Option<(u64, OuroborosFaceMeshPlan)> = None;
+
+        for latitude in latitude_ladder {
+            if latitude > requested.latitude_segments {
+                continue;
+            }
+            for longitude in longitude_ladder {
+                if longitude > requested.longitude_segments {
+                    continue;
+                }
+                let config = OuroborosFaceMeshConfig {
+                    latitude_segments: latitude,
+                    longitude_segments: longitude,
+                };
+                let (vertices, indices, bytes) = face_resource_estimate(config)?;
+                if vertices > budget.max_vertices as usize
+                    || indices > budget.max_indices as usize
+                    || bytes > budget.max_buffer_bytes as usize
+                    || config.validate().is_err()
+                {
+                    continue;
+                }
+
+                let tier = if latitude <= 16 && longitude <= 32 {
+                    OuroborosFaceQualityTier::Economy
+                } else if latitude <= 32 && longitude <= 64 {
+                    OuroborosFaceQualityTier::Balanced
+                } else {
+                    OuroborosFaceQualityTier::Cinematic
+                };
+                let plan = OuroborosFaceMeshPlan {
+                    budget,
+                    requested,
+                    config,
+                    tier,
+                    vertex_count: u32::try_from(vertices)
+                        .map_err(|_| OuroborosFaceMeshError::SizeLimitExceeded)?,
+                    index_count: u32::try_from(indices)
+                        .map_err(|_| OuroborosFaceMeshError::SizeLimitExceeded)?,
+                    estimated_buffer_bytes: u32::try_from(bytes)
+                        .map_err(|_| OuroborosFaceMeshError::SizeLimitExceeded)?,
+                };
+                let score = u64::from(latitude) * u64::from(longitude);
+                if best
+                    .as_ref()
+                    .is_none_or(|(best_score, old)| {
+                        score > *best_score
+                            || (score == *best_score
+                                && (latitude, longitude)
+                                    > (old.config.latitude_segments, old.config.longitude_segments))
+                    })
+                {
+                    best = Some((score, plan));
+                }
+            }
+        }
+
+        best.map(|(_, plan)| plan)
+            .ok_or(OuroborosFaceMeshError::BudgetTooSmall)
+    }
+
+    /// Reject caller-mutated plans by recomputing the exact deterministic choice.
+    pub fn validate_plan(
+        plan: OuroborosFaceMeshPlan,
+    ) -> Result<(), OuroborosFaceMeshError> {
+        let canonical = Self::plan_for_budget(plan.budget)?;
+        if canonical != plan {
+            return Err(OuroborosFaceMeshError::InvalidConfiguration);
+        }
+        Ok(())
+    }
+}
+
+fn requested_face_latitude(projected_radius_px: u32) -> u32 {
+    let needed = (std::f64::consts::PI * f64::from(projected_radius_px) / 1.5)
+        .ceil()
+        .clamp(8.0, 64.0) as u32;
+    [8_u32, 12, 16, 24, 32, 48, 64]
+        .into_iter()
+        .find(|segments| *segments >= needed)
+        .unwrap_or(64)
+}
+
+fn requested_face_longitude(projected_radius_px: u32) -> u32 {
+    let needed = (std::f64::consts::TAU * f64::from(projected_radius_px) / 1.5)
+        .ceil()
+        .clamp(16.0, 128.0) as u32;
+    [16_u32, 24, 32, 48, 64, 96, 128]
+        .into_iter()
+        .find(|segments| *segments >= needed)
+        .unwrap_or(128)
 }
 
 impl OuroborosFaceMesh {
@@ -146,6 +293,23 @@ impl OuroborosFaceMesh {
         };
         mesh.validate(scene)?;
         let receipt = mesh.receipt()?;
+        Ok((mesh, receipt))
+    }
+
+    /// Build from a deterministic host-budgeted face LOD plan.
+    pub fn build_with_plan(
+        scene: &OuroborosScene,
+        landmarks: OuroborosLandmarks,
+        plan: OuroborosFaceMeshPlan,
+    ) -> Result<(Self, OuroborosFaceMeshReceipt), OuroborosFaceMeshError> {
+        OuroborosFaceMeshConfig::validate_plan(plan)?;
+        let (mesh, receipt) = Self::build(scene, landmarks, plan.config)?;
+        if receipt.vertex_count != plan.vertex_count
+            || receipt.index_count != plan.index_count
+            || face_resource_estimate(plan.config)?.2 != plan.estimated_buffer_bytes as usize
+        {
+            return Err(OuroborosFaceMeshError::InvalidGeneratedGeometry);
+        }
         Ok((mesh, receipt))
     }
 
@@ -648,6 +812,88 @@ mod tests {
 
     fn scene(form: OuroborosForm) -> OuroborosScene {
         OuroborosScene::new(OuroborosConfig::default(), form).unwrap()
+    }
+
+    #[test]
+    fn face_lod_planner_is_deterministic_monotonic_and_budget_bounded() {
+        let budgets = [
+            OuroborosFaceMeshBudget {
+                projected_face_radius_px: 12,
+                max_vertices: 1_000,
+                max_indices: 6_000,
+                max_buffer_bytes: 80_000,
+            },
+            OuroborosFaceMeshBudget {
+                projected_face_radius_px: 32,
+                max_vertices: 20_000,
+                max_indices: 120_000,
+                max_buffer_bytes: 1_000_000,
+            },
+            OuroborosFaceMeshBudget {
+                projected_face_radius_px: 64,
+                max_vertices: 50_000,
+                max_indices: 300_000,
+                max_buffer_bytes: 2_500_000,
+            },
+        ];
+        let mut previous_product = 0;
+        for budget in budgets {
+            let first = OuroborosFaceMeshConfig::plan_for_budget(budget).unwrap();
+            let second = OuroborosFaceMeshConfig::plan_for_budget(budget).unwrap();
+            assert_eq!(first, second);
+            assert!(first.config.latitude_segments <= first.requested.latitude_segments);
+            assert!(first.config.longitude_segments <= first.requested.longitude_segments);
+            assert!(first.vertex_count <= budget.max_vertices);
+            assert!(first.index_count <= budget.max_indices);
+            assert!(first.estimated_buffer_bytes <= budget.max_buffer_bytes);
+            let product = first.config.latitude_segments * first.config.longitude_segments;
+            assert!(product >= previous_product);
+            previous_product = product;
+            OuroborosFaceMeshConfig::validate_plan(first).unwrap();
+        }
+    }
+
+    #[test]
+    fn face_lod_planner_rejects_infeasible_minimum_budget_and_tampered_plan() {
+        assert_eq!(
+            OuroborosFaceMeshConfig::plan_for_budget(OuroborosFaceMeshBudget {
+                projected_face_radius_px: 32,
+                max_vertices: 10,
+                max_indices: 10,
+                max_buffer_bytes: 10,
+            }),
+            Err(OuroborosFaceMeshError::BudgetTooSmall)
+        );
+
+        let mut plan = OuroborosFaceMeshConfig::plan_for_budget(OuroborosFaceMeshBudget {
+            projected_face_radius_px: 24,
+            max_vertices: MAX_FACE_VERTICES as u32,
+            max_indices: MAX_FACE_INDICES as u32,
+            max_buffer_bytes: MAX_FACE_BUFFER_BYTES as u32,
+        })
+        .unwrap();
+        plan.estimated_buffer_bytes -= 1;
+        assert_eq!(
+            OuroborosFaceMeshConfig::validate_plan(plan),
+            Err(OuroborosFaceMeshError::InvalidConfiguration)
+        );
+    }
+
+    #[test]
+    fn face_mesh_build_uses_the_exact_budgeted_plan() {
+        let scene = scene(OuroborosForm::Humanity);
+        let budget = OuroborosFaceMeshBudget {
+            projected_face_radius_px: 48,
+            max_vertices: 30_000,
+            max_indices: 180_000,
+            max_buffer_bytes: 1_500_000,
+        };
+        let plan = OuroborosFaceMeshConfig::plan_for_budget(budget).unwrap();
+        let (mesh, receipt) =
+            OuroborosFaceMesh::build_with_plan(&scene, scene.landmarks(), plan).unwrap();
+        assert_eq!(mesh.config, plan.config);
+        assert_eq!(receipt.vertex_count, plan.vertex_count);
+        assert_eq!(receipt.index_count, plan.index_count);
     }
 
     #[test]
