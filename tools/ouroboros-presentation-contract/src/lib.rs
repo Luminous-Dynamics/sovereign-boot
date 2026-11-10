@@ -611,6 +611,9 @@ pub struct FrameReceipt {
     pub height: u32,
     pub status: PresentationStatus,
     pub evidence_level: EvidenceLevel,
+    /// Connection-level presentation clock. Present even on Submitted,
+    /// Discarded or Unknown receipts when the host already knows the clock.
+    pub presentation_clock_id: Option<u32>,
     /// Identifies the protocol that reported a terminal presentation outcome,
     /// including Discarded outcomes which have no presentation timestamp.
     pub presentation_source: Option<PresentationSource>,
@@ -679,6 +682,9 @@ impl FrameReceipt {
         }
         if let Some(presentation) = self.presentation {
             presentation.validate()?;
+            if self.presentation_clock_id != Some(presentation.clock_id) {
+                return Err(ContractError::PresentationClockMismatch);
+            }
         }
         Ok(())
     }
@@ -697,7 +703,7 @@ impl FrameReceipt {
 
     pub fn canonical_bytes(&self) -> Result<Vec<u8>, ContractError> {
         self.validate()?;
-        let mut out = Vec::with_capacity(8 + 2 + 16 + 32 * 4 + 16 + 8 * 2 + 2 + 4 * 2 + 3 + 61);
+        let mut out = Vec::with_capacity(8 + 2 + 16 + 32 * 4 + 16 + 8 * 2 + 2 + 4 * 2 + 8 + 61);
         out.extend_from_slice(b"OUROFRM2");
         put_u16(&mut out, self.schema_version);
         out.extend_from_slice(&self.entity_id.0);
@@ -713,6 +719,13 @@ impl FrameReceipt {
         put_u32(&mut out, self.height);
         out.push(self.status as u8);
         out.push(self.evidence_level as u8);
+        match self.presentation_clock_id {
+            Some(clock_id) => {
+                out.push(1);
+                put_u32(&mut out, clock_id);
+            }
+            None => out.push(0),
+        }
         match self.presentation_source {
             Some(source) => {
                 out.push(1);
@@ -807,12 +820,17 @@ impl FrameSequenceGuard {
         if !self.binding.matches(receipt) {
             return Err(ContractError::SessionBindingMismatch);
         }
-        if let Some(observation) = receipt.presentation {
+        if let Some(expected_clock_id) = self.binding.presentation_clock_id {
+            if receipt.presentation_clock_id != Some(expected_clock_id) {
+                return Err(ContractError::PresentationClockMismatch);
+            }
+        }
+        if let Some(receipt_clock_id) = receipt.presentation_clock_id {
             match self.observed_presentation_clock_id {
-                Some(clock_id) if clock_id != observation.clock_id => {
+                Some(clock_id) if clock_id != receipt_clock_id => {
                     return Err(ContractError::PresentationClockMismatch);
                 }
-                None => self.observed_presentation_clock_id = Some(observation.clock_id),
+                None => self.observed_presentation_clock_id = Some(receipt_clock_id),
                 _ => {}
             }
         }
@@ -978,6 +996,7 @@ mod tests {
             height: 1080,
             status,
             evidence_level: evidence,
+            presentation_clock_id: Some(1),
             presentation_source: time.map(|_| PresentationSource::WaylandPresentationTimeV2),
             presentation: time.map(|presentation_time_ns| PresentationObservation {
                 source: PresentationSource::WaylandPresentationTimeV2,
@@ -1207,6 +1226,7 @@ mod tests {
             EvidenceLevel::CompositorFeedback,
             Some(10),
         );
+        missing_clock.presentation_clock_id = None;
         missing_clock.presentation_source = None;
         missing_clock.presentation = None;
         assert_eq!(
@@ -1578,6 +1598,7 @@ mod tests {
             EvidenceLevel::CompositorFeedback,
             Some(20),
         );
+        changed_clock.presentation_clock_id = Some(2);
         changed_clock.presentation.as_mut().unwrap().clock_id = 2;
         assert_eq!(
             guard.observe(&changed_clock),
