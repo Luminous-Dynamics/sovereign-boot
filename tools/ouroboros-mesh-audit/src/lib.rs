@@ -964,6 +964,34 @@ mod tests {
     }
 
     #[test]
+    fn finite_coordinates_that_overflow_area_arithmetic_reject() {
+        let mesh = SemanticTriangleMesh {
+            vertices: vec![
+                [0.0, 0.0, 0.0],
+                [1.0e308, 0.0, 0.0],
+                [0.0, 1.0e308, 0.0],
+            ],
+            vertex_feature_masks: vec![1; 3],
+            faces: vec![[0, 1, 2]],
+            face_region_ids: vec![1],
+        };
+        assert_eq!(
+            audit_mesh(&mesh, AuditLimits::default()),
+            Err(AuditError::NonFiniteGeometry)
+        );
+    }
+
+    #[test]
+    fn invalid_degeneracy_threshold_rejects() {
+        let mesh = open_disk();
+        let limits = AuditLimits {
+            near_degenerate_cross_squared_epsilon: f64::NAN,
+            ..AuditLimits::default()
+        };
+        assert_eq!(audit_mesh(&mesh, limits), Err(AuditError::InvalidLimits));
+    }
+
+    #[test]
     fn budgets_are_checked_before_topology_construction() {
         let mesh = open_disk();
         let limits = AuditLimits {
