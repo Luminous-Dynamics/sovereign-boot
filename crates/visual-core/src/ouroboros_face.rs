@@ -1,0 +1,764 @@
+//! Bounded, renderer-independent 3D head and face geometry.
+//!
+//! The head shell and facial volumes are generated exclusively from the
+//! versioned semantic landmark contract. This is a parametric identity mesh,
+//! not a sculpt, shader, animation rig or GPU resource.
+
+use std::{error::Error, fmt};
+
+use crate::{
+    contract::SCENE_CONTRACT_VERSION,
+    ouroboros::{OuroborosLandmarkError, OuroborosLandmarks, OuroborosScene},
+};
+
+const FACE_MAGIC: [u8; 8] = *b"OUROFAC1";
+const FACE_SCHEMA_VERSION: u16 = 1;
+const FACE_REGION_COUNT: usize = 5;
+const MAX_FACE_VERTICES: usize = 50_000;
+const MAX_FACE_INDICES: usize = 300_000;
+const TAU: f32 = std::f32::consts::TAU;
+const PI: f32 = std::f32::consts::PI;
+
+pub const FACE_REGION_HEAD: u32 = 1;
+pub const FACE_REGION_LEFT_EYE: u32 = 2;
+pub const FACE_REGION_RIGHT_EYE: u32 = 3;
+pub const FACE_REGION_NOSE: u32 = 4;
+pub const FACE_REGION_MOUTH: u32 = 5;
+
+/// Bounded UV-sphere tessellation shared by the five semantic face regions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OuroborosFaceMeshConfig {
+    pub latitude_segments: u32,
+    pub longitude_segments: u32,
+}
+
+impl Default for OuroborosFaceMeshConfig {
+    fn default() -> Self {
+        Self {
+            latitude_segments: 24,
+            longitude_segments: 48,
+        }
+    }
+}
+
+impl OuroborosFaceMeshConfig {
+    pub fn validate(self) -> Result<(), OuroborosFaceMeshError> {
+        if !(8..=64).contains(&self.latitude_segments)
+            || !(16..=128).contains(&self.longitude_segments)
+        {
+            return Err(OuroborosFaceMeshError::InvalidConfiguration);
+        }
+        let (vertices, indices, _) = face_resource_estimate(self)?;
+        if vertices > MAX_FACE_VERTICES || indices > MAX_FACE_INDICES {
+            return Err(OuroborosFaceMeshError::SizeLimitExceeded);
+        }
+        Ok(())
+    }
+}
+
+/// One renderer-neutral face vertex. region_id is stable across LODs.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct OuroborosFaceVertex {
+    pub position: [f32; 3],
+    pub normal: [f32; 3],
+    pub uv: [f32; 2],
+    pub region_id: u32,
+}
+
+/// Receipt binding semantic landmarks, tessellation and every face geometry byte.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OuroborosFaceMeshReceipt {
+    pub schema_version: u16,
+    pub scene_contract_version: u16,
+    pub landmark_digest: [u8; 32],
+    pub vertex_count: u32,
+    pub index_count: u32,
+    pub digest: [u8; 32],
+}
+
+/// Errors from bounded face geometry construction and validation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OuroborosFaceMeshError {
+    InvalidConfiguration,
+    InvalidLandmarks(OuroborosLandmarkError),
+    SizeOverflow,
+    SizeLimitExceeded,
+    AllocationFailed,
+    InvalidGeneratedGeometry,
+}
+
+impl fmt::Display for OuroborosFaceMeshError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidConfiguration => write!(f, "invalid Ouroboros face mesh configuration"),
+            Self::InvalidLandmarks(error) => write!(f, "invalid Ouroboros face landmarks: {error}"),
+            Self::SizeOverflow => write!(f, "Ouroboros face mesh size arithmetic overflowed"),
+            Self::SizeLimitExceeded => write!(f, "Ouroboros face mesh exceeds its resource ceiling"),
+            Self::AllocationFailed => write!(f, "unable to reserve bounded Ouroboros face mesh storage"),
+            Self::InvalidGeneratedGeometry => write!(f, "generated Ouroboros face mesh failed validation"),
+        }
+    }
+}
+
+impl Error for OuroborosFaceMeshError {}
+
+/// Five closed geometric regions bound to one canonical landmark set.
+///
+/// landmarks is retained as the authoritative attachment table. Rendering
+/// backends bind materials and detail to the stable region IDs rather than
+/// inventing backend-specific face coordinates.
+#[derive(Debug, Clone, PartialEq)]
+pub struct OuroborosFaceMesh {
+    pub vertices: Vec<OuroborosFaceVertex>,
+    pub indices: Vec<u32>,
+    pub config: OuroborosFaceMeshConfig,
+    pub landmarks: OuroborosLandmarks,
+    pub source_major_radius: f32,
+    pub scene_contract_version: u16,
+}
+
+impl OuroborosFaceMesh {
+    /// Build one closed shell plus four closed feature volumes from semantic landmarks.
+    pub fn build(
+        scene: &OuroborosScene,
+        landmarks: OuroborosLandmarks,
+        config: OuroborosFaceMeshConfig,
+    ) -> Result<(Self, OuroborosFaceMeshReceipt), OuroborosFaceMeshError> {
+        config.validate()?;
+        landmarks
+            .validate(scene)
+            .map_err(OuroborosFaceMeshError::InvalidLandmarks)?;
+
+        let (vertex_count, index_count, _) = face_resource_estimate(config)?;
+        if vertex_count > MAX_FACE_VERTICES || index_count > MAX_FACE_INDICES {
+            return Err(OuroborosFaceMeshError::SizeLimitExceeded);
+        }
+
+        let mut vertices = Vec::new();
+        vertices
+            .try_reserve_exact(vertex_count)
+            .map_err(|_| OuroborosFaceMeshError::AllocationFailed)?;
+        let mut indices = Vec::new();
+        indices
+            .try_reserve_exact(index_count)
+            .map_err(|_| OuroborosFaceMeshError::AllocationFailed)?;
+
+        let radius = scene.config().major_radius;
+        let forward = landmarks.forward;
+        let lateral = landmarks.lateral;
+        let up = landmarks.up;
+
+        // The shell is intentionally restrained. Feature volumes remain
+        // independently addressable and are attached through the landmarks.
+        append_ellipsoid(
+            &mut vertices,
+            &mut indices,
+            config,
+            point(landmarks.head_anchor, forward, lateral, up, 0.030 * radius, 0.0, 0.0),
+            [forward, lateral, up],
+            [0.120 * radius, 0.060 * radius, 0.110 * radius],
+            FACE_REGION_HEAD,
+        )?;
+        append_ellipsoid(
+            &mut vertices,
+            &mut indices,
+            config,
+            landmarks.left_eye,
+            [forward, lateral, up],
+            [0.016 * radius, 0.018 * radius, 0.014 * radius],
+            FACE_REGION_LEFT_EYE,
+        )?;
+        append_ellipsoid(
+            &mut vertices,
+            &mut indices,
+            config,
+            landmarks.right_eye,
+            [forward, lateral, up],
+            [0.016 * radius, 0.018 * radius, 0.014 * radius],
+            FACE_REGION_RIGHT_EYE,
+        )?;
+        let nose_center = sub(landmarks.nose_tip, scale(forward, 0.020 * radius));
+        append_ellipsoid(
+            &mut vertices,
+            &mut indices,
+            config,
+            nose_center,
+            [forward, lateral, up],
+            [0.020 * radius, 0.014 * radius, 0.018 * radius],
+            FACE_REGION_NOSE,
+        )?;
+        append_ellipsoid(
+            &mut vertices,
+            &mut indices,
+            config,
+            landmarks.mouth_center,
+            [forward, lateral, up],
+            [0.008 * radius, 0.035 * radius, 0.006 * radius],
+            FACE_REGION_MOUTH,
+        )?;
+
+        let mesh = Self {
+            vertices,
+            indices,
+            config,
+            landmarks,
+            source_major_radius: radius,
+            scene_contract_version: SCENE_CONTRACT_VERSION,
+        };
+        mesh.validate(scene)?;
+        let receipt = mesh.receipt()?;
+        Ok((mesh, receipt))
+    }
+
+    pub fn validate(&self, scene: &OuroborosScene) -> Result<(), OuroborosFaceMeshError> {
+        self.config.validate()?;
+        self.landmarks
+            .validate(scene)
+            .map_err(OuroborosFaceMeshError::InvalidLandmarks)?;
+        if self.scene_contract_version != SCENE_CONTRACT_VERSION
+            || !self.source_major_radius.is_finite()
+            || self.source_major_radius != scene.config().major_radius
+        {
+            return Err(OuroborosFaceMeshError::InvalidGeneratedGeometry);
+        }
+
+        let (expected_vertices, expected_indices, _) = face_resource_estimate(self.config)?;
+        if expected_vertices > MAX_FACE_VERTICES
+            || expected_indices > MAX_FACE_INDICES
+            || self.vertices.len() != expected_vertices
+            || self.indices.len() != expected_indices
+        {
+            return Err(OuroborosFaceMeshError::InvalidGeneratedGeometry);
+        }
+
+        let per_region_vertices = sphere_vertex_count(self.config)?;
+        let per_region_indices = sphere_index_count(self.config)?;
+        let expected_regions = [
+            FACE_REGION_HEAD,
+            FACE_REGION_LEFT_EYE,
+            FACE_REGION_RIGHT_EYE,
+            FACE_REGION_NOSE,
+            FACE_REGION_MOUTH,
+        ];
+        for (region_index, region_id) in expected_regions.into_iter().enumerate() {
+            let vertex_start = region_index * per_region_vertices;
+            let vertex_end = vertex_start + per_region_vertices;
+            let region_vertices = &self.vertices[vertex_start..vertex_end];
+            if region_vertices.iter().any(|vertex| {
+                vertex.region_id != region_id
+                    || !vertex.position.into_iter().all(f32::is_finite)
+                    || !vertex.normal.into_iter().all(f32::is_finite)
+                    || !vertex
+                        .uv
+                        .into_iter()
+                        .all(|value| value.is_finite() && (0.0..=1.0).contains(&value))
+            }) {
+                return Err(OuroborosFaceMeshError::InvalidGeneratedGeometry);
+            }
+            for vertex in region_vertices {
+                let normal_length = dot(vertex.normal, vertex.normal).sqrt();
+                if !normal_length.is_finite() || (normal_length - 1.0).abs() > 1.0e-4 {
+                    return Err(OuroborosFaceMeshError::InvalidGeneratedGeometry);
+                }
+            }
+
+            let index_start = region_index * per_region_indices;
+            let index_end = index_start + per_region_indices;
+            let region_indices = &self.indices[index_start..index_end];
+            validate_canonical_sphere_indices(region_indices, vertex_start as u32, self.config)?;
+            for triangle in region_indices.chunks_exact(3) {
+                let a = self.vertices[triangle[0] as usize];
+                let b = self.vertices[triangle[1] as usize];
+                let c = self.vertices[triangle[2] as usize];
+                let face = cross(sub(b.position, a.position), sub(c.position, a.position));
+                let area_squared = dot(face, face);
+                let outward = dot(face, add(add(a.normal, b.normal), c.normal));
+                if !area_squared.is_finite()
+                    || area_squared <= 1.0e-18
+                    || !outward.is_finite()
+                    || outward <= 1.0e-14
+                {
+                    return Err(OuroborosFaceMeshError::InvalidGeneratedGeometry);
+                }
+            }
+
+            validate_region_seam(region_vertices, self.config)?;
+        }
+        Ok(())
+    }
+
+    /// Canonical OUROFAC1 bytes. The landmark digest binds the semantic
+    /// attachment table; vertices and indices bind every generated geometry byte.
+    pub fn canonical_bytes(&self) -> Result<Vec<u8>, OuroborosFaceMeshError> {
+        let landmark_receipt = self.landmarks.receipt();
+        let capacity = self
+            .vertices
+            .len()
+            .checked_mul(36)
+            .and_then(|value| value.checked_add(self.indices.len().checked_mul(4)?))
+            .and_then(|value| value.checked_add(64))
+            .ok_or(OuroborosFaceMeshError::SizeOverflow)?;
+        let mut bytes = Vec::new();
+        bytes
+            .try_reserve_exact(capacity)
+            .map_err(|_| OuroborosFaceMeshError::AllocationFailed)?;
+        bytes.extend_from_slice(&FACE_MAGIC);
+        bytes.extend_from_slice(&FACE_SCHEMA_VERSION.to_le_bytes());
+        bytes.extend_from_slice(&self.scene_contract_version.to_le_bytes());
+        bytes.extend_from_slice(&landmark_receipt.digest);
+        bytes.extend_from_slice(&self.config.latitude_segments.to_le_bytes());
+        bytes.extend_from_slice(&self.config.longitude_segments.to_le_bytes());
+        bytes.extend_from_slice(&self.source_major_radius.to_bits().to_le_bytes());
+        bytes.extend_from_slice(&(self.vertices.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(&(self.indices.len() as u32).to_le_bytes());
+        for vertex in &self.vertices {
+            for value in vertex.position.into_iter().chain(vertex.normal).chain(vertex.uv) {
+                bytes.extend_from_slice(&value.to_bits().to_le_bytes());
+            }
+            bytes.extend_from_slice(&vertex.region_id.to_le_bytes());
+        }
+        for index in &self.indices {
+            bytes.extend_from_slice(&index.to_le_bytes());
+        }
+        Ok(bytes)
+    }
+
+    pub fn receipt(&self) -> Result<OuroborosFaceMeshReceipt, OuroborosFaceMeshError> {
+        let bytes = self.canonical_bytes()?;
+        Ok(OuroborosFaceMeshReceipt {
+            schema_version: FACE_SCHEMA_VERSION,
+            scene_contract_version: self.scene_contract_version,
+            landmark_digest: self.landmarks.receipt().digest,
+            vertex_count: u32::try_from(self.vertices.len())
+                .map_err(|_| OuroborosFaceMeshError::SizeLimitExceeded)?,
+            index_count: u32::try_from(self.indices.len())
+                .map_err(|_| OuroborosFaceMeshError::SizeLimitExceeded)?,
+            digest: *blake3::hash(&bytes).as_bytes(),
+        })
+    }
+}
+
+fn sphere_vertex_count(config: OuroborosFaceMeshConfig) -> Result<usize, OuroborosFaceMeshError> {
+    (config.latitude_segments as usize - 1)
+        .checked_mul(config.longitude_segments as usize + 1)
+        .and_then(|value| value.checked_add(2))
+        .ok_or(OuroborosFaceMeshError::SizeOverflow)
+}
+
+fn sphere_index_count(config: OuroborosFaceMeshConfig) -> Result<usize, OuroborosFaceMeshError> {
+    (config.longitude_segments as usize)
+        .checked_mul(config.latitude_segments as usize - 1)
+        .and_then(|value| value.checked_mul(6))
+        .ok_or(OuroborosFaceMeshError::SizeOverflow)
+}
+
+fn face_resource_estimate(
+    config: OuroborosFaceMeshConfig,
+) -> Result<(usize, usize, usize), OuroborosFaceMeshError> {
+    let vertices = sphere_vertex_count(config)?
+        .checked_mul(FACE_REGION_COUNT)
+        .ok_or(OuroborosFaceMeshError::SizeOverflow)?;
+    let indices = sphere_index_count(config)?
+        .checked_mul(FACE_REGION_COUNT)
+        .ok_or(OuroborosFaceMeshError::SizeOverflow)?;
+    let bytes = vertices
+        .checked_mul(36)
+        .and_then(|value| value.checked_add(indices.checked_mul(4)?))
+        .ok_or(OuroborosFaceMeshError::SizeOverflow)?;
+    Ok((vertices, indices, bytes))
+}
+
+fn append_ellipsoid(
+    vertices: &mut Vec<OuroborosFaceVertex>,
+    indices: &mut Vec<u32>,
+    config: OuroborosFaceMeshConfig,
+    center: [f32; 3],
+    basis: [[f32; 3]; 3],
+    radii: [f32; 3],
+    region_id: u32,
+) -> Result<(), OuroborosFaceMeshError> {
+    if !center.into_iter().all(f32::is_finite)
+        || !radii
+            .into_iter()
+            .all(|radius| radius.is_finite() && radius > 0.0)
+    {
+        return Err(OuroborosFaceMeshError::InvalidGeneratedGeometry);
+    }
+    let [forward, lateral, up] = basis;
+    let base = u32::try_from(vertices.len())
+        .map_err(|_| OuroborosFaceMeshError::SizeLimitExceeded)?;
+    let latitude = config.latitude_segments as usize;
+    let longitude = config.longitude_segments as usize;
+    let row = longitude + 1;
+
+    vertices.push(OuroborosFaceVertex {
+        position: add(center, scale(up, radii[2])),
+        normal: up,
+        uv: [0.5, 0.0],
+        region_id,
+    });
+
+    for latitude_index in 1..latitude {
+        let phi = PI * latitude_index as f32 / latitude as f32;
+        let sine_phi = phi.sin();
+        let cosine_phi = phi.cos();
+        for longitude_index in 0..=longitude {
+            let theta = if longitude_index == longitude {
+                0.0
+            } else {
+                TAU * longitude_index as f32 / longitude as f32
+            };
+            let cosine = theta.cos();
+            let sine = theta.sin();
+            let local = [
+                radii[0] * sine_phi * cosine,
+                radii[1] * sine_phi * sine,
+                radii[2] * cosine_phi,
+            ];
+            let position = add(
+                center,
+                add(
+                    scale(forward, local[0]),
+                    add(scale(lateral, local[1]), scale(up, local[2])),
+                ),
+            );
+            let normal = normalize(add(
+                scale(forward, sine_phi * cosine / radii[0]),
+                add(
+                    scale(lateral, sine_phi * sine / radii[1]),
+                    scale(up, cosine_phi / radii[2]),
+                ),
+            ))
+            .ok_or(OuroborosFaceMeshError::InvalidGeneratedGeometry)?;
+            vertices.push(OuroborosFaceVertex {
+                position,
+                normal,
+                uv: [
+                    longitude_index as f32 / longitude as f32,
+                    latitude_index as f32 / latitude as f32,
+                ],
+                region_id,
+            });
+        }
+    }
+
+    let bottom_index = u32::try_from(vertices.len())
+        .map_err(|_| OuroborosFaceMeshError::SizeLimitExceeded)?;
+    vertices.push(OuroborosFaceVertex {
+        position: sub(center, scale(up, radii[2])),
+        normal: scale(up, -1.0),
+        uv: [0.5, 1.0],
+        region_id,
+    });
+
+    let first_ring = base + 1;
+    for longitude_index in 0..longitude as u32 {
+        indices.extend_from_slice(&[
+            base,
+            first_ring + longitude_index,
+            first_ring + longitude_index + 1,
+        ]);
+    }
+
+    for latitude_index in 0..(latitude - 2) as u32 {
+        for longitude_index in 0..longitude as u32 {
+            let a = base + 1 + latitude_index * row as u32 + longitude_index;
+            let b = a + row as u32;
+            let c = a + 1;
+            let d = b + 1;
+            indices.extend_from_slice(&[a, b, c, b, d, c]);
+        }
+    }
+
+    let last_ring = base + 1 + (latitude - 2) as u32 * row as u32;
+    for longitude_index in 0..longitude as u32 {
+        indices.extend_from_slice(&[
+            last_ring + longitude_index,
+            bottom_index,
+            last_ring + longitude_index + 1,
+        ]);
+    }
+    Ok(())
+}
+
+fn validate_canonical_sphere_indices(
+    indices: &[u32],
+    base: u32,
+    config: OuroborosFaceMeshConfig,
+) -> Result<(), OuroborosFaceMeshError> {
+    let latitude = config.latitude_segments as usize;
+    let longitude = config.longitude_segments as usize;
+    let row = longitude + 1;
+    let mut offset = 0_usize;
+
+    for longitude_index in 0..longitude {
+        let expected = [
+            base,
+            base + 1 + longitude_index as u32,
+            base + 2 + longitude_index as u32,
+        ];
+        if indices.get(offset..offset + 3) != Some(&expected) {
+            return Err(OuroborosFaceMeshError::InvalidGeneratedGeometry);
+        }
+        offset += 3;
+    }
+
+    for latitude_index in 0..(latitude - 2) {
+        for longitude_index in 0..longitude {
+            let a = base + 1 + (latitude_index * row + longitude_index) as u32;
+            let b = a + row as u32;
+            let c = a + 1;
+            let d = b + 1;
+            let expected = [a, b, c, b, d, c];
+            if indices.get(offset..offset + 6) != Some(&expected) {
+                return Err(OuroborosFaceMeshError::InvalidGeneratedGeometry);
+            }
+            offset += 6;
+        }
+    }
+
+    let bottom = base + sphere_vertex_count(config)? as u32 - 1;
+    let last_ring = base + 1 + (latitude - 2) as u32 * row as u32;
+    for longitude_index in 0..longitude {
+        let expected = [
+            last_ring + longitude_index as u32,
+            bottom,
+            last_ring + longitude_index as u32 + 1,
+        ];
+        if indices.get(offset..offset + 3) != Some(&expected) {
+            return Err(OuroborosFaceMeshError::InvalidGeneratedGeometry);
+        }
+        offset += 3;
+    }
+    if offset != indices.len() {
+        return Err(OuroborosFaceMeshError::InvalidGeneratedGeometry);
+    }
+    Ok(())
+}
+
+fn validate_region_seam(
+    vertices: &[OuroborosFaceVertex],
+    config: OuroborosFaceMeshConfig,
+) -> Result<(), OuroborosFaceMeshError> {
+    let row = config.longitude_segments as usize + 1;
+    for latitude_index in 0..(config.latitude_segments as usize - 1) {
+        let first = vertices[1 + latitude_index * row];
+        let last = vertices[1 + latitude_index * row + config.longitude_segments as usize];
+        if first.position != last.position || first.normal != last.normal {
+            return Err(OuroborosFaceMeshError::InvalidGeneratedGeometry);
+        }
+    }
+    Ok(())
+}
+
+fn point(
+    origin: [f32; 3],
+    forward: [f32; 3],
+    lateral: [f32; 3],
+    up: [f32; 3],
+    forward_offset: f32,
+    lateral_offset: f32,
+    up_offset: f32,
+) -> [f32; 3] {
+    add(
+        add(
+            add(origin, scale(forward, forward_offset)),
+            scale(lateral, lateral_offset),
+        ),
+        scale(up, up_offset),
+    )
+}
+
+fn add(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
+    [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
+}
+
+fn sub(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
+
+fn scale(value: [f32; 3], amount: f32) -> [f32; 3] {
+    [value[0] * amount, value[1] * amount, value[2] * amount]
+}
+
+fn dot(a: [f32; 3], b: [f32; 3]) -> f32 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+
+fn cross(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
+}
+
+fn normalize(value: [f32; 3]) -> Option<[f32; 3]> {
+    let length = dot(value, value).sqrt();
+    if !length.is_finite() || length <= f32::EPSILON {
+        return None;
+    }
+    Some(scale(value, 1.0 / length))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ouroboros::{OuroborosConfig, OuroborosForm};
+
+    fn scene(form: OuroborosForm) -> OuroborosScene {
+        OuroborosScene::new(OuroborosConfig::default(), form).unwrap()
+    }
+
+    #[test]
+    fn face_mesh_is_deterministic_closed_and_receipt_bound() {
+        let scene = scene(OuroborosForm::Nature);
+        let landmarks = scene.landmarks();
+        let (mesh, receipt) =
+            OuroborosFaceMesh::build(&scene, landmarks, OuroborosFaceMeshConfig::default())
+                .unwrap();
+        let (repeat, repeat_receipt) =
+            OuroborosFaceMesh::build(&scene, landmarks, OuroborosFaceMeshConfig::default())
+                .unwrap();
+
+        assert_eq!(mesh, repeat);
+        assert_eq!(receipt, repeat_receipt);
+        assert_eq!(receipt.digest, *blake3::hash(&mesh.canonical_bytes().unwrap()).as_bytes());
+        assert_eq!(receipt.landmark_digest, landmarks.receipt().digest);
+        assert_eq!(receipt.schema_version, FACE_SCHEMA_VERSION);
+        mesh.validate(&scene).unwrap();
+    }
+
+    #[test]
+    fn face_mesh_preserves_semantic_attachments_and_stable_regions_across_forms() {
+        let mut expected_indices = None;
+        let mut expected_regions = None;
+        for form in OuroborosForm::ALL {
+            let scene = scene(form);
+            let landmarks = scene.landmarks();
+            let (mesh, _) =
+                OuroborosFaceMesh::build(&scene, landmarks, OuroborosFaceMeshConfig::default())
+                    .unwrap();
+            assert_eq!(mesh.landmarks, landmarks);
+            let regions: Vec<u32> = mesh.vertices.iter().map(|vertex| vertex.region_id).collect();
+            if let Some(indices) = &expected_indices {
+                assert_eq!(&mesh.indices, indices);
+                assert_eq!(Some(&regions), expected_regions.as_ref());
+            } else {
+                expected_indices = Some(mesh.indices.clone());
+                expected_regions = Some(regions);
+            }
+        }
+    }
+
+    #[test]
+    fn pose_rotates_face_geometry_without_moving_the_root() {
+        let neutral = scene(OuroborosForm::Humanity);
+        let mut turned = scene(OuroborosForm::Humanity);
+        turned
+            .set_attention_target(crate::ouroboros::AttentionTarget::new(1.0, -1.0).unwrap())
+            .unwrap();
+        turned.advance(0.25).unwrap();
+
+        let neutral_landmarks = neutral.landmarks();
+        let turned_landmarks = turned.landmarks();
+        let (neutral_mesh, neutral_receipt) =
+            OuroborosFaceMesh::build(&neutral, neutral_landmarks, OuroborosFaceMeshConfig::default())
+                .unwrap();
+        let (turned_mesh, turned_receipt) =
+            OuroborosFaceMesh::build(&turned, turned_landmarks, OuroborosFaceMeshConfig::default())
+                .unwrap();
+        assert_eq!(neutral_landmarks.head_anchor, turned_landmarks.head_anchor);
+        assert_ne!(neutral_receipt.digest, turned_receipt.digest);
+        assert_ne!(neutral_mesh.vertices, turned_mesh.vertices);
+        assert_eq!(neutral_mesh.landmarks.head_anchor, turned_mesh.landmarks.head_anchor);
+    }
+
+    #[test]
+    fn mesh_regions_keep_exact_landmark_centers() {
+        let scene = scene(OuroborosForm::Enlightenment);
+        let landmarks = scene.landmarks();
+        let (mesh, _) =
+            OuroborosFaceMesh::build(&scene, landmarks, OuroborosFaceMeshConfig::default())
+                .unwrap();
+        assert_eq!(mesh.landmarks.left_eye, landmarks.left_eye);
+        assert_eq!(mesh.landmarks.right_eye, landmarks.right_eye);
+        assert_eq!(mesh.landmarks.nose_tip, landmarks.nose_tip);
+        assert_eq!(mesh.landmarks.mouth_center, landmarks.mouth_center);
+        assert_eq!(mesh.landmarks.crown, landmarks.crown);
+        assert_eq!(mesh.landmarks.chin, landmarks.chin);
+    }
+
+    #[test]
+    fn lower_lod_preserves_attachment_contract_and_allows_bounded_geometry() {
+        let scene = scene(OuroborosForm::Nature);
+        let landmarks = scene.landmarks();
+        let high = OuroborosFaceMesh::build(
+            &scene,
+            landmarks,
+            OuroborosFaceMeshConfig {
+                latitude_segments: 32,
+                longitude_segments: 64,
+            },
+        )
+        .unwrap()
+        .0;
+        let low = OuroborosFaceMesh::build(
+            &scene,
+            landmarks,
+            OuroborosFaceMeshConfig {
+                latitude_segments: 8,
+                longitude_segments: 16,
+            },
+        )
+        .unwrap()
+        .0;
+        assert!(low.vertices.len() < high.vertices.len());
+        assert!(low.indices.len() < high.indices.len());
+        assert_eq!(low.landmarks, high.landmarks);
+        assert_eq!(
+            low.vertices
+                .iter()
+                .filter(|vertex| vertex.region_id == FACE_REGION_HEAD)
+                .map(|vertex| vertex.region_id)
+                .collect::<std::collections::BTreeSet<_>>(),
+            [FACE_REGION_HEAD].into_iter().collect()
+        );
+    }
+
+    #[test]
+    fn face_mesh_rejects_hostile_configs_and_mutated_public_geometry() {
+        let scene = scene(OuroborosForm::Digital);
+        let landmarks = scene.landmarks();
+        assert_eq!(
+            OuroborosFaceMesh::build(
+                &scene,
+                landmarks,
+                OuroborosFaceMeshConfig {
+                    latitude_segments: u32::MAX,
+                    longitude_segments: 48,
+                }
+            )
+            .unwrap_err(),
+            OuroborosFaceMeshError::InvalidConfiguration
+        );
+
+        let (mut mesh, _) =
+            OuroborosFaceMesh::build(&scene, landmarks, OuroborosFaceMeshConfig::default())
+                .unwrap();
+        mesh.indices[0] = u32::MAX;
+        assert_eq!(
+            mesh.validate(&scene),
+            Err(OuroborosFaceMeshError::InvalidGeneratedGeometry)
+        );
+
+        let (mut mesh, _) =
+            OuroborosFaceMesh::build(&scene, landmarks, OuroborosFaceMeshConfig::default())
+                .unwrap();
+        mesh.vertices[0].position[0] = f32::NAN;
+        assert_eq!(
+            mesh.validate(&scene),
+            Err(OuroborosFaceMeshError::InvalidGeneratedGeometry)
+        );
+    }
+}
