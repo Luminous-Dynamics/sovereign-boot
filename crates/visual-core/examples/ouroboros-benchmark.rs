@@ -21,7 +21,10 @@ use sovereign_visual_core::{
         AttentionTarget, OuroborosConfig, OuroborosForm, OuroborosMotionMode, OuroborosScene,
     },
     ouroboros_evidence::capture_ouroboros_evidence,
-    ouroboros_face::{OuroborosFaceMesh, OuroborosFaceMeshConfig},
+    ouroboros_face::{
+        OuroborosFaceMesh, OuroborosFaceMeshBudget, OuroborosFaceMeshConfig,
+        OuroborosFaceMeshPlan,
+    },
     ouroboros_mesh::{OuroborosMesh, OuroborosMeshBudget, OuroborosMeshConfig, OuroborosMeshPlan},
     ouroboros_render::render_reference_artifact,
     ouroboros_trace::{OuroborosEvent, OuroborosTrace},
@@ -214,11 +217,22 @@ fn make_plan(scene: &OuroborosScene) -> OuroborosMeshPlan {
     .expect("benchmark mesh budget must fit at least one quality tier")
 }
 
+fn make_face_plan() -> OuroborosFaceMeshPlan {
+    OuroborosFaceMeshConfig::plan_for_budget(OuroborosFaceMeshBudget {
+        projected_face_radius_px: 48,
+        max_vertices: 50_000,
+        max_indices: 300_000,
+        max_buffer_bytes: 2_500_000,
+    })
+    .expect("benchmark face budget must fit at least one quality tier")
+}
+
 fn run_benchmarks(options: Options) {
     let trace = make_trace();
     let trace_bytes = trace.encode().expect("benchmark trace must encode");
     let replayed_scene = trace.replay().expect("benchmark trace must replay").scene;
     let plan = make_plan(&replayed_scene);
+    let face_plan = make_face_plan();
     let base_scene = make_scene();
     let mut step_scene = make_scene();
     step_scene.transition_to(OuroborosForm::Digital);
@@ -308,12 +322,9 @@ fn run_benchmarks(options: Options) {
     measurements.push(measure("face_mesh_build_validate", options, || {
         let landmarks = replayed_scene.landmarks();
         // build() includes exact canonical geometry revalidation; time once.
-        let (mesh, receipt) = OuroborosFaceMesh::build(
-            &replayed_scene,
-            landmarks,
-            OuroborosFaceMeshConfig::default(),
-        )
-        .expect("face mesh must build");
+        let (mesh, receipt) =
+            OuroborosFaceMesh::build_with_plan(&replayed_scene, landmarks, face_plan)
+                .expect("budgeted face mesh must build");
         u64::from_le_bytes(
             receipt.digest[..8]
                 .try_into()
@@ -334,7 +345,8 @@ fn run_benchmarks(options: Options) {
 
     measurements.push(measure("sealed_evidence_capture_128", options, || {
         let artifact =
-            capture_ouroboros_evidence(&trace, plan, 128, 128).expect("evidence capture must seal");
+            capture_ouroboros_evidence(&trace, plan, face_plan, 128, 128)
+                .expect("evidence capture must seal");
         u64::from_le_bytes(
             artifact.receipt.bundle_digest[..8]
                 .try_into()
@@ -361,12 +373,9 @@ fn run_benchmarks(options: Options) {
     let parallelism = std::thread::available_parallelism()
         .map(|value| value.get())
         .unwrap_or(0);
-    let (_face_mesh, face_mesh_receipt) = OuroborosFaceMesh::build(
-        &replayed_scene,
-        replayed_scene.landmarks(),
-        OuroborosFaceMeshConfig::default(),
-    )
-    .expect("benchmark face mesh must build");
+    let (_face_mesh, face_mesh_receipt) =
+        OuroborosFaceMesh::build_with_plan(&replayed_scene, replayed_scene.landmarks(), face_plan)
+            .expect("budgeted benchmark face mesh must build");
 
     println!(
         concat!(
@@ -401,7 +410,12 @@ fn run_benchmarks(options: Options) {
         plan.vertex_count,
         plan.index_count,
         face_mesh_receipt.vertex_count,
-        face_mesh_receipt.index_count
+        face_mesh_receipt.index_count,
+        face_plan.requested.latitude_segments,
+        face_plan.requested.longitude_segments,
+        face_plan.config.latitude_segments,
+        face_plan.config.longitude_segments,
+        face_plan.estimated_buffer_bytes
     );
     for measurement in &mut measurements {
         println!(
