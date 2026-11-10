@@ -283,25 +283,21 @@ impl SemanticLodDecision {
             .map_err(|_| SemanticLodError::AllocationFailed)?;
         out.extend_from_slice(&DECISION_MAGIC);
         put_u16(&mut out, self.schema_version);
-        put_u32(
-            &mut out,
-            u32::try_from(self.resource_request_bytes.len()).map_err(|_| SemanticLodError::SizeOverflow)?,
-        );
+        let resource_request_bytes_len = u32::try_from(self.resource_request_bytes.len())
+            .map_err(|_| SemanticLodError::SizeOverflow)?;
+        put_u32(&mut out, resource_request_bytes_len);
         out.extend_from_slice(&self.resource_request_bytes);
-        put_u32(
-            &mut out,
-            u32::try_from(self.capability_snapshot_bytes.len()).map_err(|_| SemanticLodError::SizeOverflow)?,
-        );
+        let capability_snapshot_bytes_len = u32::try_from(self.capability_snapshot_bytes.len())
+            .map_err(|_| SemanticLodError::SizeOverflow)?;
+        put_u32(&mut out, capability_snapshot_bytes_len);
         out.extend_from_slice(&self.capability_snapshot_bytes);
-        put_u32(
-            &mut out,
-            u32::try_from(self.semantic_profile_bytes.len()).map_err(|_| SemanticLodError::SizeOverflow)?,
-        );
+        let semantic_profile_bytes_len = u32::try_from(self.semantic_profile_bytes.len())
+            .map_err(|_| SemanticLodError::SizeOverflow)?;
+        put_u32(&mut out, semantic_profile_bytes_len);
         out.extend_from_slice(&self.semantic_profile_bytes);
-        put_u32(
-            &mut out,
-            u32::try_from(self.semantic_candidate_bytes.len()).map_err(|_| SemanticLodError::SizeOverflow)?,
-        );
+        let semantic_candidate_bytes_len = u32::try_from(self.semantic_candidate_bytes.len())
+            .map_err(|_| SemanticLodError::SizeOverflow)?;
+        put_u32(&mut out, semantic_candidate_bytes_len);
         out.extend_from_slice(&self.semantic_candidate_bytes);
         match self.selected_candidate_id {
             Some(candidate_id) => {
@@ -463,6 +459,14 @@ pub enum SemanticLodError {
     DecisionMismatch,
     ResourceContract(ContractError),
 }
+
+impl std::fmt::Display for SemanticLodError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{self:?}")
+    }
+}
+
+impl std::error::Error for SemanticLodError {}
 
 #[cfg(test)]
 mod tests {
