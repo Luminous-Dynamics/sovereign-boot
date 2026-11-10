@@ -767,35 +767,59 @@ pub enum FeedbackRecordResult {
     DuplicateIdentical,
 }
 
-/// Bounded per-session correlation ledger.
+/// Bounded, session-scoped correlation ledger with explicit retirement.
 ///
-/// A frame sequence must be registered when its surface commit is issued.
-/// Multiple feedback objects/callbacks associated with the same commit may
-/// report the same terminal result; that is idempotent. A contradictory
-/// second terminal result is rejected. Entries are retained for the lifetime
-/// of this ledger so late duplicate callbacks cannot be rebound to a newer
-/// frame. Start a new ledger with a new session.
+/// A frame sequence is registered at the surface-commit boundary. Identical
+/// terminal callbacks are idempotent; conflicting outcomes are rejected.
+/// Completed entries may be retired only through an explicit watermark. The
+/// watermark survives retirement, so a late callback for an old frame cannot
+/// be rebound to a newer frame after its detail entry has been removed.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PresentationFeedbackLedger {
+    session_id: [u8; 16],
     capacity: usize,
     last_registered_sequence: u64,
+    retired_through_sequence: u64,
+    expected_clock_id: Option<u32>,
     entries: BTreeMap<u64, Option<TerminalFeedback>>,
 }
 
 impl PresentationFeedbackLedger {
-    pub fn new(capacity: usize) -> Result<Self, ContractError> {
+    pub fn new(
+        session_id: [u8; 16],
+        presentation_clock_id: Option<u32>,
+        capacity: usize,
+    ) -> Result<Self, ContractError> {
+        if session_id.iter().all(|byte| *byte == 0) {
+            return Err(ContractError::SessionMismatch);
+        }
         if capacity == 0 || capacity > MAX_FEEDBACK_LEDGER_ENTRIES {
             return Err(ContractError::InvalidFeedbackLedgerCapacity);
         }
         Ok(Self {
+            session_id,
             capacity,
             last_registered_sequence: 0,
+            retired_through_sequence: 0,
+            expected_clock_id: presentation_clock_id,
             entries: BTreeMap::new(),
         })
     }
 
+    fn validate_session(&self, session_id: [u8; 16]) -> Result<(), ContractError> {
+        if session_id != self.session_id {
+            return Err(ContractError::SessionMismatch);
+        }
+        Ok(())
+    }
+
     /// Register one host-owned surface commit before accepting its feedback.
-    pub fn register_commit(&mut self, frame_sequence: u64) -> Result<(), ContractError> {
+    pub fn register_commit(
+        &mut self,
+        session_id: [u8; 16],
+        frame_sequence: u64,
+    ) -> Result<(), ContractError> {
+        self.validate_session(session_id)?;
         if frame_sequence == 0 || frame_sequence <= self.last_registered_sequence {
             return Err(ContractError::NonMonotonicFrameSequence);
         }
@@ -809,10 +833,19 @@ impl PresentationFeedbackLedger {
 
     pub fn record_presented(
         &mut self,
+        session_id: [u8; 16],
         frame_sequence: u64,
         observation: PresentationObservation,
     ) -> Result<FeedbackRecordResult, ContractError> {
+        self.validate_session(session_id)?;
         observation.validate()?;
+        match self.expected_clock_id {
+            Some(clock_id) if clock_id != observation.clock_id => {
+                return Err(ContractError::PresentationClockMismatch);
+            }
+            None => self.expected_clock_id = Some(observation.clock_id),
+            _ => {}
+        }
         self.record_terminal(
             frame_sequence,
             TerminalFeedback::Presented(observation),
@@ -821,9 +854,11 @@ impl PresentationFeedbackLedger {
 
     pub fn record_discarded(
         &mut self,
+        session_id: [u8; 16],
         frame_sequence: u64,
         source: PresentationSource,
     ) -> Result<FeedbackRecordResult, ContractError> {
+        self.validate_session(session_id)?;
         self.record_terminal(frame_sequence, TerminalFeedback::Discarded(source))
     }
 
@@ -833,6 +868,9 @@ impl PresentationFeedbackLedger {
         outcome: TerminalFeedback,
     ) -> Result<FeedbackRecordResult, ContractError> {
         outcome.validate()?;
+        if frame_sequence <= self.retired_through_sequence {
+            return Err(ContractError::RetiredFrameCommit);
+        }
         let slot = self
             .entries
             .get_mut(&frame_sequence)
@@ -850,15 +888,57 @@ impl PresentationFeedbackLedger {
     }
 
     /// Returns Ok(None) for a registered commit whose compositor outcome has
-    /// not arrived yet. Unknown frame sequences are an explicit error.
+    /// not arrived yet. Unknown and retired sequences are distinct failures.
     pub fn outcome(
         &self,
+        session_id: [u8; 16],
         frame_sequence: u64,
     ) -> Result<Option<TerminalFeedback>, ContractError> {
+        self.validate_session(session_id)?;
+        if frame_sequence <= self.retired_through_sequence {
+            return Err(ContractError::RetiredFrameCommit);
+        }
         self.entries
             .get(&frame_sequence)
             .copied()
             .ok_or(ContractError::UnknownFrameCommit)
+    }
+
+    /// Retire a completed prefix to bound long-lived sessions. Every registered
+    /// commit at or below the watermark must already have a terminal outcome.
+    /// Sequence and clock watermarks are retained after the detailed entries
+    /// are pruned. A late callback for a retired sequence is rejected.
+    pub fn retire_through(
+        &mut self,
+        session_id: [u8; 16],
+        frame_sequence: u64,
+    ) -> Result<usize, ContractError> {
+        self.validate_session(session_id)?;
+        if frame_sequence <= self.retired_through_sequence {
+            return Err(ContractError::RetiredFrameCommit);
+        }
+        if frame_sequence > self.last_registered_sequence {
+            return Err(ContractError::UnknownFrameCommit);
+        }
+        if self
+            .entries
+            .range(..=frame_sequence)
+            .any(|(_, outcome)| outcome.is_none())
+        {
+            return Err(ContractError::PendingFrameFeedback);
+        }
+        let before = self.entries.len();
+        self.entries.retain(|sequence, _| *sequence > frame_sequence);
+        self.retired_through_sequence = frame_sequence;
+        Ok(before - self.entries.len())
+    }
+
+    pub fn session_id(&self) -> [u8; 16] {
+        self.session_id
+    }
+
+    pub fn retired_through_sequence(&self) -> u64 {
+        self.retired_through_sequence
     }
 
     pub fn len(&self) -> usize {
@@ -1017,6 +1097,8 @@ pub enum ContractError {
     FeedbackLedgerCapacityExceeded,
     UnknownFrameCommit,
     ConflictingTerminalFeedback,
+    RetiredFrameCommit,
+    PendingFrameFeedback,
 }
 
 impl fmt::Display for ContractError {
@@ -1640,39 +1722,55 @@ mod tests {
         }
     }
 
+    fn ledger_session() -> [u8; 16] {
+        [3; 16]
+    }
+
+    fn feedback_ledger(capacity: usize) -> PresentationFeedbackLedger {
+        PresentationFeedbackLedger::new(ledger_session(), Some(1), capacity).unwrap()
+    }
+
     #[test]
     fn feedback_ledger_deduplicates_identical_presented_callbacks() {
         let observation = test_presentation_observation(1, 10);
-        let mut ledger = PresentationFeedbackLedger::new(8).unwrap();
-        ledger.register_commit(1).unwrap();
+        let mut ledger = feedback_ledger(8);
+        ledger.register_commit(ledger_session(), 1).unwrap();
         assert_eq!(
-            ledger.record_presented(1, observation),
+            ledger.record_presented(ledger_session(), 1, observation),
             Ok(FeedbackRecordResult::Recorded)
         );
         assert_eq!(
-            ledger.record_presented(1, observation),
+            ledger.record_presented(ledger_session(), 1, observation),
             Ok(FeedbackRecordResult::DuplicateIdentical)
         );
         assert_eq!(
-            ledger.outcome(1),
+            ledger.outcome(ledger_session(), 1),
             Ok(Some(TerminalFeedback::Presented(observation)))
         );
     }
 
     #[test]
     fn feedback_ledger_deduplicates_identical_discarded_callbacks() {
-        let mut ledger = PresentationFeedbackLedger::new(8).unwrap();
-        ledger.register_commit(1).unwrap();
+        let mut ledger = feedback_ledger(8);
+        ledger.register_commit(ledger_session(), 1).unwrap();
         assert_eq!(
-            ledger.record_discarded(1, PresentationSource::WaylandPresentationTimeV2),
+            ledger.record_discarded(
+                ledger_session(),
+                1,
+                PresentationSource::WaylandPresentationTimeV2
+            ),
             Ok(FeedbackRecordResult::Recorded)
         );
         assert_eq!(
-            ledger.record_discarded(1, PresentationSource::WaylandPresentationTimeV2),
+            ledger.record_discarded(
+                ledger_session(),
+                1,
+                PresentationSource::WaylandPresentationTimeV2
+            ),
             Ok(FeedbackRecordResult::DuplicateIdentical)
         );
         assert_eq!(
-            ledger.outcome(1),
+            ledger.outcome(ledger_session(), 1),
             Ok(Some(TerminalFeedback::Discarded(
                 PresentationSource::WaylandPresentationTimeV2
             )))
@@ -1681,58 +1779,169 @@ mod tests {
 
     #[test]
     fn feedback_ledger_rejects_conflicting_presented_and_discarded_outcomes() {
-        let mut ledger = PresentationFeedbackLedger::new(8).unwrap();
-        ledger.register_commit(1).unwrap();
+        let mut ledger = feedback_ledger(8);
+        ledger.register_commit(ledger_session(), 1).unwrap();
         let observation = test_presentation_observation(1, 10);
-        ledger.record_presented(1, observation).unwrap();
+        ledger
+            .record_presented(ledger_session(), 1, observation)
+            .unwrap();
         assert_eq!(
-            ledger.record_discarded(1, PresentationSource::WaylandPresentationTimeV2),
+            ledger.record_discarded(
+                ledger_session(),
+                1,
+                PresentationSource::WaylandPresentationTimeV2
+            ),
             Err(ContractError::ConflictingTerminalFeedback)
         );
         assert_eq!(
-            ledger.outcome(1),
+            ledger.outcome(ledger_session(), 1),
             Ok(Some(TerminalFeedback::Presented(observation)))
         );
     }
 
     #[test]
-    fn feedback_ledger_rejects_feedback_for_unregistered_or_old_commits() {
-        let mut ledger = PresentationFeedbackLedger::new(8).unwrap();
+    fn feedback_ledger_binds_session_and_rejects_unregistered_sequences() {
+        let mut ledger = feedback_ledger(8);
         let observation = test_presentation_observation(1, 10);
         assert_eq!(
-            ledger.record_presented(1, observation),
+            ledger.register_commit([9; 16], 1),
+            Err(ContractError::SessionMismatch)
+        );
+        assert_eq!(
+            ledger.record_presented([9; 16], 1, observation),
+            Err(ContractError::SessionMismatch)
+        );
+        assert_eq!(
+            ledger.outcome([9; 16], 1),
+            Err(ContractError::SessionMismatch)
+        );
+        assert_eq!(
+            ledger.record_presented(ledger_session(), 1, observation),
             Err(ContractError::UnknownFrameCommit)
         );
-        ledger.register_commit(2).unwrap();
+        ledger.register_commit(ledger_session(), 2).unwrap();
         assert_eq!(
-            ledger.register_commit(2),
+            ledger.register_commit(ledger_session(), 2),
             Err(ContractError::NonMonotonicFrameSequence)
         );
         assert_eq!(
-            ledger.register_commit(1),
+            ledger.register_commit(ledger_session(), 1),
             Err(ContractError::NonMonotonicFrameSequence)
         );
     }
 
     #[test]
-    fn feedback_ledger_fails_closed_at_declared_capacity() {
-        let mut ledger = PresentationFeedbackLedger::new(1).unwrap();
-        ledger.register_commit(1).unwrap();
+    fn feedback_ledger_locks_presentation_clock_for_the_session() {
+        let mut ledger = feedback_ledger(8);
+        ledger.register_commit(ledger_session(), 1).unwrap();
         assert_eq!(
-            ledger.register_commit(2),
-            Err(ContractError::FeedbackLedgerCapacityExceeded)
+            ledger.record_presented(
+                ledger_session(),
+                1,
+                test_presentation_observation(2, 10)
+            ),
+            Err(ContractError::PresentationClockMismatch)
+        );
+        assert_eq!(ledger.outcome(ledger_session(), 1), Ok(None));
+    }
+
+    #[test]
+    fn feedback_ledger_retires_only_terminal_prefix_and_rejects_late_duplicates() {
+        let mut ledger = feedback_ledger(3);
+        ledger.register_commit(ledger_session(), 1).unwrap();
+        ledger.register_commit(ledger_session(), 2).unwrap();
+        ledger.register_commit(ledger_session(), 3).unwrap();
+        ledger
+            .record_presented(
+                ledger_session(),
+                1,
+                test_presentation_observation(1, 10)
+            )
+            .unwrap();
+        ledger
+            .record_discarded(
+                ledger_session(),
+                2,
+                PresentationSource::WaylandPresentationTimeV2
+            )
+            .unwrap();
+        assert_eq!(
+            ledger.retire_through(ledger_session(), 2),
+            Ok(2)
         );
         assert_eq!(ledger.len(), 1);
+        assert_eq!(ledger.retired_through_sequence(), 2);
+        assert_eq!(
+            ledger.record_discarded(
+                ledger_session(),
+                1,
+                PresentationSource::WaylandPresentationTimeV2
+            ),
+            Err(ContractError::RetiredFrameCommit)
+        );
+        assert_eq!(
+            ledger.outcome(ledger_session(), 1),
+            Err(ContractError::RetiredFrameCommit)
+        );
+        assert_eq!(
+            ledger.retire_through(ledger_session(), 3),
+            Err(ContractError::PendingFrameFeedback)
+        );
+        ledger
+            .record_discarded(
+                ledger_session(),
+                3,
+                PresentationSource::WaylandPresentationTimeV2
+            )
+            .unwrap();
+        assert_eq!(
+            ledger.retire_through(ledger_session(), 3),
+            Ok(1)
+        );
+        assert!(ledger.is_empty());
+        assert_eq!(
+            ledger.register_commit(ledger_session(), 3),
+            Err(ContractError::NonMonotonicFrameSequence)
+        );
     }
 
     #[test]
-    fn feedback_ledger_rejects_zero_and_excessive_capacity() {
+    fn feedback_ledger_capacity_is_reusable_after_explicit_retirement() {
+        let mut ledger = feedback_ledger(2);
+        for sequence in 1..=8 {
+            ledger.register_commit(ledger_session(), sequence).unwrap();
+            ledger
+                .record_discarded(
+                    ledger_session(),
+                    sequence,
+                    PresentationSource::WaylandPresentationTimeV2
+                )
+                .unwrap();
+            assert_eq!(
+                ledger.retire_through(ledger_session(), sequence),
+                Ok(1)
+            );
+            assert!(ledger.is_empty());
+        }
+    }
+
+    #[test]
+    fn feedback_ledger_rejects_zero_session_and_invalid_capacity() {
         assert_eq!(
-            PresentationFeedbackLedger::new(0).err(),
+            PresentationFeedbackLedger::new([0; 16], Some(1), 8).err(),
+            Some(ContractError::SessionMismatch)
+        );
+        assert_eq!(
+            PresentationFeedbackLedger::new(ledger_session(), None, 0).err(),
             Some(ContractError::InvalidFeedbackLedgerCapacity)
         );
         assert_eq!(
-            PresentationFeedbackLedger::new(MAX_FEEDBACK_LEDGER_ENTRIES + 1).err(),
+            PresentationFeedbackLedger::new(
+                ledger_session(),
+                None,
+                MAX_FEEDBACK_LEDGER_ENTRIES + 1
+            )
+            .err(),
             Some(ContractError::InvalidFeedbackLedgerCapacity)
         );
     }
