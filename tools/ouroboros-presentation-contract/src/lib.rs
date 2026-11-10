@@ -308,18 +308,30 @@ pub enum InfeasibleReason {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct QualityDecision {
-    pub schema_version: u16,
-    pub policy_version: u16,
-    pub capability_revision: u64,
+    schema_version: u16,
+    policy_version: u16,
+    capability_revision: u64,
     /// Exact canonical inputs are embedded so the decision digest binds them.
-    pub request_bytes: Vec<u8>,
-    pub capability_bytes: Vec<u8>,
-    pub selected_candidate: Option<QualityCandidate>,
-    pub degradation_flags: u8,
-    pub infeasible_reason: Option<InfeasibleReason>,
+    request_bytes: Vec<u8>,
+    capability_bytes: Vec<u8>,
+    selected_candidate: Option<QualityCandidate>,
+    degradation_flags: u8,
+    infeasible_reason: Option<InfeasibleReason>,
 }
 
 impl QualityDecision {
+    pub fn selected_candidate(&self) -> Option<&QualityCandidate> {
+        self.selected_candidate.as_ref()
+    }
+
+    pub fn degradation_flags(&self) -> u8 {
+        self.degradation_flags
+    }
+
+    pub fn infeasible_reason(&self) -> Option<InfeasibleReason> {
+        self.infeasible_reason
+    }
+
     pub fn is_feasible(&self) -> bool {
         self.selected_candidate.is_some() && self.infeasible_reason.is_none()
     }
@@ -466,7 +478,6 @@ impl FrameReceipt {
             }
             PresentationStatus::Submitted => {
                 if self.evidence_level < EvidenceLevel::HostObserved
-                    || self.evidence_level > EvidenceLevel::HostObserved
                     || self.presentation_time_ns.is_some()
                 {
                     return Err(ContractError::UnsupportedPresentationClaim);
@@ -746,9 +757,9 @@ mod tests {
         let a = negotiate(&req, &caps, 1).unwrap();
         let b = negotiate(&req, &caps, 1).unwrap();
         assert_eq!(a.canonical_bytes().unwrap(), b.canonical_bytes().unwrap());
-        assert_eq!(a.selected_candidate.unwrap().candidate_id, 1);
+        assert_eq!(a.selected_candidate().unwrap().candidate_id, 1);
         assert_eq!(
-            a.degradation_flags,
+            a.degradation_flags(),
             Degradation::FeatureResolution as u8
                 | Degradation::SilhouetteError as u8
         );
@@ -761,7 +772,7 @@ mod tests {
         let decision = negotiate(&req, &caps, 1).unwrap();
         assert!(!decision.is_feasible());
         assert_eq!(
-            decision.infeasible_reason,
+            decision.infeasible_reason(),
             Some(InfeasibleReason::NoCandidateSatisfiesAllHardConstraints)
         );
     }
@@ -782,8 +793,8 @@ mod tests {
         ]);
         let tight = negotiate(&request(500_000, false), &caps, 1).unwrap();
         let expanded = negotiate(&request(1_000_000, false), &caps, 1).unwrap();
-        assert_eq!(tight.selected_candidate.unwrap().preference_rank, 1);
-        assert_eq!(expanded.selected_candidate.unwrap().preference_rank, 0);
+        assert_eq!(tight.selected_candidate().unwrap().preference_rank, 1);
+        assert_eq!(expanded.selected_candidate().unwrap().preference_rank, 0);
     }
 
     #[test]
