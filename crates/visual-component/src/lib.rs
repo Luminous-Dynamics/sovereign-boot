@@ -17,12 +17,12 @@ wit_bindgen::generate!({
     world: "visual-component",
 });
 
+#[cfg(target_arch = "wasm32")]
+use exports::luminous::sovereign_visual::scene::Guest;
 use exports::luminous::sovereign_visual::scene::{
     Frame, GuestVisualScene, Rgb, ScenePalette as WitScenePalette,
     SceneSettings as WitSceneSettings,
 };
-#[cfg(target_arch = "wasm32")]
-use exports::luminous::sovereign_visual::scene::Guest;
 
 fn step_error(error: StepError) -> String {
     match error {
