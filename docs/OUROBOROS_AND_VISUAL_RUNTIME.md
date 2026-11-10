@@ -184,6 +184,22 @@ Targets below are proposed qualification targets, not results. Every measurement
 | Resume | First valid frame <=250 ms after visibility returns | Repeated cover/uncover and monitor reconnect tests |
 | Stability | 60-minute visible and 60-minute hidden runs without unbounded memory growth | RSS/GPU-memory traces and scene-state receipts |
 
+### CPU qualification harness
+
+The release-mode benchmark harness is `crates/visual-core/examples/ouroboros-benchmark.rs`. Run it with:
+
+```sh
+BENCH_SOURCE_REV="$(git rev-parse HEAD)" \
+BENCH_CPU_MODEL="record exact CPU model" \
+cargo run --release --locked -p sovereign-visual-core \
+  --example ouroboros-benchmark -- --iterations 250 --warmup 20 \
+  > ouroboros-benchmark.jsonl
+```
+
+It emits newline-delimited JSON: one metadata row followed by one row per operation. Current measurements include loop-control overhead, 60 Hz C1 scene update/retarget, semantic landmark generation, checkpoint encode/decode, trace decode/replay, LOD planning, mesh build+validation, 320×320 CPU capture and 128×128 sealed evidence capture. Each measurement reports min/mean/p50/p95/p99/max nanoseconds and operations per second. The metadata row records schema, source revision, debug/release profile, OS, architecture, optional CPU model, logical CPU count, scene-contract version, trace length and mesh plan.
+
+The harness is CPU-only. It does **not** measure Vulkan/WGPU submission, GPU memory, compositor-presented frame pacing, power or lock-screen behavior. Those measurements require the later native adapter and a separately identified device/compositor. A benchmark JSONL file is not a pass/fail qualification by itself; preserve raw output with the exact source/build/host tuple and compare confidence intervals over repeated runs. No performance numbers are claimed until the harness has actually run on a named host.
+
 ### Comparative qualification protocol
 
 Do not compare products from marketing claims or different machines. Freeze one matrix and capture the raw evidence for every runtime. Use the following dated software baselines:
@@ -313,6 +329,7 @@ Ouroboros is a first exemplar. Future scenes could embody civic commons, ecologi
 | P1 | Portable Ouroboros checkpoint | **Source implemented** with `OUROCKP1` schema and active/Reduced restore tests; exact-head tests and p95 encode/decode measurements pending |
 | P1 | Semantic face landmark contract | **Source implemented** with `OUROLND1`, invariant root, orthonormal pose basis and six face attachments; exact-head tests and visual review pending |
 | P1 | Sealed visual-evidence bundle | **Source implemented** with `OUROEVB2` binding trace, checkpoint, landmarks, mesh, CPU pixels and complete LOD budget; exact-head tests and cross-backend comparison pending |
+| P1 | CPU benchmark harness | **Source implemented** with JSONL p50/p95/p99 reports for scene, landmarks, checkpoint, replay, LOD, mesh, CPU capture and evidence sealing; exact-head build and named-host baseline pending |
 | P1 | WGPU Ouroboros renderer | Same semantic fixtures, GPU shader validation, reference comparisons and named-device performance evidence |
 | P1 | Waywallen bridge smoke renderer | Exact protocol handshake, buffer negotiation, DMA-BUF publication, SYNC_FD and release-point lifecycle |
 | P2 | Sandboxed Ouroboros Waywallen plugin | Per-user plugin install, typed scene settings, renderer process sandbox, static fallback and daemon lifecycle |
