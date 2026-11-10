@@ -274,8 +274,15 @@ impl SemanticLodDecision {
             || (self.selected_candidate_id.is_some()
                 != self.weighted_distortion_milliunits.is_some())
             || (self.selected_candidate_id.is_some() == self.infeasible_reason.is_some())
+            || self.pareto_candidate_ids.len() > MAX_SEMANTIC_CANDIDATES
             || (self.is_feasible() && self.pareto_candidate_ids.is_empty())
             || (!self.is_feasible() && !self.pareto_candidate_ids.is_empty())
+            || self.pareto_candidate_ids.iter().enumerate().any(|(index, candidate_id)| {
+                self.pareto_candidate_ids[..index].contains(candidate_id)
+            })
+            || self
+                .selected_candidate_id
+                .is_some_and(|selected| !self.pareto_candidate_ids.contains(&selected))
         {
             return Err(SemanticLodError::InvalidDecision);
         }
@@ -286,6 +293,7 @@ impl SemanticLodDecision {
             .and_then(|v| v.checked_add(self.capability_snapshot_bytes.len()))
             .and_then(|v| v.checked_add(self.semantic_profile_bytes.len()))
             .and_then(|v| v.checked_add(self.semantic_candidate_bytes.len()))
+            .and_then(|v| v.checked_add(2 + self.pareto_candidate_ids.len() * 2))
             .ok_or(SemanticLodError::SizeOverflow)?;
         out.try_reserve_exact(capacity)
             .map_err(|_| SemanticLodError::AllocationFailed)?;
