@@ -352,7 +352,7 @@ fn run_benchmarks(options: Options) {
             "\"arch\":\"{}\",\"cpu_model\":\"{}\",\"cpu_governor\":\"{}\",",
             "\"power_profile\":\"{}\",\"kernel\":\"{}\",\"ram_mib\":\"{}\",",
             "\"rust_toolchain\":\"{}\",\"gpu_model\":\"{}\",",
-            "\"gpu_driver\":\"{}\",\"compositor\":\"{}\",\"logical_cpus\":{},"
+            "\"gpu_driver\":\"{}\",\"compositor\":\"{}\",\"logical_cpus\":{},",
             "\"scene_contract_version\":{},\"trace_bytes\":{},",
             "\"mesh_tier\":\"{:?}\",\"mesh_vertices\":{},\"mesh_indices\":{},",
             "\"render_dimensions\":\"320x320\",\"evidence_dimensions\":\"128x128\"}}"
