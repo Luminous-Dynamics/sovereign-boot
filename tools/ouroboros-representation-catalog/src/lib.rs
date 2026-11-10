@@ -164,7 +164,8 @@ impl RepresentationRecord {
         }
         match self.format {
             RepresentationFormat::GltfGaussianSplat => {
-                if self.required_capabilities & CAP_GAUSSIAN_SPLATTING == 0
+                if self.required_capabilities & (CAP_GLTF_2 | CAP_GAUSSIAN_SPLATTING)
+                    != (CAP_GLTF_2 | CAP_GAUSSIAN_SPLATTING)
                     || self.required_extensions & EXT_KHR_GAUSSIAN_SPLATTING == 0
                 {
                     return Err(CatalogError::MissingRequiredFormatCapability);
@@ -178,7 +179,8 @@ impl RepresentationRecord {
                 }
             }
             RepresentationFormat::LandmarkSidecar => {
-                if self.required_extensions & EXT_OURO_LANDMARK_SIDECAR == 0
+                if self.required_capabilities & CAP_CPU == 0
+                    || self.required_extensions & EXT_OURO_LANDMARK_SIDECAR == 0
                     || self.anchor_fidelity != AnchorFidelity::Exact
                     || self.anchor_mask == 0
                 {
@@ -913,6 +915,31 @@ mod tests {
         assert_eq!(
             catalog(vec![visual]).validate(),
             Err(CatalogError::RequiredVisualFeaturesUnavailable)
+        );
+    }
+
+    #[test]
+    fn formats_require_both_base_runtime_and_specialized_capabilities() {
+        let mut splat = record(
+            1,
+            RepresentationFormat::GltfGaussianSplat,
+            RepresentationRole::VisualAppearance,
+        );
+        splat.required_capabilities &= !CAP_GLTF_2;
+        assert_eq!(
+            splat.validate(),
+            Err(CatalogError::MissingRequiredFormatCapability)
+        );
+
+        let mut rig = record(
+            2,
+            RepresentationFormat::LandmarkSidecar,
+            RepresentationRole::SemanticRig,
+        );
+        rig.required_capabilities &= !CAP_CPU;
+        assert_eq!(
+            rig.validate(),
+            Err(CatalogError::MissingRequiredFormatCapability)
         );
     }
 
