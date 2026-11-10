@@ -7,11 +7,7 @@
 //! the Rust reference implementation on the executing host; it is not a GPU,
 //! compositor, power or cross-product benchmark.
 
-use std::{
-    env,
-    hint::black_box,
-    time::Instant,
-};
+use std::{env, hint::black_box, time::Instant};
 
 use sovereign_visual_core::{
     ouroboros::{
@@ -109,9 +105,16 @@ fn build_trace() -> OuroborosTrace {
 fn main() {
     let iterations = env::args()
         .nth(1)
-        .map(|value| value.parse::<usize>().expect("iterations must be an integer"))
+        .map(|value| {
+            value
+                .parse::<usize>()
+                .expect("iterations must be an integer")
+        })
         .unwrap_or(200);
-    assert!((10..=50_000).contains(&iterations), "iterations must be in 10..=50000");
+    assert!(
+        (10..=50_000).contains(&iterations),
+        "iterations must be in 10..=50000"
+    );
 
     let config = OuroborosConfig::default();
     let mut step_scene =
@@ -173,8 +176,8 @@ fn main() {
             .expect("fixed benchmark LOD inputs remain valid")
     });
     let mesh_stats = benchmark(iterations, || {
-        let (mesh, receipt) = OuroborosMesh::build(&replay_scene, plan.config)
-            .expect("benchmark mesh builds");
+        let (mesh, receipt) =
+            OuroborosMesh::build(&replay_scene, plan.config).expect("benchmark mesh builds");
         mesh.validate().expect("benchmark mesh validates");
         assert_eq!(mesh.receipt().unwrap(), receipt);
         receipt.digest
@@ -209,7 +212,11 @@ fn main() {
     println!(
         "  \"build\": {{\"package\": \"sovereign-visual-core\", \"version\": \"{}\", \"profile\": \"{}\", \"target_arch\": \"{}\", \"target_os\": \"{}\", \"git_commit\": \"{}\"}},",
         env!("CARGO_PKG_VERSION"),
-        if cfg!(debug_assertions) { "debug" } else { "release" },
+        if cfg!(debug_assertions) {
+            "debug"
+        } else {
+            "release"
+        },
         env::consts::ARCH,
         env::consts::OS,
         option_env!("GIT_COMMIT").unwrap_or("unspecified")
