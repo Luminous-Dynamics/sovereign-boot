@@ -183,7 +183,7 @@ impl DualContourMesh {
         let source_len = u64::try_from(self.source_grid_canonical_bytes.len())
             .map_err(|_| ExtractError::SizeOverflow)?;
         let vertex_bytes = (self.vertices.len() as u64)
-            .checked_mul(52)
+            .checked_mul(40)
             .ok_or(ExtractError::SizeOverflow)?;
         let quad_bytes = (self.quads.len() as u64)
             .checked_mul(16)
@@ -198,7 +198,7 @@ impl DualContourMesh {
             .and_then(|v| v.checked_add(vertex_bytes))
             .and_then(|v| v.checked_add(quad_bytes))
             .and_then(|v| v.checked_add(triangle_bytes))
-            .and_then(|v| v.checked_add(8 + 4 * 4 + 8 * 3 + 4))
+            .and_then(|v| v.checked_add(4 * 4 + 5 * 8 + 4))
             .and_then(|v| v.checked_add(audit_bytes.len() as u64))
             .ok_or(ExtractError::SizeOverflow)?;
         if total > MAX_CANONICAL_RECEIPT_BYTES {
@@ -299,6 +299,7 @@ pub enum ExtractError {
     DegenerateQuad,
     SingularQefUnresolved,
     NonFiniteFieldGradient,
+    NoSurfaceCrossings,
     QuantizationOverflow,
     AuditReportMismatch,
     ReceiptLengthMismatch,
@@ -352,7 +353,7 @@ pub fn extract(
         .checked_mul(std::mem::size_of::<u32>() as u64)
         .ok_or(ExtractError::SizeOverflow)?;
     let max_vertex_bytes = u64::from(config.max_vertices)
-        .checked_mul(52)
+        .checked_mul(40)
         .ok_or(ExtractError::SizeOverflow)?;
     let max_topology_bytes = u64::from(config.max_quads)
         .checked_mul(40)
@@ -629,7 +630,7 @@ pub fn extract(
         .checked_mul(2)
         .ok_or(ExtractError::SizeOverflow)?;
     let geometry_bytes = (vertices.len() as u64)
-        .checked_mul(52)
+        .checked_mul(40)
         .and_then(|value| value.checked_add((quads.len() as u64).checked_mul(40)?))
         .ok_or(ExtractError::SizeOverflow)?;
     if geometry_bytes > config.max_geometry_bytes {
@@ -659,42 +660,51 @@ pub fn extract(
         geometry_bytes,
         working_payload_estimate_bytes: working_payload,
     };
-    let mut mesh = DualContourMesh {
+    let semantic_mesh = semantic_triangle_mesh(&vertices, &triangles)?;
+    let audit_report = audit_mesh(&semantic_mesh, AuditLimits::default())?;
+    Ok(DualContourMesh {
         source_grid_canonical_bytes,
         config,
         vertices,
         quads,
         triangles,
         metrics,
-        audit_report: audit_mesh(
-            &SemanticTriangleMesh {
-                vertices: Vec::new(),
-                vertex_feature_masks: Vec::new(),
-                faces: Vec::new(),
-                face_region_ids: Vec::new(),
-            },
-            AuditLimits::default(),
-        )
-        .err()
-        .map(|_| empty_audit_placeholder())
-        .ok_or(ExtractError::AuditReportMismatch)?,
-    };
-    let semantic_mesh = mesh.to_semantic_triangle_mesh()?;
-    mesh.audit_report = audit_mesh(&semantic_mesh, AuditLimits::default())?;
-    Ok(mesh)
+        audit_report,
+    })
 }
 
-fn empty_audit_placeholder() -> MeshAuditReport {
-    // The placeholder is never exposed: extract() immediately replaces it
-    // with the real audit after the triangle view is constructed.
-    let empty = SemanticTriangleMesh {
-        vertices: Vec::new(),
-        vertex_feature_masks: Vec::new(),
-        faces: Vec::new(),
-        face_region_ids: Vec::new(),
-    };
-    audit_mesh(&empty, AuditLimits::default()).unwrap_err();
-    unreachable!("empty mesh audit must reject")
+fn semantic_triangle_mesh(
+    vertices: &[DualContourVertex],
+    triangles: &[[u32; 3]],
+) -> Result<SemanticTriangleMesh, ExtractError> {
+    let mut positions = Vec::new();
+    positions
+        .try_reserve_exact(vertices.len())
+        .map_err(|_| ExtractError::AllocationFailed)?;
+    let mut feature_masks = Vec::new();
+    feature_masks
+        .try_reserve_exact(vertices.len())
+        .map_err(|_| ExtractError::AllocationFailed)?;
+    for vertex in vertices {
+        positions.push(vertex.position_nanounits.map(|value| value as f64 / POSITION_QUANTIZATION));
+        feature_masks.push(vertex.feature_mask);
+    }
+    let mut faces = Vec::new();
+    faces
+        .try_reserve_exact(triangles.len())
+        .map_err(|_| ExtractError::AllocationFailed)?;
+    faces.extend_from_slice(triangles);
+    let mut face_regions = Vec::new();
+    face_regions
+        .try_reserve_exact(faces.len())
+        .map_err(|_| ExtractError::AllocationFailed)?;
+    face_regions.resize(faces.len(), SKIN_FACE_REGION_ID);
+    Ok(SemanticTriangleMesh {
+        vertices: positions,
+        vertex_feature_masks: feature_masks,
+        faces,
+        face_region_ids: face_regions,
+    })
 }
 
 fn sample_value(grid: &SampledGrid, dims: [u32; 3], x: u32, y: u32, z: u32) -> Result<i32, ExtractError> {
@@ -703,7 +713,7 @@ fn sample_value(grid: &SampledGrid, dims: [u32; 3], x: u32, y: u32, z: u32) -> R
 }
 
 fn is_crossing(a: i32, b: i32) -> Result<bool, ExtractError> {
-    if a == 0 || b == 0 {
+    if (a == 0 && b < 0) || (b == 0 && a < 0) {
         return Err(ExtractError::ExactZeroCrossing);
     }
     Ok((a < 0) != (b < 0))
@@ -726,7 +736,13 @@ fn required_cell_vertex(
 }
 
 fn push_quad(quads: &mut Vec<[u32; 4]>, quad: [u32; 4], max_quads: u32) -> Result<(), ExtractError> {
-    if quad.iter().copied().collect::<std::collections::BTreeSet<_>>().len() != 4 {
+    if quad[0] == quad[1]
+        || quad[0] == quad[2]
+        || quad[0] == quad[3]
+        || quad[1] == quad[2]
+        || quad[1] == quad[3]
+        || quad[2] == quad[3]
+    {
         return Err(ExtractError::DegenerateQuad);
     }
     if quads.len() >= max_quads as usize {
@@ -835,19 +851,19 @@ fn gradient_at_grid_vertex(
         let mut high = point;
         let derivative = if point[axis] == 0 {
             high[axis] += 1;
-            (sample_value(grid, dims, high[0], high[1], high[2])?
-                - sample_value(grid, dims, low[0], low[1], low[2])?) as f64
+            (f64::from(sample_value(grid, dims, high[0], high[1], high[2])?)
+                - f64::from(sample_value(grid, dims, low[0], low[1], low[2])?))
                 / (1_000_000.0 * spacing[axis])
         } else if point[axis] + 1 == dims[axis] {
             low[axis] -= 1;
-            (sample_value(grid, dims, high[0], high[1], high[2])?
-                - sample_value(grid, dims, low[0], low[1], low[2])?) as f64
+            (f64::from(sample_value(grid, dims, high[0], high[1], high[2])?)
+                - f64::from(sample_value(grid, dims, low[0], low[1], low[2])?))
                 / (1_000_000.0 * spacing[axis])
         } else {
             low[axis] -= 1;
             high[axis] += 1;
-            (sample_value(grid, dims, high[0], high[1], high[2])?
-                - sample_value(grid, dims, low[0], low[1], low[2])?) as f64
+            (f64::from(sample_value(grid, dims, high[0], high[1], high[2])?)
+                - f64::from(sample_value(grid, dims, low[0], low[1], low[2])?))
                 / (2.0 * 1_000_000.0 * spacing[axis])
         };
         if !derivative.is_finite() {
