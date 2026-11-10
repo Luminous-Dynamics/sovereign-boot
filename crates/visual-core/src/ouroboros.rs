@@ -1136,10 +1136,7 @@ impl OuroborosScene {
 /// of a bounded [0, 1] channel. At an exact boundary, preserving an outward
 /// derivative and remaining in the interval are mathematically incompatible.
 /// Interior retargets preserve the derivative exactly.
-fn project_outward_boundary_velocity(
-    weights: FormWeights,
-    velocity: FormWeights,
-) -> FormWeights {
+fn project_outward_boundary_velocity(weights: FormWeights, velocity: FormWeights) -> FormWeights {
     let project = |weight: f32, speed: f32| {
         if (weight == 0.0 && speed < 0.0) || (weight == 1.0 && speed > 0.0) {
             0.0
@@ -1933,9 +1930,9 @@ mod tests {
                         scene.advance(0.025).unwrap();
                         let weights = scene.frame().form_weights;
                         assert!(
-                    weights.is_finite_and_bounded(),
-                    "unbounded weights at adversarial step {step}: {weights:?}"
-                );
+                            weights.is_finite_and_bounded(),
+                            "unbounded weights at adversarial step {step}: {weights:?}"
+                        );
                     }
                     assert_eq!(scene.frame().form_weights, second_target.weights());
                     assert_eq!(scene.current_velocity(), FormWeights::ZERO);
