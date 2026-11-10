@@ -445,6 +445,24 @@ pub fn negotiate(
     })
 }
 
+/// Recompute a decision from the original request/capability snapshot and
+/// compare every canonical field. Use this at a host/renderer trust boundary
+/// rather than accepting a serialized selected candidate at face value.
+pub fn verify_quality_decision(
+    request: &QualityRequest,
+    capabilities: &CapabilitySnapshot,
+    policy_version: u16,
+    decision: &QualityDecision,
+) -> Result<(), ContractError> {
+    let expected = negotiate(request, capabilities, policy_version)?;
+    let expected_bytes = expected.canonical_bytes()?;
+    let supplied_bytes = decision.canonical_bytes()?;
+    if expected_bytes != supplied_bytes {
+        return Err(ContractError::DecisionMismatch);
+    }
+    Ok(())
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum PresentationStatus {
@@ -606,7 +624,10 @@ impl FrameReceipt {
             return Err(ContractError::UnsupportedSchema);
         }
         if self.entity_id.is_zero()
+            || self.entity_revision_root.iter().all(|byte| *byte == 0)
             || self.backend_build_digest.iter().all(|byte| *byte == 0)
+            || self.state_digest.iter().all(|byte| *byte == 0)
+            || self.decision_digest.iter().all(|byte| *byte == 0)
             || self.session_id.iter().all(|byte| *byte == 0)
             || self.frame_sequence == 0
             || self.buffer_generation == 0
@@ -836,6 +857,7 @@ pub enum ContractError {
     InvalidCandidate,
     InvalidCapabilities,
     InvalidDecision,
+    DecisionMismatch,
     InvalidFrameReceipt,
     UnsupportedPresentationClaim,
     FrameNotPresented,
@@ -1039,6 +1061,47 @@ mod tests {
     }
 
     #[test]
+    fn decision_verifier_recomputes_candidate_and_degradation() {
+        let req = request(1_000_000, false);
+        let caps = capabilities(vec![
+            candidate(1, 0, 600_000, true, 1_500, 15_000),
+            candidate(2, 1, 500_000, true, 2_500, 5_000),
+        ]);
+        let decision = negotiate(&req, &caps, 1).unwrap();
+        assert_eq!(
+            verify_quality_decision(&req, &caps, 1, &decision),
+            Ok(())
+        );
+
+        let mut forged = decision.clone();
+        forged.selected_candidate = Some(caps.candidates[1]);
+        assert_eq!(
+            verify_quality_decision(&req, &caps, 1, &forged),
+            Err(ContractError::DecisionMismatch)
+        );
+
+        let mut stale_policy = decision.clone();
+        stale_policy.policy_version = 2;
+        assert_eq!(
+            verify_quality_decision(&req, &caps, 1, &stale_policy),
+            Err(ContractError::DecisionMismatch)
+        );
+    }
+
+    #[test]
+    fn decision_verifier_rejects_changed_capability_revision() {
+        let req = request(1_000_000, false);
+        let caps = capabilities(vec![candidate(1, 0, 600_000, true, 2_000, 5_000)]);
+        let decision = negotiate(&req, &caps, 1).unwrap();
+        let mut changed = caps.clone();
+        changed.revision += 1;
+        assert_eq!(
+            verify_quality_decision(&req, &changed, 1, &decision),
+            Err(ContractError::DecisionMismatch)
+        );
+    }
+
+    #[test]
     fn hard_budget_violation_is_not_reported_as_degradation() {
         let req = request(500_000, false);
         let caps = capabilities(vec![candidate(1, 0, 600_000, true, 3_000, 1_000)]);
@@ -1114,6 +1177,25 @@ mod tests {
             Some(10),
         );
         assert_eq!(valid.verify_presented(), Ok(10));
+    }
+
+    #[test]
+    fn frame_receipt_rejects_zero_revision_state_and_decision_digests() {
+        let mut frame = receipt(
+            1,
+            1,
+            PresentationStatus::Submitted,
+            EvidenceLevel::HostObserved,
+            None,
+        );
+        frame.entity_revision_root = [0; 32];
+        assert_eq!(frame.validate(), Err(ContractError::InvalidFrameReceipt));
+        frame.entity_revision_root = [2; 32];
+        frame.state_digest = [0; 32];
+        assert_eq!(frame.validate(), Err(ContractError::InvalidFrameReceipt));
+        frame.state_digest = [4; 32];
+        frame.decision_digest = [0; 32];
+        assert_eq!(frame.validate(), Err(ContractError::InvalidFrameReceipt));
     }
 
     #[test]
