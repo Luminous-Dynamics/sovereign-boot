@@ -127,7 +127,7 @@ for ((trial = 1; trial <= trials; trial++)); do
     "$benchmark_bin" --iterations "$iterations" --warmup "$warmup" > "$trial_path"
 
   jq -e -s --argjson expected "$iterations" --arg source_rev "$source_rev" '
-    length == 11 and
+    length == 12 and
     .[0].type == "metadata" and
     .[0].schema == "luminous-ouroboros-cpu-benchmark-v2" and
     .[0].source_rev == $source_rev and
@@ -136,6 +136,7 @@ for ((trial = 1; trial <= trials; trial++)); do
     (.[1:] | map(.name) | sort) == [
       "checkpoint_encode_decode",
       "cpu_reference_capture_320",
+      "face_mesh_build_validate",
       "loop_control",
       "mesh_build_validate",
       "mesh_lod_planning",
@@ -193,7 +194,7 @@ jq -n \
 
 jq -s --argjson expected_trials "$trials" -f benchmarks/ouroboros/aggregate.jq "${trial_files[@]}" > "$output_dir/aggregate.json"
 jq -e --argjson expected "$trials" '
-  length == 10 and all(.[]; .trial_count == $expected)
+  length == 11 and all(.[]; .trial_count == $expected)
 ' "$output_dir/aggregate.json" >/dev/null
 (
   cd "$output_dir"
