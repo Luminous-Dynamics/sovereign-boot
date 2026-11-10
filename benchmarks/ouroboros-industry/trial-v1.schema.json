@@ -232,7 +232,8 @@
           "domain",
           "powerMilliwatts",
           "uncertaintyMilliwatts",
-          "instrument"
+          "instrument",
+          "domainBoundary"
         ],
         "properties": {
           "timestampMonotonicNs": {
