@@ -324,6 +324,14 @@ impl QualityDecision {
         self.selected_candidate.as_ref()
     }
 
+    pub fn capability_revision(&self) -> u64 {
+        self.capability_revision
+    }
+
+    pub fn is_degraded(&self, degradation: Degradation) -> bool {
+        self.degradation_flags & (degradation as u8) != 0
+    }
+
     pub fn degradation_flags(&self) -> u8 {
         self.degradation_flags
     }
@@ -441,17 +449,21 @@ pub struct FrameReceipt {
     pub schema_version: u16,
     pub entity_id: EntityId,
     pub entity_revision_root: Digest,
+    pub backend_build_digest: Digest,
     pub session_id: [u8; 16],
     pub state_digest: Digest,
     pub decision_digest: Digest,
     pub frame_sequence: u64,
     pub buffer_generation: u64,
+    pub target_format_id: u16,
     pub width: u32,
     pub height: u32,
     pub status: PresentationStatus,
     pub evidence_level: EvidenceLevel,
     /// Monotonic timestamp in the declared presentation clock domain.
     pub presentation_time_ns: Option<u64>,
+    /// POSIX/Wayland presentation clock identifier for the timestamp.
+    pub presentation_clock_id: Option<u32>,
 }
 
 impl FrameReceipt {
@@ -460,9 +472,11 @@ impl FrameReceipt {
             return Err(ContractError::UnsupportedSchema);
         }
         if self.entity_id.is_zero()
+            || self.backend_build_digest.iter().all(|byte| *byte == 0)
             || self.session_id.iter().all(|byte| *byte == 0)
             || self.frame_sequence == 0
             || self.buffer_generation == 0
+            || self.target_format_id == 0
             || self.width == 0
             || self.height == 0
         {
@@ -472,6 +486,7 @@ impl FrameReceipt {
             PresentationStatus::Rendered => {
                 if self.evidence_level > EvidenceLevel::HostObserved
                     || self.presentation_time_ns.is_some()
+                    || self.presentation_clock_id.is_some()
                 {
                     return Err(ContractError::UnsupportedPresentationClaim);
                 }
@@ -479,6 +494,7 @@ impl FrameReceipt {
             PresentationStatus::Submitted => {
                 if self.evidence_level < EvidenceLevel::HostObserved
                     || self.presentation_time_ns.is_some()
+                    || self.presentation_clock_id.is_some()
                 {
                     return Err(ContractError::UnsupportedPresentationClaim);
                 }
@@ -486,6 +502,7 @@ impl FrameReceipt {
             PresentationStatus::Presented => {
                 if self.evidence_level < EvidenceLevel::CompositorFeedback
                     || self.presentation_time_ns.is_none()
+                    || self.presentation_clock_id.is_none()
                 {
                     return Err(ContractError::UnsupportedPresentationClaim);
                 }
@@ -493,12 +510,13 @@ impl FrameReceipt {
             PresentationStatus::Discarded => {
                 if self.evidence_level < EvidenceLevel::CompositorFeedback
                     || self.presentation_time_ns.is_some()
+                    || self.presentation_clock_id.is_some()
                 {
                     return Err(ContractError::UnsupportedPresentationClaim);
                 }
             }
             PresentationStatus::Unknown => {
-                if self.presentation_time_ns.is_some() {
+                if self.presentation_time_ns.is_some() || self.presentation_clock_id.is_some() {
                     return Err(ContractError::UnsupportedPresentationClaim);
                 }
             }
@@ -519,16 +537,18 @@ impl FrameReceipt {
 
     pub fn canonical_bytes(&self) -> Result<Vec<u8>, ContractError> {
         self.validate()?;
-        let mut out = Vec::with_capacity(8 + 2 + 16 + 32 * 3 + 16 + 8 * 2 + 4 * 2 + 3 + 8);
+        let mut out = Vec::with_capacity(8 + 2 + 16 + 32 * 4 + 16 + 8 * 2 + 2 + 4 * 2 + 3 + 8 + 4);
         out.extend_from_slice(b"OUROFRM1");
         put_u16(&mut out, self.schema_version);
         out.extend_from_slice(&self.entity_id.0);
         out.extend_from_slice(&self.entity_revision_root);
+        out.extend_from_slice(&self.backend_build_digest);
         out.extend_from_slice(&self.session_id);
         out.extend_from_slice(&self.state_digest);
         out.extend_from_slice(&self.decision_digest);
         put_u64(&mut out, self.frame_sequence);
         put_u64(&mut out, self.buffer_generation);
+        put_u16(&mut out, self.target_format_id);
         put_u32(&mut out, self.width);
         put_u32(&mut out, self.height);
         out.push(self.status as u8);
@@ -537,6 +557,13 @@ impl FrameReceipt {
             Some(time) => {
                 out.push(1);
                 put_u64(&mut out, time);
+            }
+            None => out.push(0),
+        }
+        match self.presentation_clock_id {
+            Some(clock_id) => {
+                out.push(1);
+                put_u32(&mut out, clock_id);
             }
             None => out.push(0),
         }
@@ -702,16 +729,19 @@ mod tests {
             schema_version: FRAME_RECEIPT_SCHEMA_VERSION,
             entity_id: EntityId([1; 16]),
             entity_revision_root: [2; 32],
+            backend_build_digest: [6; 32],
             session_id: [3; 16],
             state_digest: [4; 32],
             decision_digest: [5; 32],
             frame_sequence: sequence,
             buffer_generation: generation,
+            target_format_id: 1,
             width: 1920,
             height: 1080,
             status,
             evidence_level: evidence,
             presentation_time_ns: time,
+            presentation_clock_id: time.map(|_| 1),
         }
     }
 
