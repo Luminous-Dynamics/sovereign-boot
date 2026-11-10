@@ -126,6 +126,7 @@ pub enum AuditError {
     InvalidFaceRegion,
     FaceIndexOutOfBounds,
     RepeatedFaceIndex,
+    ReportMismatch,
 }
 
 impl fmt::Display for AuditError {
@@ -646,17 +647,16 @@ impl MeshAuditReport {
         &self,
         mesh: &SemanticTriangleMesh,
     ) -> Result<Vec<u8>, AuditError> {
-        if mesh.vertices.len() != self.vertex_count as usize
-            || mesh.faces.len() != self.face_count as usize
-        {
-            return Err(AuditError::SizeOverflow);
+        let recomputed = audit_mesh(mesh, self.limits)?;
+        if &recomputed != self {
+            return Err(AuditError::ReportMismatch);
         }
         let input_bytes = self.estimated_input_bytes;
         let component_bytes = (self.components.len() as u64)
             .checked_mul(20)
             .ok_or(AuditError::SizeOverflow)?;
         let receipt_bytes = input_bytes
-            .checked_add(8 + 2 + 8 + 8 + 4 + 4 + 4 + 4 + 4 + 14 * 4 + 2 * 8 + 4)
+            .checked_add(8 + 2 + 4 + 4 + 8 + 8 + 8 + 14 * 4 + 2 * 8 + 5 * 8 + 3 * 4 + 4)
             .and_then(|value| value.checked_add(component_bytes))
             .ok_or(AuditError::SizeOverflow)?;
         if receipt_bytes > MAX_RECEIPT_BYTES {
@@ -977,6 +977,34 @@ mod tests {
         assert_eq!(
             audit_mesh(&mesh, limits),
             Err(AuditError::InputBudgetExceeded)
+        );
+    }
+
+    #[test]
+    fn semantic_region_transition_edges_are_counted() {
+        let mut mesh = open_disk();
+        mesh.face_region_ids = vec![1, 4];
+        let report = audit_mesh(&mesh, AuditLimits::default()).unwrap();
+        assert_eq!(report.semantic_transition_edge_count, 1);
+    }
+
+    #[test]
+    fn audit_receipt_binds_tolerance_and_rejects_mutated_report() {
+        let mesh = open_disk();
+        let first = audit_mesh(&mesh, AuditLimits::default()).unwrap();
+        let mut changed_limits = AuditLimits::default();
+        changed_limits.near_degenerate_cross_squared_epsilon = 1.0e-12;
+        let second = audit_mesh(&mesh, changed_limits).unwrap();
+        assert_ne!(
+            first.canonical_bytes(&mesh).unwrap(),
+            second.canonical_bytes(&mesh).unwrap()
+        );
+
+        let mut forged = first.clone();
+        forged.boundary_edge_count = 0;
+        assert_eq!(
+            forged.canonical_bytes(&mesh),
+            Err(AuditError::ReportMismatch)
         );
     }
 
