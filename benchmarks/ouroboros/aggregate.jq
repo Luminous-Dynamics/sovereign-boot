@@ -8,8 +8,8 @@ def median:
 
 [ .[] | select(.type == "measurement") ]
 | group_by(.name) as $groups
-| if ($groups | length) != 10 then
-    error("expected exactly ten benchmark workloads")
+| if ($groups | length) != 11 then
+    error("expected exactly eleven benchmark workloads")
   elif any($groups[]; length != $expected_trials) then
     error("every workload must have one measurement in every independent trial")
   else
