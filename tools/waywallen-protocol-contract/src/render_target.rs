@@ -431,7 +431,6 @@ fn validate_scheme_caps(
     }
 
     if config.memory_hint & !KNOWN_MEMORY_HINTS != 0
-        || config.memory_hint.count_ones() > 1
         || config.memory_hint & !producer.mem_hints != 0
     {
         return Err(ContractError::InvalidRenderTargetConfig);
@@ -631,6 +630,24 @@ mod tests {
             session.receive_config(unsupported_memory, &producer),
             Err(ContractError::InvalidRenderTargetConfig)
         );
+
+        let mut combined_memory_hint = config(1, 1, 960, 540);
+        combined_memory_hint.memory_hint = super::super::MEMORY_HINT_HOST_VISIBLE
+            | super::super::MEMORY_HINT_SCANOUT;
+        let mut combined_producer = producer.clone();
+        combined_producer.mem_hints |= super::super::MEMORY_HINT_SCANOUT;
+        session
+            .receive_config(combined_memory_hint, &combined_producer)
+            .unwrap();
+        session.finish(
+            RenderTargetOutcome {
+                revision: 1,
+                status: RenderTargetStatus::ResourceFailure,
+                extent: Extent { width: 0, height: 0 },
+                pool_generation: 0,
+            },
+            None,
+        ).unwrap();
 
         let mut multiple_sync_modes = config(1, 1, 960, 540);
         multiple_sync_modes.sync_mode = super::super::KNOWN_SYNC_CAPS;
