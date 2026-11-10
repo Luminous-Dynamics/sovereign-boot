@@ -1,0 +1,177 @@
+{
+  "schemaVersion": 1,
+  "magic": "OUROREP1",
+  "status": "synthetic-schema-example-not-real-payload-provenance",
+  "entity": {
+    "entityId": "00112233445566778899aabbccddeeff",
+    "entityRevisionRoot": "1111111111111111111111111111111111111111111111111111111111111111",
+    "landmarkDigest": "2222222222222222222222222222222222222222222222222222222222222222",
+    "coordinateFrameDigest": "3333333333333333333333333333333333333333333333333333333333333333"
+  },
+  "requiredVisualFeatures": {
+    "mask": 15,
+    "names": [
+      "HEAD_SILHOUETTE",
+      "EYE_PAIR",
+      "NOSE",
+      "MOUTH"
+    ]
+  },
+  "requiredAnchors": {
+    "mask": 127,
+    "names": [
+      "HEAD_ROOT",
+      "LEFT_EYE",
+      "RIGHT_EYE",
+      "NOSE_TIP",
+      "MOUTH_CENTER",
+      "CROWN",
+      "CHIN"
+    ],
+    "requiredFidelity": "Exact"
+  },
+  "capabilityBits": {
+    "CAP_CPU": 1,
+    "CAP_VULKAN": 2,
+    "CAP_WGPU": 4,
+    "CAP_GLTF_2": 8,
+    "CAP_GAUSSIAN_SPLATTING": 16,
+    "CAP_SDF_GRID": 32,
+    "CAP_RASTER_IMAGE": 64,
+    "CAP_MORPH_TARGETS": 128
+  },
+  "extensionBits": {
+    "EXT_KHR_GAUSSIAN_SPLATTING": 1,
+    "EXT_KHR_DRACO_MESH_COMPRESSION": 2,
+    "EXT_KHR_MESH_QUANTIZATION": 4,
+    "EXT_OURO_SDF_GRID": 4294967296,
+    "EXT_OURO_LANDMARK_SIDECAR": 8589934592
+  },
+  "representations": [
+    {
+      "representationId": "00000000000000000000000000000001",
+      "representationRevision": 1,
+      "format": "GltfMesh",
+      "gltfAsset": "mesh-face-balanced.glb",
+      "role": "VisualAppearance",
+      "lodRank": 1,
+      "payloadDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "payloadBytes": 1500000,
+      "coordinateFrameDigest": "3333333333333333333333333333333333333333333333333333333333333333",
+      "landmarkDigest": "2222222222222222222222222222222222222222222222222222222222222222",
+      "semanticFeatureMask": 15,
+      "anchorMask": 127,
+      "anchorFidelity": "Exact",
+      "requiredCapabilities": 8,
+      "requiredExtensions": 0,
+      "fallback": null,
+      "measuredQuality": null
+    },
+    {
+      "representationId": "00000000000000000000000000000002",
+      "representationRevision": 1,
+      "format": "GltfGaussianSplat",
+      "gltfAsset": "visual-capture-splat.glb",
+      "role": "VisualAppearance",
+      "lodRank": 0,
+      "payloadDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "payloadBytes": 24000000,
+      "coordinateFrameDigest": "3333333333333333333333333333333333333333333333333333333333333333",
+      "landmarkDigest": "2222222222222222222222222222222222222222222222222222222222222222",
+      "semanticFeatureMask": 15,
+      "anchorMask": 127,
+      "anchorFidelity": "Approximate",
+      "requiredCapabilities": 24,
+      "requiredExtensions": 1,
+      "fallback": {
+        "representationId": "00000000000000000000000000000003",
+        "equivalence": "NonEquivalent",
+        "reason": "Base glTF unsupported-extension fallback is a sparse point cloud, not equivalent Gaussian-splat appearance"
+      },
+      "measuredQuality": null
+    },
+    {
+      "representationId": "00000000000000000000000000000003",
+      "representationRevision": 1,
+      "format": "GltfPointCloud",
+      "gltfAsset": "visual-capture-point-fallback.glb",
+      "role": "VisualAppearance",
+      "lodRank": 3,
+      "payloadDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "payloadBytes": 4000000,
+      "coordinateFrameDigest": "3333333333333333333333333333333333333333333333333333333333333333",
+      "landmarkDigest": "2222222222222222222222222222222222222222222222222222222222222222",
+      "semanticFeatureMask": 1,
+      "anchorMask": 0,
+      "anchorFidelity": "Unavailable",
+      "requiredCapabilities": 8,
+      "requiredExtensions": 0,
+      "fallback": null,
+      "measuredQuality": null
+    },
+    {
+      "representationId": "00000000000000000000000000000004",
+      "representationRevision": 1,
+      "format": "OuroSdfGrid",
+      "gridFile": "ouroboros-face-skin-128.ourogrid",
+      "role": "ImplicitField",
+      "lodRank": 2,
+      "payloadDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "payloadBytes": 8389000,
+      "coordinateFrameDigest": "3333333333333333333333333333333333333333333333333333333333333333",
+      "landmarkDigest": "2222222222222222222222222222222222222222222222222222222222222222",
+      "semanticFeatureMask": 5,
+      "anchorMask": 9,
+      "anchorFidelity": "Exact",
+      "requiredCapabilities": 32,
+      "requiredExtensions": 4294967296,
+      "fallback": null,
+      "measuredQuality": null
+    },
+    {
+      "representationId": "00000000000000000000000000000005",
+      "representationRevision": 1,
+      "format": "LandmarkSidecar",
+      "sidecarFile": "ouroboros-landmarks.ourolnd",
+      "role": "SemanticRig",
+      "lodRank": 0,
+      "payloadDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "payloadBytes": 512,
+      "coordinateFrameDigest": "3333333333333333333333333333333333333333333333333333333333333333",
+      "landmarkDigest": "2222222222222222222222222222222222222222222222222222222222222222",
+      "semanticFeatureMask": 0,
+      "anchorMask": 127,
+      "anchorFidelity": "Exact",
+      "requiredCapabilities": 1,
+      "requiredExtensions": 8589934592,
+      "fallback": null,
+      "measuredQuality": null
+    },
+    {
+      "representationId": "00000000000000000000000000000006",
+      "representationRevision": 1,
+      "format": "CpuRaster",
+      "imageFile": "cpu-reference.png",
+      "role": "ReferenceCapture",
+      "lodRank": 5,
+      "payloadDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "payloadBytes": 307200,
+      "coordinateFrameDigest": "3333333333333333333333333333333333333333333333333333333333333333",
+      "landmarkDigest": "2222222222222222222222222222222222222222222222222222222222222222",
+      "semanticFeatureMask": 15,
+      "anchorMask": 0,
+      "anchorFidelity": "Unavailable",
+      "requiredCapabilities": 64,
+      "requiredExtensions": 0,
+      "fallback": null,
+      "measuredQuality": null
+    }
+  ],
+  "notes": [
+    "All digests are synthetic placeholder bytes and do not identify real assets.",
+    "The catalog entity/landmark/frame bindings are illustrative but must be identical across all records.",
+    "The Gaussian-splat record is visual-only and has an explicit NonEquivalent point-cloud fallback.",
+    "The exact LandmarkSidecar carries entity anchor coverage; visual splats are permitted to declare approximate associations.",
+    "No measuredQuality values are present because no named-host/perceptual measurements are being claimed."
+  ]
+}
