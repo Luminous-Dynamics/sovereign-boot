@@ -10,12 +10,12 @@ From the repository root:
 cargo test --manifest-path tools/ouroboros-presentation-contract/Cargo.toml
 ```
 
-The crate is intentionally outside the production scene-core dependency graph. It uses only the Rust standard library and does not query a device, render a frame, open a socket, inspect the desktop or sign evidence.
+The crate is intentionally isolated from the repository's production Cargo workspace and scene-core dependency graph. Its own workspace and lockfile make the standalone test command self-contained. It uses only the Rust standard library and does not query a device, render a frame, open a socket, inspect the desktop or sign evidence.
 
 ## Current prototype
 
 - `EntityDescriptor` separates stable `EntityId` from mutable representation roots. Its canonical bytes are the revision input; the resulting digest is not the entity ID.
-- `QualityRequest` separates hard bounds from soft visual preferences.
+- `QualityRequest` separates hard bounds from soft visual preferences, including independent CPU/GPU time and memory ceilings.
 - `CapabilitySnapshot` contains explicitly ordered candidate plans and a revision.
 - `negotiate` deterministically selects the first feasible candidate, records soft degradation, or returns an explicit infeasible decision.
 - `FrameReceipt` binds the entity/revision/state/decision roots, backend build digest, target format/extent, pool generation, terminal status, evidence level and presentation-clock identity. Presented requires compositor-or-stronger evidence plus a clock-qualified presentation timestamp.
