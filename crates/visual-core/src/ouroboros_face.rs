@@ -16,6 +16,7 @@ const FACE_SCHEMA_VERSION: u16 = 1;
 const FACE_REGION_COUNT: usize = 5;
 const MAX_FACE_VERTICES: usize = 50_000;
 const MAX_FACE_INDICES: usize = 300_000;
+const MAX_FACE_BUFFER_BYTES: usize = 2_500_000;
 const TAU: f32 = std::f32::consts::TAU;
 const PI: f32 = std::f32::consts::PI;
 
@@ -48,8 +49,11 @@ impl OuroborosFaceMeshConfig {
         {
             return Err(OuroborosFaceMeshError::InvalidConfiguration);
         }
-        let (vertices, indices, _) = face_resource_estimate(self)?;
-        if vertices > MAX_FACE_VERTICES || indices > MAX_FACE_INDICES {
+        let (vertices, indices, bytes) = face_resource_estimate(self)?;
+        if vertices > MAX_FACE_VERTICES
+            || indices > MAX_FACE_INDICES
+            || bytes > MAX_FACE_BUFFER_BYTES
+        {
             return Err(OuroborosFaceMeshError::SizeLimitExceeded);
         }
         Ok(())
@@ -297,7 +301,11 @@ fn generate_face_geometry(
     }
 
     let (vertex_count, index_count, _) = face_resource_estimate(config)?;
-    if vertex_count > MAX_FACE_VERTICES || index_count > MAX_FACE_INDICES {
+    let (_, _, estimated_bytes) = face_resource_estimate(config)?;
+    if vertex_count > MAX_FACE_VERTICES
+        || index_count > MAX_FACE_INDICES
+        || estimated_bytes > MAX_FACE_BUFFER_BYTES
+    {
         return Err(OuroborosFaceMeshError::SizeLimitExceeded);
     }
 
@@ -640,6 +648,22 @@ mod tests {
 
     fn scene(form: OuroborosForm) -> OuroborosScene {
         OuroborosScene::new(OuroborosConfig::default(), form).unwrap()
+    }
+
+    #[test]
+    fn face_mesh_estimated_buffers_stay_under_explicit_resource_ceilings() {
+        for config in [
+            OuroborosFaceMeshConfig::default(),
+            OuroborosFaceMeshConfig {
+                latitude_segments: 64,
+                longitude_segments: 128,
+            },
+        ] {
+            let (vertices, indices, bytes) = face_resource_estimate(config).unwrap();
+            assert!(vertices <= MAX_FACE_VERTICES);
+            assert!(indices <= MAX_FACE_INDICES);
+            assert!(bytes <= MAX_FACE_BUFFER_BYTES);
+        }
     }
 
     #[test]
