@@ -18,6 +18,7 @@ pub const FRAME_RECEIPT_SCHEMA_VERSION: u16 = 2;
 const MAX_FEATURE_IDS: usize = 128;
 const MAX_REPRESENTATION_ROOTS: usize = 128;
 const MAX_CANDIDATES: usize = 128;
+const QUALITY_UNCERTAINTY_ENCODED_LEN: usize = 60;
 const QUALITY_CANDIDATE_ENCODED_LEN: usize = 128;
 pub const MAX_FEEDBACK_LEDGER_ENTRIES: usize = 4_096;
 
@@ -305,7 +306,10 @@ impl QualityCandidate {
                 out.push(1);
                 uncertainty.encode_into(out);
             }
-            None => out.push(0),
+            None => {
+                out.push(0);
+                out.extend_from_slice(&[0; QUALITY_UNCERTAINTY_ENCODED_LEN]);
+            }
         }
     }
 }
@@ -2373,6 +2377,19 @@ mod tests {
             candidate(2, 0, 400_000, true, 2_500, 4_000),
         ]);
         assert_eq!(caps.validate(), Err(ContractError::InvalidCapabilities));
+    }
+
+    #[test]
+    fn candidate_encoding_has_fixed_versioned_length_for_known_and_unknown_uncertainty() {
+        let mut known = candidate(1, 0, 500_000, true, 2_000, 5_000);
+        known.uncertainty = Some(zero_uncertainty());
+        let unknown = candidate(2, 1, 400_000, true, 2_500, 4_000);
+        let caps = capabilities(vec![known, unknown]);
+        let bytes = caps.canonical_bytes().unwrap();
+        assert_eq!(
+            bytes.len(),
+            8 + 2 + 8 + 2 + 2 * QUALITY_CANDIDATE_ENCODED_LEN
+        );
     }
 
     #[test]
