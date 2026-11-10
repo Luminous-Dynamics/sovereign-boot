@@ -74,7 +74,8 @@ The sign convention is negative inside, zero on the approximate surface, and pos
 - Bounds are rounded to signed microunits before sampling; the sampled positions and canonical metadata use the same rounded bounds.
 - Distances are rounded to signed 32-bit microunits (`1,000,000 units per normalized major-radius unit`).
 - Feature centers/radii and smooth-union width must be exactly representable at the same microunit precision. This prevents different floating-point parameters from collapsing to the same canonical descriptor.
-- `OUROGRD1` canonical bytes bind the grid schema, fixture ID, field descriptor, dimensions, bounds, quantization and every ordered sample. It is a content-addressable byte stream; the caller computes the digest.
+- `OUROGRD1` canonical bytes bind the grid schema, fixture ID, field descriptor, dimensions, bounds, quantization and every ordered signed-int32 sample. It is the authoritative content-addressable stream; the caller computes the digest.
+- `OUROF32D` is a diagnostic interchange encoding for external extractors. It carries the same metadata and exact same header length, but writes each canonical microunit sample as a dequantized little-endian `f32`. It is not a second/higher-precision SDF evaluation; pair it with the `OUROGRD1` receipt.
 - `GridSpec` checks dimension products, sample ceilings, integer conversion, canonical byte ceilings and bounds before allocating the sample vector.
 
 Current hard ceiling: 2,097,152 samples (128³), with a maximum complete canonical grid of 16 MiB. Larger grids require a deliberate versioned budget change rather than an implicit allocation.
@@ -120,6 +121,7 @@ The current unit tests cover:
 - zero dimensions, dimension-product overflow, sample-count and encoded-byte budget failures;
 - non-finite/overflowing distance quantization;
 - canonical descriptor size and repeatable grid bytes;
+- `OUROF32D` metadata/length parity and f32 reconstruction from the canonical samples;
 - fixed-point parity against ten source-grounded Python float64 probe values in `fixtures/reference-probes-v1.json`;
 - metadata changes when the field mode or bounds change.
 
