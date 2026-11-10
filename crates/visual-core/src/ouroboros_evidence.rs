@@ -402,7 +402,7 @@ mod tests {
         let trace = trace();
         let plan = plan();
         let first = capture_ouroboros_evidence(&trace, plan, face_plan(), 320, 320).unwrap();
-        let second = capture_ouroboros_evidence(&trace, plan, 320, 320).unwrap();
+        let second = capture_ouroboros_evidence(&trace, plan, face_plan(), 320, 320).unwrap();
 
         assert_eq!(first, second);
         assert_eq!(
