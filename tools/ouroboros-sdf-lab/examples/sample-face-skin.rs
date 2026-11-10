@@ -1,8 +1,6 @@
 use std::{env, error::Error, fs};
 
-use ouroboros_sdf_lab::{
-    FaceSkinField, GridSpec, UnionMode, MAX_CANONICAL_BYTES, MAX_SAMPLES,
-};
+use ouroboros_sdf_lab::{FaceSkinField, GridSpec, UnionMode, MAX_CANONICAL_BYTES, MAX_SAMPLES};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let output = env::args()
@@ -23,11 +21,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     let bytes = sampled.canonical_bytes()?;
     fs::write(&output, &bytes)?;
 
+    // Keep stdout a valid, path-independent JSON record. The output path is
+    // an invocation detail; the bytes themselves bind the complete fixture.
     println!(
-        "{{\"schema\":\"OUROGRD1\",\"fixture\":\"ouroboros-face-skin-v1\",\"field\":\"iq-ellipsoid-approx-poly-smooth-min-v1\",\"dimensions\":[128,128,128],\"sample_count\":{},\"quantization\":1000000,\"canonical_bytes\":{},\"output\":\"{}\"}}",
+        "{{\"schema\":\"OUROGRD1\",\"fixture\":\"ouroboros-face-skin-v1\",\"field\":\"iq-ellipsoid-approx-poly-smooth-min-v1\",\"union\":\"polynomial-smooth-min\",\"smooth_width\":0.004,\"dimensions\":[128,128,128],\"bounds\":[[-0.18,-0.14,-0.16],[0.25,0.14,0.16]],\"axis_order\":\"first-axis-fastest\",\"sample_count\":{},\"quantization\":1000000,\"canonical_bytes\":{}}}",
         sampled.quantized_samples.len(),
-        bytes.len(),
-        output.replace('\\', "\\\\").replace('"', "\\\"")
+        bytes.len()
     );
     Ok(())
 }
