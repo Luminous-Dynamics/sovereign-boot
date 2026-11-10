@@ -778,6 +778,16 @@ mod tests {
     }
 
     #[test]
+    fn capability_snapshot_rejects_nonadjacent_duplicate_candidate_ids() {
+        let caps = capabilities(vec![
+            candidate(1, 0, 800_000, true, 3_000, 5_000),
+            candidate(2, 1, 600_000, true, 2_000, 8_000),
+            candidate(1, 2, 400_000, true, 1_500, 20_000),
+        ]);
+        assert_eq!(caps.validate(), Err(ContractError::InvalidCapabilities));
+    }
+
+    #[test]
     fn negotiation_is_deterministic_and_records_soft_degradation() {
         let req = request(1_000_000, false);
         let caps = capabilities(vec![
@@ -848,6 +858,35 @@ mod tests {
             Some(10),
         );
         assert_eq!(valid.verify_presented(), Ok(10));
+    }
+
+    #[test]
+    fn presentation_receipt_requires_clock_and_backend_identity() {
+        let mut missing_clock = receipt(
+            1,
+            1,
+            PresentationStatus::Presented,
+            EvidenceLevel::CompositorFeedback,
+            Some(10),
+        );
+        missing_clock.presentation_clock_id = None;
+        assert_eq!(
+            missing_clock.validate(),
+            Err(ContractError::UnsupportedPresentationClaim)
+        );
+
+        let mut missing_backend = receipt(
+            2,
+            1,
+            PresentationStatus::Submitted,
+            EvidenceLevel::HostObserved,
+            None,
+        );
+        missing_backend.backend_build_digest = [0; 32];
+        assert_eq!(
+            missing_backend.validate(),
+            Err(ContractError::InvalidFrameReceipt)
+        );
     }
 
     #[test]
