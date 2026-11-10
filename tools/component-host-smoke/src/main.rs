@@ -125,6 +125,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let bindings = VisualComponent::instantiate(&mut store, &component, &linker)?;
     let scene_api = bindings.luminous_sovereign_visual_scene();
+    // The WIT interface exports a resource named `visual-scene`. Wasmtime
+    // 49 projects its resource functions onto the generated resource proxy,
+    // not onto the interface-level Guest value.
+    let visual_scene = scene_api.visual_scene();
 
     const WIDTH: u32 = 32;
     const HEIGHT: u32 = 24;
@@ -133,8 +137,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     const DT_SECONDS: f32 = 1.0 / 30.0;
     const ACTIVITY: f32 = 0.7;
 
-    let first_scene = scene_api.call_constructor(&mut store, WIDTH, HEIGHT, SEED)?;
-    let contract_version = scene_api.call_contract_version(&mut store, first_scene)?;
+    let first_scene = visual_scene.call_constructor(&mut store, WIDTH, HEIGHT, SEED)?;
+    let contract_version = visual_scene.call_contract_version(&mut store, first_scene)?;
     if contract_version != 1 {
         return Err(io::Error::other(format!(
             "unexpected scene contract version: {contract_version}"
@@ -144,7 +148,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     for _ in 0..STEPS {
         require_guest_ok(
-            scene_api.call_advance(&mut store, first_scene, DT_SECONDS, ACTIVITY)?,
+            visual_scene.call_advance(&mut store, first_scene, DT_SECONDS, ACTIVITY)?,
             "advance first scene",
         )?;
     }
@@ -172,13 +176,13 @@ fn main() -> Result<(), Box<dyn Error>> {
         return Err(io::Error::other("component accepted non-finite contraction progress").into());
     }
 
-    scene_api.call_pulse(&mut store, first_scene)?;
+    visual_scene.call_pulse(&mut store, first_scene)?;
     require_guest_ok(
-        scene_api.call_contract(&mut store, first_scene, 0.25)?,
+        visual_scene.call_contract(&mut store, first_scene, 0.25)?,
         "contract first scene",
     )?;
 
-    let first_frame = scene_api.call_render(&mut store, first_scene)?;
+    let first_frame = visual_scene.call_render(&mut store, first_scene)?;
     let expected_len = (first_frame.width as usize)
         .checked_mul(first_frame.height as usize)
         .and_then(|pixels| pixels.checked_mul(4))
@@ -198,23 +202,23 @@ fn main() -> Result<(), Box<dyn Error>> {
         .into());
     }
 
-    let first_branch_count = scene_api.call_branch_count(&mut store, first_scene)?;
+    let first_branch_count = visual_scene.call_branch_count(&mut store, first_scene)?;
 
     // Replay a second scene using the same seed and inputs. Compare frames via
     // the actual component ABI, not by calling the Rust implementation directly.
-    let replay_scene = scene_api.call_constructor(&mut store, WIDTH, HEIGHT, SEED)?;
+    let replay_scene = visual_scene.call_constructor(&mut store, WIDTH, HEIGHT, SEED)?;
     for _ in 0..STEPS {
         require_guest_ok(
-            scene_api.call_advance(&mut store, replay_scene, DT_SECONDS, ACTIVITY)?,
+            visual_scene.call_advance(&mut store, replay_scene, DT_SECONDS, ACTIVITY)?,
             "advance replay scene",
         )?;
     }
-    scene_api.call_pulse(&mut store, replay_scene)?;
+    visual_scene.call_pulse(&mut store, replay_scene)?;
     require_guest_ok(
-        scene_api.call_contract(&mut store, replay_scene, 0.25)?,
+        visual_scene.call_contract(&mut store, replay_scene, 0.25)?,
         "contract replay scene",
     )?;
-    let replay_frame = scene_api.call_render(&mut store, replay_scene)?;
+    let replay_frame = visual_scene.call_render(&mut store, replay_scene)?;
     if first_frame.rgba != replay_frame.rgba {
         return Err(
             io::Error::other("identical replay inputs produced different RGBA frames").into(),
@@ -222,9 +226,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     // Verify the WIT constructor's fail-safe dimension normalization path.
-    let normalized_scene = scene_api.call_constructor(&mut store, 0, 1080, "normalized")?;
-    let normalized_width = scene_api.call_width(&mut store, normalized_scene)?;
-    let normalized_height = scene_api.call_height(&mut store, normalized_scene)?;
+    let normalized_scene = visual_scene.call_constructor(&mut store, 0, 1080, "normalized")?;
+    let normalized_width = visual_scene.call_width(&mut store, normalized_scene)?;
+    let normalized_height = visual_scene.call_height(&mut store, normalized_scene)?;
     if (normalized_width, normalized_height) != (1, 1) {
         return Err(io::Error::other(format!(
             "unexpected normalized dimensions: {normalized_width}x{normalized_height}"
@@ -233,9 +237,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     // Exercise the typed settings path through the real Component Model ABI.
-    let configured_a = scene_api.call_constructor(&mut store, 16, 16, "legacy-a")?;
+    let configured_a = visual_scene.call_constructor(&mut store, 16, 16, "legacy-a")?;
     require_guest_ok(
-        scene_api.call_configure(
+        visual_scene.call_configure(
             &mut store,
             configured_a,
             32,
@@ -244,9 +248,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         )?,
         "configure numeric-seed scene A",
     )?;
-    let configured_b = scene_api.call_constructor(&mut store, 16, 16, "legacy-b")?;
+    let configured_b = visual_scene.call_constructor(&mut store, 16, 16, "legacy-b")?;
     require_guest_ok(
-        scene_api.call_configure(
+        visual_scene.call_configure(
             &mut store,
             configured_b,
             32,
@@ -260,7 +264,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // the fixture's declared frequency and the API's enforced batch ceiling.
     for _ in 0..4 {
         require_guest_ok(
-            scene_api.call_advance_ticks(
+            visual_scene.call_advance_ticks(
                 &mut store,
                 configured_a,
                 configured_settings.fixed_step_hz,
@@ -269,7 +273,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             "advance configured scene A",
         )?;
         require_guest_ok(
-            scene_api.call_advance_ticks(
+            visual_scene.call_advance_ticks(
                 &mut store,
                 configured_b,
                 configured_settings.fixed_step_hz,
@@ -287,8 +291,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         )
         .into());
     }
-    let configured_frame = scene_api.call_render(&mut store, configured_a)?;
-    let configured_replay = scene_api.call_render(&mut store, configured_b)?;
+    let configured_frame = visual_scene.call_render(&mut store, configured_a)?;
+    let configured_replay = visual_scene.call_render(&mut store, configured_b)?;
     let configured_expected_len =
         (configured_frame.width as usize) * (configured_frame.height as usize) * 4;
     if (configured_frame.width, configured_frame.height) != (32, 24)
@@ -322,11 +326,11 @@ fn main() -> Result<(), Box<dyn Error>> {
             io::Error::other("component accepted non-finite static fallback brightness").into(),
         );
     }
-    if scene_api.call_render(&mut store, configured_a)?.rgba != configured_frame.rgba {
+    if visual_scene.call_render(&mut store, configured_a)?.rgba != configured_frame.rgba {
         return Err(io::Error::other("static fallback mutated scene state").into());
     }
 
-    let configured_branches = scene_api.call_branch_count(&mut store, configured_a)?;
+    let configured_branches = visual_scene.call_branch_count(&mut store, configured_a)?;
     if configured_branches > aggregate_branch_limit {
         return Err(
             io::Error::other("configured WIT scene exceeded aggregate branch limit").into(),
@@ -335,9 +339,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Invalid settings must not mutate the existing scene, and catch-up
     // requests must remain bounded even through a Component Model caller.
-    let unchanged_scene = scene_api.call_constructor(&mut store, 16, 16, "unchanged")?;
-    let unchanged_before_rgba = scene_api.call_render(&mut store, unchanged_scene)?.rgba;
-    let unchanged_before_branches = scene_api.call_branch_count(&mut store, unchanged_scene)?;
+    let unchanged_scene = visual_scene.call_constructor(&mut store, 16, 16, "unchanged")?;
+    let unchanged_before_rgba = visual_scene.call_render(&mut store, unchanged_scene)?.rgba;
+    let unchanged_before_branches = visual_scene.call_branch_count(&mut store, unchanged_scene)?;
     let mut under_budget = settings_for_wit(&manifest, None);
     under_budget.resource_max_branches = configured_settings.branch_limit - 1;
     if scene_api
@@ -350,15 +354,15 @@ fn main() -> Result<(), Box<dyn Error>> {
         .into());
     }
     if (
-        scene_api.call_width(&mut store, unchanged_scene)?,
-        scene_api.call_height(&mut store, unchanged_scene)?,
+        visual_scene.call_width(&mut store, unchanged_scene)?,
+        visual_scene.call_height(&mut store, unchanged_scene)?,
     ) != (16, 16)
     {
         return Err(
             io::Error::other("under-budget rejection partially mutated scene dimensions").into(),
         );
     }
-    if scene_api.call_branch_count(&mut store, unchanged_scene)? != unchanged_before_branches {
+    if visual_scene.call_branch_count(&mut store, unchanged_scene)? != unchanged_before_branches {
         return Err(io::Error::other("under-budget rejection mutated the branch count").into());
     }
     if scene_api
@@ -385,13 +389,13 @@ fn main() -> Result<(), Box<dyn Error>> {
         );
     }
     if (
-        scene_api.call_width(&mut store, unchanged_scene)?,
-        scene_api.call_height(&mut store, unchanged_scene)?,
+        visual_scene.call_width(&mut store, unchanged_scene)?,
+        visual_scene.call_height(&mut store, unchanged_scene)?,
     ) != (16, 16)
     {
         return Err(io::Error::other("failed configure partially mutated scene dimensions").into());
     }
-    if scene_api.call_branch_count(&mut store, unchanged_scene)? != unchanged_before_branches {
+    if visual_scene.call_branch_count(&mut store, unchanged_scene)? != unchanged_before_branches {
         return Err(io::Error::other("failed configure mutated the branch count").into());
     }
     if scene_api
@@ -409,10 +413,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         return Err(io::Error::other("component accepted an unbounded tick batch").into());
     }
     if (
-        scene_api.call_width(&mut store, unchanged_scene)?,
-        scene_api.call_height(&mut store, unchanged_scene)?,
+        visual_scene.call_width(&mut store, unchanged_scene)?,
+        visual_scene.call_height(&mut store, unchanged_scene)?,
     ) != (16, 16)
-        || scene_api.call_branch_count(&mut store, unchanged_scene)? != unchanged_before_branches
+        || visual_scene.call_branch_count(&mut store, unchanged_scene)? != unchanged_before_branches
         || scene_api
             .call_render(&mut store, unchanged_scene)?
             .rgba
