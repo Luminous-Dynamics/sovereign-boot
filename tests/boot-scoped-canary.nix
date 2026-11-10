@@ -179,7 +179,7 @@ in
     assert "ConditionPathExists=/var/lib/sovereign-boot/physical-canary.request" in unit
     assert "StandardInput=tty-fail" in unit
     assert "TTYPath=/dev/tty1" in unit
-    assert "Before=display-manager.service" in unit
+    assert "Before=display-manager.service" in unit, unit
     assert "Before=getty@tty1.service" in unit
     assert "Conflicts=display-manager.service" in unit
     assert "Conflicts=getty@tty1.service" in unit
