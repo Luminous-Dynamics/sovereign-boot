@@ -22,8 +22,7 @@ use sovereign_visual_core::{
     },
     ouroboros_evidence::capture_ouroboros_evidence,
     ouroboros_face::{
-        OuroborosFaceMesh, OuroborosFaceMeshBudget, OuroborosFaceMeshConfig,
-        OuroborosFaceMeshPlan,
+        OuroborosFaceMesh, OuroborosFaceMeshBudget, OuroborosFaceMeshConfig, OuroborosFaceMeshPlan,
     },
     ouroboros_mesh::{OuroborosMesh, OuroborosMeshBudget, OuroborosMeshConfig, OuroborosMeshPlan},
     ouroboros_render::render_reference_artifact,
@@ -244,9 +243,7 @@ fn run_benchmarks(options: Options) {
     measurements.push(measure("loop_control", options, || 1));
 
     measurements.push(measure("scene_advance_60hz", options, || {
-        step_scene
-            .advance(1.0 / 60.0)
-            .expect("60 Hz step is valid");
+        step_scene.advance(1.0 / 60.0).expect("60 Hz step is valid");
         u64::from(step_scene.frame().transition_progress.to_bits())
     }));
 
@@ -344,9 +341,8 @@ fn run_benchmarks(options: Options) {
     }));
 
     measurements.push(measure("sealed_evidence_capture_128", options, || {
-        let artifact =
-            capture_ouroboros_evidence(&trace, plan, face_plan, 128, 128)
-                .expect("evidence capture must seal");
+        let artifact = capture_ouroboros_evidence(&trace, plan, face_plan, 128, 128)
+            .expect("evidence capture must seal");
         u64::from_le_bytes(
             artifact.receipt.bundle_digest[..8]
                 .try_into()
@@ -361,8 +357,7 @@ fn run_benchmarks(options: Options) {
     };
     let source_rev = env::var("BENCH_SOURCE_REV").unwrap_or_else(|_| "not-provided".into());
     let cpu_model = env::var("BENCH_CPU_MODEL").unwrap_or_else(|_| "not-provided".into());
-    let cpu_governor =
-        env::var("BENCH_CPU_GOVERNOR").unwrap_or_else(|_| "not-provided".into());
+    let cpu_governor = env::var("BENCH_CPU_GOVERNOR").unwrap_or_else(|_| "not-provided".into());
     let power_profile = env::var("BENCH_POWER_PROFILE").unwrap_or_else(|_| "not-provided".into());
     let kernel = env::var("BENCH_KERNEL").unwrap_or_else(|_| "not-provided".into());
     let memory_mib = env::var("BENCH_RAM_MIB").unwrap_or_else(|_| "not-provided".into());
