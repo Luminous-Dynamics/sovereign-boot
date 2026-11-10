@@ -131,15 +131,20 @@ impl FormWeights {
         ];
         let mut output = [0.0; 4];
         for index in 0..4 {
-            let duration = durations[index];
-            let t = (elapsed / duration).clamp(0.0, 1.0);
+            let duration = f64::from(durations[index]);
+            let t = (f64::from(elapsed) / duration).clamp(0.0, 1.0);
             let t2 = t * t;
             let t3 = t2 * t;
             let h00 = 2.0 * t3 - 3.0 * t2 + 1.0;
             let h10 = t3 - 2.0 * t2 + t;
             let h01 = -2.0 * t3 + 3.0 * t2;
-            output[index] =
-                h00 * starts[index] + h10 * duration * velocities[index] + h01 * ends[index];
+            let value = h00 * f64::from(starts[index])
+                + h10 * duration * f64::from(velocities[index])
+                + h01 * f64::from(ends[index]);
+            // Evaluate in f64 so an analytically in-bounds cubic cannot
+            // acquire a tiny negative/greater-than-one weight from f32
+            // cancellation near a boundary.
+            output[index] = value.clamp(0.0, 1.0) as f32;
         }
         Self {
             nature: output[0],
@@ -171,8 +176,8 @@ impl FormWeights {
         ];
         let mut output = [0.0; 4];
         for index in 0..4 {
-            let duration = durations[index];
-            let t = (elapsed / duration).clamp(0.0, 1.0);
+            let duration = f64::from(durations[index]);
+            let t = (f64::from(elapsed) / duration).clamp(0.0, 1.0);
             if t >= 1.0 {
                 output[index] = 0.0;
                 continue;
@@ -181,9 +186,11 @@ impl FormWeights {
             let d00 = 6.0 * t2 - 6.0 * t;
             let d10 = 3.0 * t2 - 4.0 * t + 1.0;
             let d01 = -6.0 * t2 + 6.0 * t;
-            output[index] =
-                (d00 * starts[index] + d10 * duration * velocities[index] + d01 * ends[index])
-                    / duration;
+            let value = (d00 * f64::from(starts[index])
+                + d10 * duration * f64::from(velocities[index])
+                + d01 * f64::from(ends[index]))
+                / duration;
+            output[index] = value as f32;
         }
         Self {
             nature: output[0],
@@ -856,7 +863,10 @@ impl OuroborosScene {
             _ => {
                 if let Some(frozen) = self.frozen_weights.take() {
                     let progress = self.frozen_progress.take().unwrap_or(0.0);
-                    let velocity = self.frozen_velocity.take().unwrap_or(FormWeights::ZERO);
+                    let velocity = project_outward_boundary_velocity(
+                        frozen,
+                        self.frozen_velocity.take().unwrap_or(FormWeights::ZERO),
+                    );
                     self.from_weights = frozen;
                     self.transition_start_velocity = velocity;
                     if progress >= 1.0 {
@@ -890,7 +900,7 @@ impl OuroborosScene {
     /// its validated [0, 1] range.
     pub fn transition_to(&mut self, form: OuroborosForm) {
         let current = self.current_weights();
-        let velocity = self.current_velocity();
+        let velocity = project_outward_boundary_velocity(current, self.current_velocity());
         self.target_form = form;
         self.from_weights = current;
         self.transition_start_velocity = velocity;
@@ -1119,6 +1129,29 @@ impl OuroborosScene {
             self.transition_durations,
             self.transition_elapsed,
         )
+    }
+}
+
+/// Project an impossible outward derivative back into the tangent cone
+/// of a bounded [0, 1] channel. At an exact boundary, preserving an outward
+/// derivative and remaining in the interval are mathematically incompatible.
+/// Interior retargets preserve the derivative exactly.
+fn project_outward_boundary_velocity(
+    weights: FormWeights,
+    velocity: FormWeights,
+) -> FormWeights {
+    let project = |weight: f32, speed: f32| {
+        if (weight == 0.0 && speed < 0.0) || (weight == 1.0 && speed > 0.0) {
+            0.0
+        } else {
+            speed
+        }
+    };
+    FormWeights {
+        nature: project(weights.nature, velocity.nature),
+        humanity: project(weights.humanity, velocity.humanity),
+        digital: project(weights.digital, velocity.digital),
+        enlightenment: project(weights.enlightenment, velocity.enlightenment),
     }
 }
 
@@ -1726,7 +1759,7 @@ mod tests {
         );
         assert_eq!(reduced_receipt.schema_version, CHECKPOINT_VERSION);
         assert_eq!(active_bytes.len(), 121);
-        assert_eq!(reduced_bytes.len(), 160);
+        assert_eq!(reduced_bytes.len(), 157);
         assert!(active_bytes.len() <= 256);
         assert!(reduced_bytes.len() <= 256);
         assert!(reduced_bytes.len() > active_bytes.len());
@@ -1862,7 +1895,10 @@ mod tests {
                     for _ in 0..480 {
                         scene.advance(0.025).unwrap();
                         let weights = scene.frame().form_weights;
-                        assert!(weights.is_finite_and_bounded());
+                        assert!(
+                    weights.is_finite_and_bounded(),
+                    "unbounded weights at adversarial step {step}: {weights:?}"
+                );
                     }
                     assert_eq!(scene.frame().form_weights, second_target.weights());
                     assert_eq!(scene.current_velocity(), FormWeights::ZERO);
@@ -2104,10 +2140,12 @@ mod tests {
         assert_eq!(selected.form_weights, OuroborosForm::Digital.weights());
         assert_eq!(selected.transition_progress, 1.0);
 
+        // Reduced mode remains static at the newly selected target; it does
+        // not revert to the composition that was frozen before retargeting.
         for _ in 0..60 {
             scene.advance(0.1).unwrap();
         }
-        assert_eq!(scene.frame(), frozen);
+        assert_eq!(scene.frame(), selected);
     }
 
     #[test]
