@@ -67,10 +67,21 @@ jobs:
         run: |
           cargo +1.96.0 run --release --locked -p sovereign-visual-core --example ouroboros-benchmark -- --iterations 3 --warmup 1 > "$RUNNER_TEMP/ouroboros-benchmark.jsonl"
           jq -e -s '
-            length == 11 and
+            length == 10 and
             .[0].type == "metadata" and
             .[0].schema == "luminous-ouroboros-cpu-benchmark-v2" and
-            (.[1:] | all(.[]; .type == "measurement" and .iterations == 3 and .p95_ns >= .p50_ns and .p99_ns >= .p95_ns))
+            (.[1:] | all(.[]; .type == "measurement" and .iterations == 3 and .p95_ns >= .p50_ns and .p99_ns >= .p95_ns)) and
+            (.[1:] | map(.name) | sort) == [
+              "checkpoint_encode_decode",
+              "cpu_reference_capture_320",
+              "loop_control",
+              "mesh_build_validate",
+              "mesh_lod_planning",
+              "sealed_evidence_capture_128",
+              "scene_advance_60hz",
+              "semantic_landmarks",
+              "trace_decode_replay"
+            ]
           ' "$RUNNER_TEMP/ouroboros-benchmark.jsonl" > /dev/null
 
       - name: Build browser WASM adapter
