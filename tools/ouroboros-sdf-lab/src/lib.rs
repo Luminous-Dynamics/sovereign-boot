@@ -16,7 +16,6 @@ pub const MAX_SAMPLES: u64 = 2_097_152;
 pub const MAX_CANONICAL_BYTES: u64 = 16 * 1024 * 1024;
 pub const MAX_SMOOTH_UNION_WIDTH: f64 = 0.05;
 pub const FIXTURE_ID: &str = "ouroboros-face-skin-v1";
-pub const FIELD_ID: &str = "iq-ellipsoid-approx-poly-smooth-min-v1";
 
 const GRID_MAGIC: [u8; 8] = *b"OUROGRD1";
 const FIELD_MAGIC: [u8; 8] = *b"OUROFLD1";
@@ -216,7 +215,7 @@ impl FaceSkinField {
 
     fn canonical_descriptor(self) -> Result<Vec<u8>, SdfError> {
         self.validate()?;
-        let mut out = Vec::with_capacity(8 + 2 + 2 + 2 + 2 + 2 + 6 * 8);
+        let mut out = Vec::with_capacity(FIELD_DESCRIPTOR_BYTES as usize);
         out.extend_from_slice(&FIELD_MAGIC);
         put_u16(&mut out, FIELD_SCHEMA_VERSION);
         self.head.canonical_fields(&mut out)?;
@@ -322,8 +321,14 @@ impl GridSpec {
         {
             return Err(SdfError::ByteBudgetExceeded);
         }
-        for value in self.minimum.into_iter().chain(self.maximum) {
-            let _ = coordinate_to_microunits(value)?;
+        let minimum_fixed = self.minimum.map(coordinate_to_microunits);
+        let maximum_fixed = self.maximum.map(coordinate_to_microunits);
+        for axis in 0..3 {
+            let min = minimum_fixed[axis]?;
+            let max = maximum_fixed[axis]?;
+            if max <= min {
+                return Err(SdfError::InvalidGrid);
+            }
         }
         let count = usize::try_from(sample_count).map_err(|_| SdfError::SizeOverflow)?;
         Ok(GridLimits {
@@ -622,6 +627,18 @@ mod tests {
     }
 
     #[test]
+    fn source_field_descriptor_has_the_declared_fixed_length() {
+        let field = FaceSkinField::source_fixture(UnionMode::PolynomialSmooth {
+            width: 0.004,
+        })
+        .unwrap();
+        assert_eq!(
+            field.canonical_descriptor().unwrap().len() as u64,
+            FIELD_DESCRIPTOR_BYTES
+        );
+    }
+
+    #[test]
     fn ellipsoid_estimator_has_expected_sign_and_axis_boundary() {
         let head = source_face_features()[0];
         let boundary = [
@@ -742,6 +759,16 @@ mod tests {
             ..small_grid()
         };
         assert_eq!(too_large.validate(), Err(SdfError::ByteBudgetExceeded));
+    }
+
+    #[test]
+    fn grid_rejects_bounds_that_collapse_at_canonical_precision() {
+        let collapsed = GridSpec {
+            minimum: [0.0000001, -0.1, -0.1],
+            maximum: [0.0000002, 0.1, 0.1],
+            ..small_grid()
+        };
+        assert_eq!(collapsed.validate(), Err(SdfError::InvalidGrid));
     }
 
     #[test]
