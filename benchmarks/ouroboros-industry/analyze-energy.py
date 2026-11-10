@@ -36,6 +36,10 @@ def require(condition: bool, message: str) -> None:
         raise TrialError(message)
 
 
+def is_int(value: Any) -> bool:
+    return type(value) is int
+
+
 def mean_or_zero(values: list[float]) -> float:
     return statistics.fmean(values) if values else 0.0
 
@@ -86,7 +90,7 @@ def validate_trial(trial: dict[str, Any], line_number: int) -> None:
         require(isinstance(workload.get(key), str) and workload[key], f"{prefix}: workload.{key} missing")
     require(workload["id"] in {f"W{i}" for i in range(8)}, f"{prefix}: unknown workload ID")
     for key in ("widthPx", "heightPx", "refreshMilliHz"):
-        require(isinstance(workload.get(key), int) and workload[key] > 0, f"{prefix}: workload.{key} invalid")
+        require(is_int(workload.get(key)) and workload[key] > 0, f"{prefix}: workload.{key} invalid")
     require(
         isinstance(host.get("fingerprintSha256"), str)
         and len(host["fingerprintSha256"]) == 64
@@ -96,7 +100,7 @@ def validate_trial(trial: dict[str, Any], line_number: int) -> None:
     for key in ("os", "kernel", "compositor", "gpu", "driver", "powerProfile", "displayMode"):
         require(isinstance(host.get(key), str) and host[key], f"{prefix}: host.{key} missing")
     for key in ("warmupSeconds", "activeDurationSeconds", "samplingRateMilliHz", "idleBeforeSeconds", "idleAfterSeconds"):
-        require(isinstance(protocol.get(key), int) and protocol[key] >= 0, f"{prefix}: protocol.{key} invalid")
+        require(is_int(protocol.get(key)) and protocol[key] >= 0, f"{prefix}: protocol.{key} invalid")
     require(protocol["activeDurationSeconds"] > 0, f"{prefix}: active duration must be positive")
     require(
         protocol.get("presentationSource") in {
@@ -106,7 +110,7 @@ def validate_trial(trial: dict[str, Any], line_number: int) -> None:
     )
 
     for key in ("presented", "discarded", "unknown"):
-        require(isinstance(outcomes.get(key), int) and outcomes[key] >= 0, f"{prefix}: frameOutcomes.{key} invalid")
+        require(is_int(outcomes.get(key)) and outcomes[key] >= 0, f"{prefix}: frameOutcomes.{key} invalid")
     provenance = outcomes.get("provenance")
     require(
         provenance in {
@@ -166,12 +170,18 @@ def analyze_trial(
         phase = sample.get("phase")
         power = sample.get("powerMilliwatts")
         uncertainty = sample.get("uncertaintyMilliwatts")
-        require(isinstance(timestamp, int) and timestamp > last_timestamp, f"{prefix}: wall timestamps not strictly increasing")
+        require(is_int(timestamp) and timestamp > last_timestamp, f"{prefix}: wall timestamps not strictly increasing")
         require(phase in phases, f"{prefix}: invalid power sample phase")
-        require(isinstance(power, int) and power >= 0, f"{prefix}: invalid powerMilliwatts")
-        require(isinstance(uncertainty, int) and uncertainty >= 0, f"{prefix}: invalid uncertaintyMilliwatts")
-        require(isinstance(sample.get("instrument"), str) and sample["instrument"], f"{prefix}: missing power instrument")
-        require(isinstance(sample.get("domainBoundary"), str) and sample["domainBoundary"], f"{prefix}: power domainBoundary required")
+        require(is_int(power) and power >= 0, f"{prefix}: invalid powerMilliwatts")
+        require(is_int(uncertainty) and uncertainty >= 0, f"{prefix}: invalid uncertaintyMilliwatts")
+        require(
+            isinstance(sample.get("instrument"), str) and sample["instrument"],
+            f"{prefix}: missing power instrument",
+        )
+        require(
+            isinstance(sample.get("domainBoundary"), str) and sample["domainBoundary"],
+            f"{prefix}: power domainBoundary required",
+        )
         if domain_boundary is None:
             domain_boundary = sample["domainBoundary"]
             instrument = sample["instrument"]
@@ -203,8 +213,14 @@ def analyze_trial(
 
     idle_before_power = statistics.fmean(s["powerMilliwatts"] for s in phases["idle_before"])
     idle_after_power = statistics.fmean(s["powerMilliwatts"] for s in phases["idle_after"])
-    idle_before_uncertainty = statistics.fmean(s["uncertaintyMilliwatts"] for s in phases["idle_before"])
-    idle_after_uncertainty = statistics.fmean(s["uncertaintyMilliwatts"] for s in phases["idle_after"])
+    # Use the maximum stated point uncertainty for each idle phase, not the
+    # mean; repeated samples do not remove a meter's systematic uncertainty.
+    idle_before_uncertainty = max(
+        s["uncertaintyMilliwatts"] for s in phases["idle_before"]
+    )
+    idle_after_uncertainty = max(
+        s["uncertaintyMilliwatts"] for s in phases["idle_after"]
+    )
 
     baseline: list[float] = []
     baseline_uncertainty: list[float] = []
