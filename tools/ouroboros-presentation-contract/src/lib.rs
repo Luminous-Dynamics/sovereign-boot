@@ -11,14 +11,14 @@ use std::{collections::BTreeMap, fmt};
 
 pub const ENTITY_SCHEMA_VERSION: u16 = 1;
 pub const QUALITY_SCHEMA_VERSION: u16 = 1;
-pub const CAPABILITY_SCHEMA_VERSION: u16 = 1;
-pub const DECISION_SCHEMA_VERSION: u16 = 1;
+pub const CAPABILITY_SCHEMA_VERSION: u16 = 2;
+pub const DECISION_SCHEMA_VERSION: u16 = 2;
 pub const FRAME_RECEIPT_SCHEMA_VERSION: u16 = 2;
 
 const MAX_FEATURE_IDS: usize = 128;
 const MAX_REPRESENTATION_ROOTS: usize = 128;
 const MAX_CANDIDATES: usize = 128;
-const QUALITY_CANDIDATE_ENCODED_LEN: usize = 67;
+const QUALITY_CANDIDATE_ENCODED_LEN: usize = 128;
 pub const MAX_FEEDBACK_LEDGER_ENTRIES: usize = 4_096;
 
 pub type Digest = [u8; 32];
@@ -180,6 +180,38 @@ impl QualityRequest {
     }
 }
 
+/// Conservative absolute error bounds for estimated candidate metrics.
+/// These are declared planning bounds, not observed telemetry or statistical
+/// confidence intervals unless the host provides a defensible calibration.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct QualityUncertainty {
+    pub vertices: u32,
+    pub indices: u32,
+    pub geometry_bytes: u32,
+    pub frame_time_ns: u64,
+    pub cpu_time_ns: u64,
+    pub gpu_time_ns: u64,
+    pub cpu_memory_bytes: u64,
+    pub gpu_memory_bytes: u64,
+    pub feature_diameter_millipixels: u32,
+    pub silhouette_error_microunits: u32,
+}
+
+impl QualityUncertainty {
+    fn encode_into(&self, out: &mut Vec<u8>) {
+        put_u32(out, self.vertices);
+        put_u32(out, self.indices);
+        put_u32(out, self.geometry_bytes);
+        put_u64(out, self.frame_time_ns);
+        put_u64(out, self.cpu_time_ns);
+        put_u64(out, self.gpu_time_ns);
+        put_u64(out, self.cpu_memory_bytes);
+        put_u64(out, self.gpu_memory_bytes);
+        put_u32(out, self.feature_diameter_millipixels);
+        put_u32(out, self.silhouette_error_microunits);
+    }
+}
+
 /// One host-advertised candidate. Estimate fields are planning inputs, not
 /// telemetry and must never be copied into a delivered-frame observation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -199,6 +231,9 @@ pub struct QualityCandidate {
     pub feature_diameter_millipixels: u32,
     pub silhouette_error_microunits: u32,
     pub animated: bool,
+    /// None means uncertainty is unknown. Point-estimate policy may still
+    /// compare the nominal values; conservative-interval policy will not.
+    pub uncertainty: Option<QualityUncertainty>,
 }
 
 impl QualityCandidate {
@@ -265,6 +300,13 @@ impl QualityCandidate {
         put_u32(out, self.feature_diameter_millipixels);
         put_u32(out, self.silhouette_error_microunits);
         out.push(u8::from(self.animated));
+        match self.uncertainty {
+            Some(uncertainty) => {
+                out.push(1);
+                uncertainty.encode_into(out);
+            }
+            None => out.push(0),
+        }
     }
 }
 
@@ -284,19 +326,15 @@ impl CapabilitySnapshot {
         if self.revision == 0 || self.candidates.len() > MAX_CANDIDATES {
             return Err(ContractError::InvalidCapabilities);
         }
-        for (index, candidate) in self.candidates.iter().enumerate() {
+        let mut candidate_ids = std::collections::BTreeSet::new();
+        let mut preference_ranks = std::collections::BTreeSet::new();
+        for candidate in &self.candidates {
             candidate.validate()?;
-            if self.candidates[..index]
-                .iter()
-                .any(|previous| previous.candidate_id == candidate.candidate_id)
+            if !candidate_ids.insert(candidate.candidate_id)
+                || !preference_ranks.insert(candidate.preference_rank)
             {
                 return Err(ContractError::InvalidCapabilities);
             }
-        }
-        if self.candidates.windows(2).any(|pair| {
-            pair[0].preference_rank >= pair[1].preference_rank
-        }) {
-            return Err(ContractError::NonCanonicalOrdering);
         }
         Ok(())
     }
@@ -304,11 +342,13 @@ impl CapabilitySnapshot {
     pub fn canonical_bytes(&self) -> Result<Vec<u8>, ContractError> {
         self.validate()?;
         let mut out = Vec::with_capacity(8 + 2 + 8 + 2 + self.candidates.len() * QUALITY_CANDIDATE_ENCODED_LEN);
-        out.extend_from_slice(b"OUROCAP1");
+        out.extend_from_slice(b"OUROCAP2");
         put_u16(&mut out, self.schema_version);
         put_u64(&mut out, self.revision);
         put_u16(&mut out, self.candidates.len() as u16);
-        for candidate in &self.candidates {
+        let mut candidates: Vec<&QualityCandidate> = self.candidates.iter().collect();
+        candidates.sort_by_key(|candidate| candidate.candidate_id);
+        for candidate in candidates {
             candidate.encode_into(&mut out);
         }
         Ok(out)
@@ -383,7 +423,7 @@ impl QualityDecision {
             8 + 2 + 2 + 8 + 4 + self.request_bytes.len()
                 + 4 + self.capability_bytes.len() + 1 + QUALITY_CANDIDATE_ENCODED_LEN + 1 + 1,
         );
-        out.extend_from_slice(b"OURODEC1");
+        out.extend_from_slice(b"OURODEC2");
         put_u16(&mut out, self.schema_version);
         put_u16(&mut out, self.policy_version);
         put_u64(&mut out, self.capability_revision);
@@ -425,7 +465,8 @@ pub fn negotiate(
         .candidates
         .iter()
         .copied()
-        .find(|candidate| candidate.is_feasible_for(request));
+        .filter(|candidate| candidate.is_feasible_for(request))
+        .min_by_key(|candidate| (candidate.preference_rank, candidate.candidate_id));
     let degradation_flags = selected_candidate
         .map(|candidate| candidate.degradation_flags(request))
         .unwrap_or(0);
@@ -1181,6 +1222,7 @@ mod tests {
             feature_diameter_millipixels: feature_px,
             silhouette_error_microunits: silhouette_error,
             animated,
+            uncertainty: None,
         }
     }
 
