@@ -973,7 +973,10 @@ mod tests {
         assert_eq!(neutral_landmarks.head_anchor, turned_landmarks.head_anchor);
         assert_ne!(neutral_receipt.digest, turned_receipt.digest);
         assert_ne!(neutral_mesh.vertices, turned_mesh.vertices);
-        assert_eq!(neutral_mesh.landmarks.head_anchor, turned_mesh.landmarks.head_anchor);
+        assert_eq!(
+            neutral_mesh.landmarks.head_anchor,
+            turned_mesh.landmarks.head_anchor
+        );
     }
 
     #[test]
