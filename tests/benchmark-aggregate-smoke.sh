@@ -25,7 +25,7 @@ for trial in 1 2; do
   jq -n -c --argjson trial "$trial" --argjson workloads "$workloads" '
     ({type:"metadata", schema:"luminous-ouroboros-cpu-benchmark-v2", source_rev:"fixture", profile:"release"})
     ,
-    ($workloads | map({
+    ($workloads[] | {
       type:"measurement",
       name:.,
       iterations:3,
@@ -33,7 +33,7 @@ for trial in 1 2; do
       mean_ns:(75 + $trial * 10),
       p95_ns:(100 + $trial * 20),
       p99_ns:(200 + $trial * 20)
-    }))
+    })
   ' > "$tmp/trial-$trial.jsonl"
 done
 
