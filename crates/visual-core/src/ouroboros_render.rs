@@ -97,12 +97,7 @@ pub fn render_reference_rgba(
     let center = [width as f32 * 0.5, height as f32 * 0.5];
     let scale = width.min(height) as f32 * 0.84;
     let config = scene.config();
-    let project = |point: [f32; 3]| {
-        [
-            center[0] + point[0] * scale,
-            center[1] + point[1] * scale,
-        ]
-    };
+    let project = |point: [f32; 3]| [center[0] + point[0] * scale, center[1] + point[1] * scale];
     let anchor = project(landmarks.head_anchor);
     let forward = normalized([landmarks.forward[0], landmarks.forward[1]]);
     let lateral = normalized([landmarks.lateral[0], landmarks.lateral[1]]);
@@ -215,12 +210,21 @@ pub fn render_reference_rgba(
         let cheek_color = HUMANITY.with_opacity((70.0 + 155.0 * humanity_strength) / 255.0);
         for side in [-1.0_f32, 1.0] {
             let cheek = [
-                anchor[0] + forward[0] * head_radius * 0.55
+                anchor[0]
+                    + forward[0] * head_radius * 0.55
                     + lateral[0] * side * head_radius * 0.55,
-                anchor[1] + forward[1] * head_radius * 0.55
+                anchor[1]
+                    + forward[1] * head_radius * 0.55
                     + lateral[1] * side * head_radius * 0.55,
             ];
-            draw_disc(&mut pixels, width, height, cheek, head_radius * 0.16, cheek_color);
+            draw_disc(
+                &mut pixels,
+                width,
+                height,
+                cheek,
+                head_radius * 0.16,
+                cheek_color,
+            );
         }
     }
 
@@ -274,7 +278,14 @@ pub fn render_reference_rgba(
     }
 
     let nose = project(landmarks.nose_tip);
-    draw_disc(&mut pixels, width, height, nose, head_radius * 0.10, DARK_INK);
+    draw_disc(
+        &mut pixels,
+        width,
+        height,
+        nose,
+        head_radius * 0.10,
+        DARK_INK,
+    );
 
     let mouth = project(landmarks.mouth_center);
     let mouth_half_width = head_radius * 0.42;
