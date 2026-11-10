@@ -14,7 +14,10 @@ use crate::{
         OuroborosCheckpointError, OuroborosCheckpointReceipt, OuroborosLandmarkError,
         OuroborosLandmarkReceipt, OuroborosLandmarks,
     },
-    ouroboros_face::{OuroborosFaceMesh, OuroborosFaceMeshConfig, OuroborosFaceMeshError, OuroborosFaceMeshReceipt},
+    ouroboros_face::{
+        OuroborosFaceMesh, OuroborosFaceMeshConfig, OuroborosFaceMeshError,
+        OuroborosFaceMeshPlan, OuroborosFaceMeshReceipt,
+    },
     ouroboros_mesh::{
         OuroborosMesh, OuroborosMeshBudget, OuroborosMeshConfig, OuroborosMeshError,
         OuroborosMeshPlan, OuroborosMeshReceipt, OuroborosQualityTier,
