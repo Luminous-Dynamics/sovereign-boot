@@ -719,6 +719,8 @@ pub struct SessionBinding {
     pub backend_build_digest: Digest,
     pub session_id: [u8; 16],
     pub decision_digest: Digest,
+    /// Wayland presentation clock received for this display connection, when known.
+    pub presentation_clock_id: Option<u32>,
     pub target_format_id: u16,
     pub width: u32,
     pub height: u32,
@@ -759,6 +761,7 @@ pub struct FrameSequenceGuard {
     binding: SessionBinding,
     expected_generation: u64,
     last_sequence: u64,
+    observed_presentation_clock_id: Option<u32>,
 }
 
 impl FrameSequenceGuard {
@@ -768,6 +771,7 @@ impl FrameSequenceGuard {
             return Err(ContractError::InvalidFrameReceipt);
         }
         Ok(Self {
+            observed_presentation_clock_id: binding.presentation_clock_id,
             binding,
             expected_generation,
             last_sequence: 0,
@@ -781,6 +785,15 @@ impl FrameSequenceGuard {
         }
         if !self.binding.matches(receipt) {
             return Err(ContractError::SessionBindingMismatch);
+        }
+        if let Some(observation) = receipt.presentation {
+            match self.observed_presentation_clock_id {
+                Some(clock_id) if clock_id != observation.clock_id => {
+                    return Err(ContractError::PresentationClockMismatch);
+                }
+                None => self.observed_presentation_clock_id = Some(observation.clock_id),
+                _ => {}
+            }
         }
         if receipt.frame_sequence <= self.last_sequence {
             return Err(ContractError::NonMonotonicFrameSequence);
@@ -831,6 +844,7 @@ pub enum ContractError {
     SessionMismatch,
     InvalidSessionBinding,
     SessionBindingMismatch,
+    PresentationClockMismatch,
     InvalidPresentationObservation,
     PresentationTimestampOverflow,
 }
@@ -1359,6 +1373,7 @@ mod tests {
             backend_build_digest: [6; 32],
             session_id: [3; 16],
             decision_digest: [5; 32],
+            presentation_clock_id: Some(1),
             target_format_id: 1,
             width: 1920,
             height: 1080,
@@ -1459,6 +1474,35 @@ mod tests {
             None,
         );
         guard.observe(&next).unwrap();
+    }
+
+    #[test]
+    fn frame_guard_rejects_mixed_presentation_clock_domains() {
+        let mut guard = FrameSequenceGuard::new(session_binding(), 4).unwrap();
+        let mut first = receipt(
+            1,
+            4,
+            PresentationStatus::Presented,
+            EvidenceLevel::CompositorFeedback,
+            Some(10),
+        );
+        first.presentation_clock_id = None;
+        first.presentation.as_mut().unwrap().clock_id = 1;
+        guard.observe(&first).unwrap();
+
+        let mut changed_clock = receipt(
+            2,
+            4,
+            PresentationStatus::Presented,
+            EvidenceLevel::CompositorFeedback,
+            Some(20),
+        );
+        changed_clock.presentation_clock_id = None;
+        changed_clock.presentation.as_mut().unwrap().clock_id = 2;
+        assert_eq!(
+            guard.observe(&changed_clock),
+            Err(ContractError::PresentationClockMismatch)
+        );
     }
 
     #[test]
