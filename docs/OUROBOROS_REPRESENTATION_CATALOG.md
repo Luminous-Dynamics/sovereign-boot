@@ -151,7 +151,7 @@ All example digests in the JSON fixture are placeholders, not real payload ident
 
 ## 8. Conformance and benchmark plan
 
-The initial 19 authored tests cover cross-format identity, representation payload changes, canonical order, semantic bindings, Gaussian-splat role/capability enforcement, exact anchor requirements, degraded fallback, quality provenance and deterministic encoding.
+The initial 20 authored tests cover cross-format identity, representation payload changes, canonical order, semantic bindings, Gaussian-splat role/capability enforcement, exact anchor requirements, degraded fallback, quality provenance and deterministic encoding.
 
 Next qualification steps:
 1. Compile, rustfmt and run the isolated crate on exact head.
