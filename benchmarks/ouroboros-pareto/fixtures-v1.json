@@ -405,7 +405,7 @@
           "gpuTimeNs": 5000000,
           "cpuMemoryBytes": 300000,
           "gpuMemoryBytes": 400000,
-          "featureDiameterMillipixels": 2000,
+          "featureDiameterMillipixels": 1990,
           "silhouetteErrorMicrounits": 10000,
           "animated": true,
           "uncertainty": null
