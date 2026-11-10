@@ -47,11 +47,11 @@ Checkpoint source and tests are authored, not yet exact-head qualified. The curr
 A sixth core module, `crates/visual-core/src/ouroboros_evidence.rs`, seals a reproducible CPU evidence run. Given a validated event trace, a host-budgeted mesh plan and image dimensions, it:
 - Replays the canonical trace and retains the exact trace bytes and replay receipt.
 - Encodes the final semantic scene checkpoint, including C1 velocity and motion-policy state.
-- Generates and validates the planned mesh, binding its canonical geometry receipt.
+- Generates and validates both the planned body mesh and landmark-driven face mesh, binding separate canonical geometry receipts.
 - Renders the deterministic CPU reference image and retains its RGBA8 bytes and pixel receipt.
-- Encodes the sub-receipts, scene-contract versions, requested/selected LOD and exact resource estimate into a canonical `OUROEVB2` metadata bundle, including the semantic face-landmark receipt and the complete host-provided budget inputs; BLAKE3 over that bundle is the evidence root. The sealer recomputes the deterministic LOD plan from the replayed scene and those exact budget inputs before accepting the evidence.
+- Encodes the sub-receipts, scene-contract versions, requested/selected LOD and exact resource estimate into a canonical `OUROEVB3` metadata bundle, including the semantic face-landmark receipt and the complete host-provided budget inputs; BLAKE3 over that bundle is the evidence root. The sealer recomputes the deterministic LOD plan from the replayed scene and those exact budget inputs before accepting the evidence.
 
-The returned artifact includes trace bytes, checkpoint bytes, semantic landmarks, mesh geometry, pixels, bundle bytes and receipts. It is a content-addressed evidence root, **not a digital signature or authenticated provenance**. Build/commit identity, GPU driver, host measurements, compositor presentation and physical hardware evidence must be attached by a separately qualified host/attestation layer. Exact-head evidence-sealer tests are authored but not yet qualified.
+The returned artifact includes trace bytes, checkpoint bytes, semantic landmarks, face geometry, body geometry, pixels, bundle bytes and receipts. It is a content-addressed evidence root, **not a digital signature or authenticated provenance**. Build/commit identity, GPU driver, host measurements, compositor presentation and physical hardware evidence must be attached by a separately qualified host/attestation layer. Exact-head evidence-sealer tests are authored but not yet qualified.
 
 The CPU renderer also exposes `render_reference_artifact`, which binds RGBA bytes to width, height, scene-contract version and a BLAKE3 pixel digest. These receipts make a run inspectable and replayable; they do not establish cross-architecture floating-point parity, GPU parity, visual quality or authenticity without a separately verified source/build and capture process.
 
@@ -62,12 +62,20 @@ The fourth core module, `crates/visual-core/src/ouroboros_mesh.rs`, converts the
 - An explicit outward triangle winding contract validated for every triangle, plus exact canonical index topology and hostile-public-data bounds checks.
 - Canonical little-endian mesh serialization and a BLAKE3 receipt binding the scene-contract version, tessellation, vertices, normals, UVs, form weights and indices.
 
-The mesh is a geometry artifact, not a final character model or shader. It has no face sculpt, material graph, animation rig, GPU upload path, shadowing or physically based lighting. Its test coverage is authored but not yet qualified on this exact PR head.
+The body mesh is a geometry artifact, not a final character model or shader. It has no GPU upload path, shadowing or physically based lighting. Its test coverage is authored but not yet qualified on this exact PR head.
 
 
 A seventh core contract adds `OuroborosScene::landmarks()`: one versioned semantic head/face attachment set in normalized scene coordinates. It carries the exact invariant head root, an orthonormal forward/lateral/up basis derived from bounded yaw/pitch, and stable left-eye, right-eye, nose-tip, mouth-center, crown and chin points. Facial proportions scale with the scene major radius; semantic form weights never move or reorder the root or attachment IDs. `OuroborosLandmarks::validate` checks schema and scene-contract versions, finite coordinates, exact head-root identity, an orthonormal right-handed basis bound to the scene pose, a bounded facial attachment envelope and bilateral eye symmetry. `canonical_bytes` emits the versioned `OUROLND1` representation and its BLAKE3 receipt is independently versioned from mesh, checkpoint and trace schemas. Adversarial tests mutate schema, root, basis, pose, eye symmetry and attachment bounds; exact-head qualification is pending.
 
 The landmark set is a renderer-neutral attachment contract, not a sculpted model or full skeletal rig. The deterministic CPU reference renderer now projects its eyes, pupils, nose, mouth and cheek accents directly from this contract; its duplicate yaw/pitch face transform has been removed. A future WGPU/Vulkan renderer must consume the same `OUROLND1` attachment map and include its receipt in cross-backend evidence. This does not claim photorealism, facial expression quality or human identity; those remain visual-art and perceptual-evaluation work.
+
+### Landmark-driven 3D head and face geometry
+
+The new `crates/visual-core/src/ouroboros_face.rs` module adds a separate parametric face artifact, `OuroborosFaceMesh`, generated from `OuroborosLandmarks` rather than renderer-private offsets. Its first profile contains five closed indexed ellipsoid regions with stable IDs: head shell, left eye, right eye, nose and mouth. Eye volumes are centred on the exact eye landmarks; the nose volume is constructed so its forward tip meets the nose-tip landmark; the mouth region is centred on the mouth attachment. All five regions use the same landmark-derived forward/lateral/up basis, so bounded pose changes rotate the face while leaving the root fixed.
+
+The face mesh has its own bounded latitude/longitude tessellation, explicit vertex/index/byte estimates, checked reservations, finite/unit-normal/UV validation, canonical index topology, outward winding checks and exact UV seam checks. Validation regenerates canonical geometry from the supplied landmarks and config and compares every vertex/index, so mutations of public geometry vectors cannot retain validity by changing only counts or indices. The canonical `OUROFAC1` receipt binds the schema, scene contract, landmark digest, tessellation and all vertex/index bytes.
+
+This is a first **five-volume parametric face mesh**, not a fused watertight sculpt, production anatomy, expression/blendshape rig, skin/hair material system or photorealism claim. Eye and mouth volumes are separate closed surfaces that may intersect the head shell; the next art/geometry pass must review proportions, surface attachments and visual occlusion. Exact-head geometry tests and visual review remain pending.
 
 
 The mesh API also exposes deterministic host-budget planning. The host supplies projected ring/tube pixel radii plus maximum vertex, index and byte budgets. Requested ring tessellation rounds up to the next power-of-two needed to target <=0.75 px centerline spacing (capped at 2048); tube cross-section demand uses its own quantized ladder. The core then selects a deterministic feasible tessellation tier (Economy, Balanced or Cinematic) using the two ladders and exact resource estimates. The returned plan includes both the requested and selected ring/tube segments, so a host can see where the shared budget traded cross-section detail for silhouette resolution. If even the minimum mesh cannot fit, it returns `BudgetTooSmall`; the host must choose a CPU/static fallback. This keeps display/GPU discovery out of the scene core while allowing predictable resolution/power scaling. The same budget input produces the same plan, and the plan reports exact counts and estimated geometry bytes.
@@ -276,7 +284,7 @@ The identity metric is intentionally not just a pixel similarity score: material
 
 - Active C1 trajectories must resume with identical per-channel values, velocities and subsequent state on the same build/target.
 - Reduced checkpoints must remain frozen until the host explicitly resumes the entity.
-- Current canonical schema sizes are 121 bytes for an active checkpoint and 160 bytes for a Reduced checkpoint; the hard format ceiling remains 256 bytes.
+- Current canonical schema sizes are 121 bytes for an active checkpoint and 157 bytes for a Reduced checkpoint; the hard format ceiling remains 256 bytes.
 - p95 encode/decode target <=100 microseconds for 1,000 in-process operations on the reference laptop CPU; actual latency remains unmeasured.
 - Invalid, oversized, unknown-version, out-of-range and trailing-byte snapshots are rejected before use.
 - Checkpoints contain semantic state only. Renderer handles, file paths, DMA-BUFs, FDs, display identity and permissions are never persisted.
@@ -342,8 +350,10 @@ Ouroboros is a first exemplar. Future scenes could embody civic commons, ecologi
 | P1 | Host-budgeted deterministic LOD | **Source implemented** with Economy/Balanced/Cinematic selection and hard budget checks; exact-head planning tests pending |
 | P1 | Portable Ouroboros checkpoint | **Source implemented** with `OUROCKP1` schema and active/Reduced restore tests; exact-head tests and p95 encode/decode measurements pending |
 | P1 | Semantic face landmark contract | **Source implemented** with `OUROLND1`, invariant root, orthonormal pose basis and six face attachments; exact-head tests and visual review pending |
-| P1 | Sealed visual-evidence bundle | **Source implemented** with `OUROEVB2` binding trace, checkpoint, landmarks, mesh, CPU pixels and complete LOD budget; exact-head tests and cross-backend comparison pending |
-| P1 | CPU benchmark harness | **Source implemented** with JSONL p50/p95/p99 reports for scene, landmarks, checkpoint, replay, LOD, mesh, CPU capture and evidence sealing; exact-head build and named-host baseline pending |
+| P1 | Landmark-driven 3D face mesh | **Source implemented** with five closed parametric regions and `OUROFAC1`; exact-head geometry tests, attachment/occlusion visual review and perceptual evaluation pending |
+| P1 | Sealed visual-evidence bundle | **Source implemented** with `OUROEVB3` binding trace, checkpoint, landmarks, face mesh, body mesh, CPU pixels and complete LOD budget; exact-head tests and cross-backend comparison pending |
+| P1 | CPU benchmark harness | **Source implemented** with JSONL p50/p95/p99 reports for scene, landmarks, checkpoint, replay, LOD, body mesh, face mesh, CPU capture and evidence sealing; exact-head build pending |
+| P1 | Named-host benchmark capture | **Source implemented** with five independent release-process trials, strict workload/source checks, median-of-trial percentiles, spread and SHA-256 evidence; script/aggregation CI smoke pending and no named-host result measured |
 | P1 | WGPU Ouroboros renderer | Same semantic fixtures, GPU shader validation, reference comparisons and named-device performance evidence |
 | P1 | Waywallen bridge smoke renderer | Exact protocol handshake, buffer negotiation, DMA-BUF publication, SYNC_FD and release-point lifecycle |
 | P2 | Sandboxed Ouroboros Waywallen plugin | Per-user plugin install, typed scene settings, renderer process sandbox, static fallback and daemon lifecycle |
