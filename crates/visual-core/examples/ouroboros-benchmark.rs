@@ -344,7 +344,7 @@ fn run_benchmarks(options: Options) {
 
     println!(
         concat!(
-            "{{\"type\":\"metadata\",\"schema\":\"luminous-ouroboros-cpu-benchmark-v1\",",
+            "{{\"type\":\"metadata\",\"schema\":\"luminous-ouroboros-cpu-benchmark-v2\",",
             "\"source_rev\":\"{}\",\"profile\":\"{}\",\"os\":\"{}\",",
             "\"arch\":\"{}\",\"cpu_model\":\"{}\",\"cpu_governor\":\"{}\",",
             "\"power_profile\":\"{}\",\"kernel\":\"{}\",\"ram_mib\":\"{}\",",
