@@ -67,7 +67,7 @@ The mesh is a geometry artifact, not a final character model or shader. It has n
 
 A seventh core contract adds `OuroborosScene::landmarks()`: one versioned semantic head/face attachment set in normalized scene coordinates. It carries the exact invariant head root, an orthonormal forward/lateral/up basis derived from bounded yaw/pitch, and stable left-eye, right-eye, nose-tip, mouth-center, crown and chin points. Facial proportions scale with the scene major radius; semantic form weights never move or reorder the root or attachment IDs. `OuroborosLandmarks::canonical_bytes` emits the versioned `OUROLND1` representation and its BLAKE3 receipt is independently versioned from mesh, checkpoint and trace schemas. Tests are authored for all forms, pose extremes, basis orthogonality, left/right symmetry, head-envelope bounds, canonical determinism and pose sensitivity; exact-head qualification is pending.
 
-The landmark set is a renderer-neutral attachment contract, not a sculpted model or full skeletal rig. It does not claim photorealism, facial expression quality or human identity; those remain visual-art and perceptual-evaluation work.
+The landmark set is a renderer-neutral attachment contract, not a sculpted model or full skeletal rig. The deterministic CPU reference renderer now projects its eyes, pupils, nose, mouth and cheek accents directly from this contract; its duplicate yaw/pitch face transform has been removed. A future WGPU/Vulkan renderer must consume the same `OUROLND1` attachment map and include its receipt in cross-backend evidence. This does not claim photorealism, facial expression quality or human identity; those remain visual-art and perceptual-evaluation work.
 
 
 The mesh API also exposes deterministic host-budget planning. The host supplies projected ring/tube pixel radii plus maximum vertex, index and byte budgets. Requested ring tessellation rounds up to the next power-of-two needed to target <=0.75 px centerline spacing (capped at 2048); tube cross-section demand uses its own quantized ladder. The core then selects a deterministic feasible tessellation tier (Economy, Balanced or Cinematic) using the two ladders and exact resource estimates. The returned plan includes both the requested and selected ring/tube segments, so a host can see where the shared budget traded cross-section detail for silhouette resolution. If even the minimum mesh cannot fit, it returns `BudgetTooSmall`; the host must choose a CPU/static fallback. This keeps display/GPU discovery out of the scene core while allowing predictable resolution/power scaling. The same budget input produces the same plan, and the plan reports exact counts and estimated geometry bytes.
@@ -196,13 +196,18 @@ The release-mode benchmark harness is `crates/visual-core/examples/ouroboros-ben
 
 ```sh
 BENCH_SOURCE_REV="$(git rev-parse HEAD)" \
-BENCH_CPU_MODEL="record exact CPU model" \
-cargo run --release --locked -p sovereign-visual-core \
+BENCH_CPU_MODEL="exact CPU model" \
+BENCH_CPU_GOVERNOR="performance / powersave / schedutil" \
+BENCH_POWER_PROFILE="AC balanced / AC performance / battery" \
+BENCH_KERNEL="$(uname -r)" \
+BENCH_RAM_MIB="installed RAM in MiB" \
+BENCH_RUST_TOOLCHAIN="$(rustc +1.96.0 -V)" \
+cargo +1.96.0 run --release --locked -p sovereign-visual-core \
   --example ouroboros-benchmark -- --iterations 250 --warmup 20 \
   > ouroboros-benchmark.jsonl
 ```
 
-It emits newline-delimited JSON: one metadata row followed by one row per operation. Current measurements include loop-control overhead, 60 Hz C1 scene update/retarget, semantic landmark generation, checkpoint encode/decode, trace decode/replay, LOD planning, mesh build+validation, 320×320 CPU capture and 128×128 sealed evidence capture. Each measurement reports min/mean/p50/p95/p99/max nanoseconds and operations per second. The metadata row records schema, source revision, debug/release profile, OS, architecture, optional CPU model, logical CPU count, scene-contract version, trace length and mesh plan.
+It emits newline-delimited JSON: one metadata row followed by one row per operation. Current measurements include loop-control overhead, **ordinary 60 Hz C1 stepping**, a separate **1 Hz retarget-under-60 Hz stepping** workload, semantic landmark generation, checkpoint encode/decode, trace decode/replay, LOD planning, mesh build+validation, 320×320 CPU capture and 128×128 sealed evidence capture. This separation prevents retarget-command cost from being mislabeled as ordinary per-frame cost. Each measurement reports min/mean/p50/p95/p99/max nanoseconds and operations per second. The metadata row records schema, source revision, debug/release profile, OS, architecture, CPU model, CPU governor, power profile, kernel, RAM, Rust toolchain, logical CPU count, scene-contract version, trace length and mesh plan.
 
 The harness is CPU-only. It does **not** measure Vulkan/WGPU submission, GPU memory, compositor-presented frame pacing, power or lock-screen behavior. Those measurements require the later native adapter and a separately identified device/compositor. A benchmark JSONL file is not a pass/fail qualification by itself; preserve raw output with the exact source/build/host tuple and compare confidence intervals over repeated runs. No performance numbers are claimed until the harness has actually run on a named host.
 
@@ -268,7 +273,7 @@ The identity metric is intentionally not just a pixel similarity score: material
 
 - Active C1 trajectories must resume with identical per-channel values, velocities and subsequent state on the same build/target.
 - Reduced checkpoints must remain frozen until the host explicitly resumes the entity.
-- Current canonical schema sizes are 121 bytes for an active checkpoint and 157 bytes for a Reduced checkpoint; the hard format ceiling remains 256 bytes.
+- Current canonical schema sizes are 121 bytes for an active checkpoint and 160 bytes for a Reduced checkpoint; the hard format ceiling remains 256 bytes.
 - p95 encode/decode target <=100 microseconds for 1,000 in-process operations on the reference laptop CPU; actual latency remains unmeasured.
 - Invalid, oversized, unknown-version, out-of-range and trailing-byte snapshots are rejected before use.
 - Checkpoints contain semantic state only. Renderer handles, file paths, DMA-BUFs, FDs, display identity and permissions are never persisted.
