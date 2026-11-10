@@ -1002,6 +1002,36 @@ mod tests {
     }
 
     #[test]
+    fn requested_ring_lod_rounds_up_to_the_pixel_spacing_target() {
+        let mut previous = 0;
+        for projected_radius_px in 0..=4_096 {
+            let selected = desired_ring_segments(projected_radius_px);
+            assert!(selected >= 32);
+            assert!(selected <= 2_048);
+            assert!(selected.is_power_of_two());
+            assert!(selected >= previous);
+            previous = selected;
+
+            let requested_samples =
+                (std::f64::consts::TAU * f64::from(projected_radius_px) / 0.75).ceil();
+            if requested_samples <= 2_048.0 {
+                assert!(
+                    f64::from(selected) >= requested_samples,
+                    "ring {projected_radius_px}px requested {requested_samples} samples but planner selected {selected}"
+                );
+                let spacing =
+                    std::f64::consts::TAU * f64::from(projected_radius_px) / f64::from(selected);
+                assert!(
+                    spacing <= 0.75 + f64::EPSILON,
+                    "ring {projected_radius_px}px has {spacing}px spacing"
+                );
+            } else {
+                assert_eq!(selected, 2_048);
+            }
+        }
+    }
+
+    #[test]
     fn host_budget_rejects_limits_below_minimum_geometry() {
         let scene = scene(OuroborosForm::Humanity);
         assert_eq!(
