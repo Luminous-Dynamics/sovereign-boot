@@ -23,8 +23,8 @@ use crate::{
     ouroboros_trace::{OuroborosTrace, ReplayReceipt, TraceError},
 };
 
-const EVIDENCE_MAGIC: [u8; 8] = *b"OUROEVB3";
-const EVIDENCE_VERSION: u16 = 3;
+const EVIDENCE_MAGIC: [u8; 8] = *b"OUROEVB4";
+const EVIDENCE_VERSION: u16 = 4;
 
 /// Failure while assembling a canonical visual-evidence bundle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -105,6 +105,7 @@ pub struct OuroborosEvidenceReceipt {
     pub checkpoint: OuroborosCheckpointReceipt,
     pub landmarks: OuroborosLandmarkReceipt,
     pub face: OuroborosFaceMeshReceipt,
+    pub face_plan: OuroborosFaceMeshPlan,
     pub mesh: OuroborosMeshReceipt,
     pub image: ReferenceImageReceipt,
     pub host_budget: OuroborosMeshBudget,
@@ -141,6 +142,7 @@ pub struct OuroborosEvidenceArtifact {
 pub fn capture_ouroboros_evidence(
     trace: &OuroborosTrace,
     plan: OuroborosMeshPlan,
+    face_plan: OuroborosFaceMeshPlan,
     width: u32,
     height: u32,
 ) -> Result<OuroborosEvidenceArtifact, OuroborosEvidenceError> {
@@ -155,11 +157,9 @@ pub fn capture_ouroboros_evidence(
     let landmarks = replay.scene.landmarks();
     landmarks.validate(&replay.scene)?;
     let landmark_receipt = landmarks.receipt();
-    let (face_mesh, face_receipt) = OuroborosFaceMesh::build(
-        &replay.scene,
-        landmarks,
-        OuroborosFaceMeshConfig::default(),
-    )?;
+    OuroborosFaceMeshConfig::validate_plan(face_plan)?;
+    let (face_mesh, face_receipt) =
+        OuroborosFaceMesh::build_with_plan(&replay.scene, landmarks, face_plan)?;
     face_mesh.validate(&replay.scene)?;
     if checkpoint_bytes.len() > u16::MAX as usize {
         return Err(OuroborosEvidenceError::SizeOverflow);
@@ -194,6 +194,7 @@ pub fn capture_ouroboros_evidence(
         checkpoint_receipt,
         landmark_receipt,
         face_receipt,
+        face_plan,
         mesh_receipt,
         image_receipt,
         plan,
@@ -205,6 +206,7 @@ pub fn capture_ouroboros_evidence(
         checkpoint: checkpoint_receipt,
         landmarks: landmark_receipt,
         face: face_receipt,
+        face_plan,
         mesh: mesh_receipt,
         image: image_receipt,
         host_budget: plan.budget,
@@ -259,6 +261,7 @@ fn encode_bundle(
     checkpoint: OuroborosCheckpointReceipt,
     landmarks: OuroborosLandmarkReceipt,
     face: OuroborosFaceMeshReceipt,
+    face_plan: OuroborosFaceMeshPlan,
     mesh: OuroborosMeshReceipt,
     image: ReferenceImageReceipt,
     plan: OuroborosMeshPlan,
@@ -290,6 +293,23 @@ fn encode_bundle(
     bytes.extend_from_slice(&face.vertex_count.to_le_bytes());
     bytes.extend_from_slice(&face.index_count.to_le_bytes());
     bytes.extend_from_slice(&face.digest);
+
+    bytes.extend_from_slice(&face_plan.budget.projected_face_radius_px.to_le_bytes());
+    bytes.extend_from_slice(&face_plan.budget.max_vertices.to_le_bytes());
+    bytes.extend_from_slice(&face_plan.budget.max_indices.to_le_bytes());
+    bytes.extend_from_slice(&face_plan.budget.max_buffer_bytes.to_le_bytes());
+    bytes.extend_from_slice(&face_plan.requested.latitude_segments.to_le_bytes());
+    bytes.extend_from_slice(&face_plan.requested.longitude_segments.to_le_bytes());
+    bytes.extend_from_slice(&face_plan.config.latitude_segments.to_le_bytes());
+    bytes.extend_from_slice(&face_plan.config.longitude_segments.to_le_bytes());
+    bytes.push(match face_plan.tier {
+        crate::ouroboros_face::OuroborosFaceQualityTier::Economy => 0,
+        crate::ouroboros_face::OuroborosFaceQualityTier::Balanced => 1,
+        crate::ouroboros_face::OuroborosFaceQualityTier::Cinematic => 2,
+    });
+    bytes.extend_from_slice(&face_plan.vertex_count.to_le_bytes());
+    bytes.extend_from_slice(&face_plan.index_count.to_le_bytes());
+    bytes.extend_from_slice(&face_plan.estimated_buffer_bytes.to_le_bytes());
 
     bytes.extend_from_slice(&mesh.scene_contract_version.to_le_bytes());
     bytes.extend_from_slice(&mesh.vertex_count.to_le_bytes());
@@ -367,11 +387,21 @@ mod tests {
         .unwrap()
     }
 
+    fn face_plan() -> OuroborosFaceMeshPlan {
+        OuroborosFaceMeshConfig::plan_for_budget(OuroborosFaceMeshBudget {
+            projected_face_radius_px: 48,
+            max_vertices: 50_000,
+            max_indices: 300_000,
+            max_buffer_bytes: 2_500_000,
+        })
+        .unwrap()
+    }
+
     #[test]
     fn evidence_bundle_binds_replay_checkpoint_mesh_and_pixels() {
         let trace = trace();
         let plan = plan();
-        let first = capture_ouroboros_evidence(&trace, plan, 320, 320).unwrap();
+        let first = capture_ouroboros_evidence(&trace, plan, face_plan(), 320, 320).unwrap();
         let second = capture_ouroboros_evidence(&trace, plan, 320, 320).unwrap();
 
         assert_eq!(first, second);
@@ -389,6 +419,8 @@ mod tests {
             *blake3::hash(&first.landmarks.canonical_bytes()).as_bytes()
         );
         assert_eq!(first.receipt.face, first.face_mesh.receipt().unwrap());
+        assert_eq!(first.receipt.face_plan, face_plan());
+        OuroborosFaceMeshConfig::validate_plan(first.receipt.face_plan).unwrap();
         assert_eq!(first.receipt.face.landmark_digest, first.receipt.landmarks.digest);
         assert_eq!(first.receipt.mesh.vertex_count, plan.vertex_count);
         assert_eq!(first.receipt.mesh.index_count, plan.index_count);
@@ -399,7 +431,7 @@ mod tests {
             first.receipt.image.pixel_digest,
             *blake3::hash(&first.pixels).as_bytes()
         );
-        assert_eq!(first.bundle_bytes.len(), 365);
+        assert_eq!(first.bundle_bytes.len(), 418);
         assert_eq!(
             first.checkpoint_bytes.len(),
             first.receipt.checkpoint.byte_length as usize
@@ -424,8 +456,8 @@ mod tests {
         }
 
         let selected_plan = plan();
-        let baseline = capture_ouroboros_evidence(&base, selected_plan, 160, 160).unwrap();
-        let posed = capture_ouroboros_evidence(&turned, selected_plan, 160, 160).unwrap();
+        let baseline = capture_ouroboros_evidence(&base, selected_plan, face_plan(), 160, 160).unwrap();
+        let posed = capture_ouroboros_evidence(&turned, selected_plan, face_plan(), 160, 160).unwrap();
 
         assert_ne!(
             baseline.receipt.landmarks.digest,
@@ -443,7 +475,7 @@ mod tests {
     #[test]
     fn evidence_bundle_changes_when_the_canonical_trace_changes() {
         let source = trace();
-        let first = capture_ouroboros_evidence(&source, plan(), 128, 128).unwrap();
+        let first = capture_ouroboros_evidence(&source, plan(), face_plan(), 128, 128).unwrap();
 
         let mut changed = source;
         changed
@@ -451,7 +483,7 @@ mod tests {
                 dt_seconds: 1.0 / 60.0,
             })
             .unwrap();
-        let second = capture_ouroboros_evidence(&changed, plan(), 128, 128).unwrap();
+        let second = capture_ouroboros_evidence(&changed, plan(), face_plan(), 128, 128).unwrap();
         assert_ne!(first.receipt.bundle_digest, second.receipt.bundle_digest);
         assert_ne!(
             first.receipt.replay.final_state_digest,
@@ -464,21 +496,21 @@ mod tests {
         let mut invalid = plan();
         invalid.estimated_buffer_bytes -= 1;
         assert_eq!(
-            capture_ouroboros_evidence(&trace(), invalid, 128, 128),
+            capture_ouroboros_evidence(&trace(), invalid, face_plan(), 128, 128),
             Err(OuroborosEvidenceError::InvalidPlan)
         );
 
         let mut invalid_tier = plan();
         invalid_tier.tier = OuroborosQualityTier::Economy;
         assert_eq!(
-            capture_ouroboros_evidence(&trace(), invalid_tier, 128, 128),
+            capture_ouroboros_evidence(&trace(), invalid_tier, face_plan(), 128, 128),
             Err(OuroborosEvidenceError::InvalidPlan)
         );
 
         let mut invalid_config = plan();
         invalid_config.config.tube_radius = 0.0;
         assert_eq!(
-            capture_ouroboros_evidence(&trace(), invalid_config, 128, 128),
+            capture_ouroboros_evidence(&trace(), invalid_config, face_plan(), 128, 128),
             Err(OuroborosEvidenceError::InvalidPlan)
         );
     }
@@ -486,7 +518,7 @@ mod tests {
     #[test]
     fn evidence_sealer_rejects_invalid_capture_dimensions() {
         assert!(matches!(
-            capture_ouroboros_evidence(&trace(), plan(), 0, 128),
+            capture_ouroboros_evidence(&trace(), plan(), face_plan(), 0, 128),
             Err(OuroborosEvidenceError::Render(_))
         ));
     }
