@@ -728,9 +728,9 @@ impl ParetoDecision {
             8 + 2 + 2 + 8 + 4 + self.request_bytes.len()
                 + 4 + self.capability_bytes.len()
                 + 4 + self.policy_bytes.len()
-                + 2 + self.evaluations.len() * 13
+                + 2 + self.evaluations.len() * 11
                 + 2 + self.frontier_candidate_ids.len() * 2
-                + 1 + 2,
+                + 1 + 2 + 2,
         )
         .map_err(|_| ContractError::CollectionTooLarge)?;
         out.extend_from_slice(b"OUROPDE2");
@@ -2259,7 +2259,7 @@ mod tests {
             1, 0, 4_000, 12_000, 400_000, 6_000_000, 1_500_000, 3_000_000,
             250_000, 350_000, 2_500, 5_000,
         );
-        let mut b = quality_candidate(
+        let b = quality_candidate(
             2, 1, 4_100, 12_100, 401_000, 6_100_000, 1_600_000, 3_100_000,
             251_000, 351_000, 2_450, 5_100,
         );
@@ -2296,7 +2296,7 @@ mod tests {
     }
 
     #[test]
-    fn relaxed_hard_budget_preserves_feasible_set_even_when_frontier_changes() {
+    fn relaxing_hard_budget_preserves_existing_feasible_set_membership() {
         let a = quality_candidate(
             1, 0, 5_000, 15_000, 500_000, 8_000_000, 2_000_000, 5_000_000,
             300_000, 400_000, 1_500, 15_000,
@@ -2313,7 +2313,6 @@ mod tests {
         )
         .unwrap();
         assert_eq!(tight.frontier_candidate_ids(), &[1]);
-        b.estimated_gpu_memory_bytes = 600_000;
         let expanded = negotiate_pareto(
             &request(700_000, false),
             &capabilities(vec![a, b]),
@@ -2323,6 +2322,66 @@ mod tests {
         let old_candidate = expanded.evaluations().iter().find(|e| e.candidate_id == 1).unwrap();
         assert_ne!(old_candidate.disposition, CandidateDisposition::Infeasible);
         assert_eq!(expanded.frontier_candidate_ids(), &[1, 2]);
+    }
+
+    #[test]
+    fn adding_a_new_feasible_candidate_can_shrink_the_frontier() {
+        let resource_efficient = quality_candidate(
+            1, 0, 4_000, 12_000, 400_000, 6_000_000, 1_500_000, 3_000_000,
+            250_000, 350_000, 1_800, 12_000,
+        );
+        let feature_rich = quality_candidate(
+            2, 1, 6_000, 18_000, 600_000, 10_000_000, 3_000_000, 6_000_000,
+            400_000, 650_000, 3_000, 4_000,
+        );
+        let old_snapshot = capabilities(vec![resource_efficient, feature_rich]);
+        let policy = pareto_policy(DominanceMode::PointEstimate);
+        let old_decision = negotiate_pareto(
+            &request(1_000_000, false),
+            &old_snapshot,
+            &policy,
+        )
+        .unwrap();
+        assert_eq!(old_decision.frontier_candidate_ids(), &[1, 2]);
+
+        let dominator = quality_candidate(
+            3, 2, 3_000, 9_000, 300_000, 5_000_000, 1_000_000, 2_000_000,
+            200_000, 300_000, 3_500, 2_000,
+        );
+        let expanded_decision = negotiate_pareto(
+            &request(1_000_000, false),
+            &capabilities(vec![resource_efficient, feature_rich, dominator]),
+            &policy,
+        )
+        .unwrap();
+        assert_eq!(expanded_decision.frontier_candidate_ids(), &[3]);
+        for previous_id in [1, 2] {
+            let evaluation = expanded_decision
+                .evaluations()
+                .iter()
+                .find(|item| item.candidate_id == previous_id)
+                .unwrap();
+            assert_eq!(evaluation.disposition, CandidateDisposition::Dominated);
+            assert_eq!(evaluation.dominated_by_candidate_id, Some(3));
+        }
+    }
+
+    #[test]
+    fn capability_snapshot_rejects_duplicate_preference_ranks() {
+        let caps = capabilities(vec![
+            candidate(1, 0, 500_000, true, 2_000, 5_000),
+            candidate(2, 0, 400_000, true, 2_500, 4_000),
+        ]);
+        assert_eq!(caps.validate(), Err(ContractError::InvalidCapabilities));
+    }
+
+    #[test]
+    fn candidate_encoding_has_fixed_versioned_length() {
+        let candidate = candidate(1, 0, 500_000, true, 2_000, 5_000);
+        let caps = capabilities(vec![candidate]);
+        let bytes = caps.canonical_bytes().unwrap();
+        assert!(bytes.starts_with(b"OUROCAP2"));
+        assert_eq!(bytes.len(), 8 + 2 + 8 + 2 + QUALITY_CANDIDATE_ENCODED_LEN);
     }
 
     #[test]
