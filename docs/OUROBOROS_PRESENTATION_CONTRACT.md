@@ -99,6 +99,24 @@ Every numeric wire field should use a defined unit and bounded integer represent
 
 ### 3.2 Deterministic negotiation
 
+The current standalone oracle preserves two separately inspectable selection strategies:
+
+- **First-feasible baseline:** choose the feasible candidate with the lowest host preference rank, then stable candidate ID. Candidate order in a capability array is not semantic; OUROCAP2 canonical bytes sort by ID and require unique IDs/ranks.
+- **Pareto policy:** filter hard constraints first, calculate the nondominated frontier over the declared geometry, frame, CPU/GPU memory/time, feature-size and silhouette dimensions, and only then apply host preference within that frontier. Every candidate receives a deterministic explanation: infeasible with hard-rejection flags, indeterminate due to missing uncertainty, dominated with a stable dominator, or frontier/selected.
+
+The Pareto receipt is reproducible from the exact request, capability snapshot and policy bytes. It does not use a weighted utility scalar.
+
+Three policy modes are versioned:
+1. **PointEstimate:** compares nominal planning estimates.
+2. **ConservativeIntervals:** requires explicit absolute uncertainty bounds and only allows dominance when candidate A's worst-case cost bound is no worse than candidate B's best-case bound, with the direction reversed for feature diameter. Missing bounds remain Indeterminate, never zero. These are host-declared engineering bounds, not automatically calibrated statistical confidence intervals.
+3. **EpsilonGrid:** groups objective values by separately declared, positive per-metric epsilon widths in the metric's own unit. Values in the same complete bucket vector are policy-equivalent and resolve by stable candidate ID. Epsilon is a comparison tolerance, not an uncertainty margin or objective weight.
+
+The feasible set is monotonic under relaxed hard ceilings, but the frontier size/membership is not: a newly feasible candidate can dominate and remove a previous frontier member. Verification must explain that dominance relation rather than demand a non-shrinking frontier count.
+
+Energy is not yet a candidate objective because no qualified energy source is bound to a presentation receipt. Keep it explicitly unknown until an instrument and measurement domain are qualified; do not substitute zero, vendor estimates or CPU package counters for whole-system energy.
+
+### 3.3 Deterministic negotiation shape
+
 The pure core receives a bounded request, a host capability snapshot and a versioned policy. It does not query the GPU, display, thermal sensors, power supply or compositor.
 
 Proposed shape:
