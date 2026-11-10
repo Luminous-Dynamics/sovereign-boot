@@ -101,12 +101,25 @@ def validate_trial(trial: dict[str, Any], line_number: int) -> None:
     )
     for key in ("os", "kernel", "compositor", "gpu", "driver", "powerProfile", "displayMode"):
         require(isinstance(host.get(key), str) and host[key], f"{prefix}: host.{key} missing")
-    for key in ("warmupSeconds", "activeDurationSeconds", "samplingRateMilliHz", "idleBeforeSeconds", "idleAfterSeconds"):
+    nonnegative_protocol_fields = (
+        "warmupSeconds",
+        "activeDurationSeconds",
+        "samplingRateMilliHz",
+        "idleBeforeSeconds",
+        "idleAfterSeconds",
+    )
+    for key in nonnegative_protocol_fields:
         require(
             is_int(protocol.get(key)) and protocol[key] >= 0,
             f"{prefix}: protocol.{key} invalid",
         )
-    for key in ("activeDurationSeconds", "samplingRateMilliHz", "idleBeforeSeconds", "idleAfterSeconds"):
+    positive_protocol_fields = (
+        "activeDurationSeconds",
+        "samplingRateMilliHz",
+        "idleBeforeSeconds",
+        "idleAfterSeconds",
+    )
+    for key in positive_protocol_fields:
         require(
             protocol[key] > 0,
             f"{prefix}: protocol.{key} must be positive",
@@ -387,11 +400,15 @@ def aggregate_trials(
         summaries.append({
             "system": key[0],
             "version": key[1],
-            "workloadId": key[2],
-            "hostFingerprintSha256": key[3],
-            "widthPx": key[4],
-            "heightPx": key[5],
-            "refreshMilliHz": key[6],
+            "buildRevision": key[2],
+            "presentationProvenance": key[3],
+            "wallPowerInstrument": key[4],
+            "wallPowerDomainBoundary": key[5],
+            "workloadId": key[6],
+            "hostFingerprintSha256": key[7],
+            "widthPx": key[8],
+            "heightPx": key[9],
+            "refreshMilliHz": key[10],
             "trialCount": len(records),
             "qualificationStatus": (
                 "meets_initial_trial_count"
@@ -451,12 +468,18 @@ def paired_comparisons(trials: list[dict[str, Any]]) -> list[dict[str, Any]]:
         right = by_system[system_names[1]][0]
         if left["assetHashes"] != right["assetHashes"]:
             continue
+        require(
+            left["presentationProvenance"] not in RENDERER_ONLY
+            and right["presentationProvenance"] not in RENDERER_ONLY,
+            f"pairing block {key[0]} contains renderer-only presentation provenance",
+        )
         comparisons.append({
             "pairingBlockId": key[0],
             "workloadId": key[1],
             "hostFingerprintSha256": key[2],
             "systemA": system_names[0],
             "systemB": system_names[1],
+            "assetHashes": left["assetHashes"],
             "deltaMarginalEnergyJ_BminusA": (
                 by_system[system_names[1]][0]["marginalEnergyJ"]
                 - by_system[system_names[0]][0]["marginalEnergyJ"]
