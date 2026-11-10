@@ -97,6 +97,47 @@ Every asset must be frozen and SHA-256 hashed before trial runs. Scene parameter
 - Fix and record compositor, kernel, GPU/driver, firmware, output mode, refresh/VRR, power profile, temperature and background load.
 - Separate presentation feedback from renderer/host timing and separate human perception from image similarity.
 
+## Raw-trial schema and paired energy analyzer
+
+The suite now includes an executable, standard-library-only analysis path:
+
+- `trial-v1.schema.json`: one complete trial record per JSONL line. It binds the system/build, workload/assets, host fingerprint, warm-up/active/idle protocol, presentation outcome provenance and timestamped power samples.
+- `analyze-energy.py`: validates trial provenance and computes paired active-minus-idle marginal energy, joules per actually presented frame, conservative meter uncertainty, per-domain summaries, bootstrap intervals across repeated trials, and matched A/B differences for shared pairing-block IDs.
+
+Run the analyzer's deterministic synthetic self-test:
+
+```sh
+python benchmarks/ouroboros-industry/analyze-energy.py --self-test
+```
+
+This self-test uses **synthetic fixture values only** and prints a message explicitly saying it is not a measured result.
+
+Analyze real frozen trials:
+
+```sh
+python benchmarks/ouroboros-industry/analyze-energy.py trials-v1.jsonl \
+  --min-trials 10 --bootstrap-samples 2000 \
+  --output energy-analysis-v1.json
+```
+
+### Energy accounting
+
+For the `wall_total` domain, the analyzer calculates:
+
+`marginal_energy_j = integral(active_wall_power - interpolated_idle_baseline)`
+
+The idle baseline interpolates between the means of the same trial's `idle_before` and `idle_after` phases. It integrates the active phase using trapezoidal integration. Per-sample meter uncertainty is propagated as a conservative bound; instrument calibration and other systematic uncertainty still need to be documented in the raw trial notes.
+
+`joules_per_presented_frame = marginal_energy_j / compositor_or_host_evidenced_presented_frames`
+
+Renderer-reported or unknown provenance cannot justify a nonzero presented-frame count. When presentation is unavailable, J/presented-frame remains null and unknown outcomes are reported separately. Discarded frames are never counted as presented.
+
+CPU package, CPU core, GPU, video-engine and VRAM readings are summarized separately. They are **not added** to `wall_total`, because their measurement boundaries can overlap. The raw samples remain in the JSONL input and output metadata identifies the instrument/domain boundary.
+
+The analyzer defaults to 10 repeated trials before marking a group `meets_initial_trial_count`; smaller groups remain `insufficient_trials`. Bootstrap intervals describe run-to-run variation for the sampled trials and do not replace calibration uncertainty, randomized paired design or an external wall meter.
+
+The trial schema is a data contract, not a proof that the measurement instrument is correctly installed. Preserve the raw JSONL, meter calibration record, asset hashes, source revisions and instrument setup with every published result.
+
 ## Proposed first acceptance targets
 
 These are targets to qualify, not achieved results:
