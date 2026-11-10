@@ -1,0 +1,119 @@
+{
+  "schemaVersion": 1,
+  "status": "exploratory-not-qualified",
+  "fixtureId": "ouroboros-face-semantic-sdf-v1",
+  "algorithm": "sampled-approximate-ellipsoid-field + polynomial-smooth-min + scikit-image marching_cubes",
+  "smoothUnionWidth": 0.004,
+  "environment": {
+    "hostArchitecture": "x86_64",
+    "platform": "Linux 6.18.57, virtualized",
+    "cpuModel": "Intel Xeon Platinum 8573C",
+    "logicalCpuCount": 3,
+    "python": "3.13.5",
+    "numpy": "2.3.5",
+    "scikitImage": "0.26.0",
+    "trimesh": "4.11.1",
+    "timingsComparable": false
+  },
+  "field": {
+    "estimator": "IQ-style approximate ellipsoid distance",
+    "exactSignedDistance": false,
+    "unit": "normalized-major-radius",
+    "axes": [
+      "forward",
+      "lateral",
+      "up"
+    ],
+    "composition": "polynomial smooth-min(head-shell,nose)"
+  },
+  "measurements": [
+    {
+      "grid": [
+        64,
+        64,
+        64
+      ],
+      "vertices": 5786,
+      "triangles": 11568,
+      "p95FieldResidual": 0.00003442109275519133,
+      "maxFieldResidual": 0.0009576457,
+      "watertight": true,
+      "windingConsistent": true,
+      "components": 1,
+      "eulerCharacteristic": 2,
+      "positiveVolume": true,
+      "estimatedProductionBufferBytes": 254568,
+      "withinCurrentVertexLimit": true
+    },
+    {
+      "grid": [
+        96,
+        96,
+        96
+      ],
+      "vertices": 13264,
+      "triangles": 26524,
+      "p95FieldResidual": 0.000015222970987133438,
+      "maxFieldResidual": 0.0005914468936556,
+      "watertight": true,
+      "windingConsistent": true,
+      "components": 1,
+      "eulerCharacteristic": 2,
+      "positiveVolume": true,
+      "estimatedProductionBufferBytes": 583600,
+      "withinCurrentVertexLimit": true
+    },
+    {
+      "grid": [
+        128,
+        128,
+        128
+      ],
+      "vertices": 23728,
+      "triangles": 47452,
+      "p95FieldResidual": 0.000008761996189175133,
+      "maxFieldResidual": 0.0003028677054465511,
+      "watertight": true,
+      "windingConsistent": true,
+      "components": 1,
+      "eulerCharacteristic": 2,
+      "positiveVolume": true,
+      "estimatedProductionBufferBytes": 1044016,
+      "withinCurrentVertexLimit": true
+    },
+    {
+      "grid": [
+        192,
+        192,
+        192
+      ],
+      "vertices": 53690,
+      "triangles": 107376,
+      "p95FieldResidual": 0.0000043787912720756875,
+      "maxFieldResidual": 0.0001593007974067861,
+      "watertight": true,
+      "windingConsistent": true,
+      "components": 1,
+      "eulerCharacteristic": 2,
+      "positiveVolume": true,
+      "estimatedProductionBufferBytes": 2362344,
+      "withinCurrentVertexLimit": false
+    }
+  ],
+  "separatePrimitiveSurfaceVertexFractionsInsideHeadShellField": {
+    "nose": 0.25806451612903225,
+    "leftEye": 0.6910112359550562,
+    "rightEye": 0.6910112359550562,
+    "mouth": 0.4444444444444444
+  },
+  "limitations": [
+    "field residual evaluated against same approximate field, not exact surface error",
+    "surface vertex fractions are not volume overlap or visible occlusion fractions",
+    "self-intersections not tested",
+    "independent manifold checker not used",
+    "human perceptual review not performed",
+    "no named-host Rust timings",
+    "not the SIGGRAPH 2026 discrete-SDF dual-contouring algorithm",
+    "not production geometry or GPU evidence"
+  ]
+}
