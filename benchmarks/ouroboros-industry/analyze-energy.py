@@ -40,10 +40,6 @@ def is_int(value: Any) -> bool:
     return type(value) is int
 
 
-def mean_or_zero(values: list[float]) -> float:
-    return statistics.fmean(values) if values else 0.0
-
-
 def quantile(values: list[float], q: float) -> float:
     if not values:
         raise TrialError("cannot calculate quantile of empty sample")
@@ -87,10 +83,16 @@ def validate_trial(trial: dict[str, Any], line_number: int) -> None:
     for key in ("name", "version", "buildRevision"):
         require(isinstance(system.get(key), str) and system[key], f"{prefix}: system.{key} missing")
     for key in ("id", "colorSpace"):
-        require(isinstance(workload.get(key), str) and workload[key], f"{prefix}: workload.{key} missing")
+        require(
+            isinstance(workload.get(key), str) and workload[key],
+            f"{prefix}: workload.{key} missing",
+        )
     require(workload["id"] in {f"W{i}" for i in range(8)}, f"{prefix}: unknown workload ID")
     for key in ("widthPx", "heightPx", "refreshMilliHz"):
-        require(is_int(workload.get(key)) and workload[key] > 0, f"{prefix}: workload.{key} invalid")
+        require(
+            is_int(workload.get(key)) and workload[key] > 0,
+            f"{prefix}: workload.{key} invalid",
+        )
     require(
         isinstance(host.get("fingerprintSha256"), str)
         and len(host["fingerprintSha256"]) == 64
@@ -100,8 +102,15 @@ def validate_trial(trial: dict[str, Any], line_number: int) -> None:
     for key in ("os", "kernel", "compositor", "gpu", "driver", "powerProfile", "displayMode"):
         require(isinstance(host.get(key), str) and host[key], f"{prefix}: host.{key} missing")
     for key in ("warmupSeconds", "activeDurationSeconds", "samplingRateMilliHz", "idleBeforeSeconds", "idleAfterSeconds"):
-        require(is_int(protocol.get(key)) and protocol[key] >= 0, f"{prefix}: protocol.{key} invalid")
-    require(protocol["activeDurationSeconds"] > 0, f"{prefix}: active duration must be positive")
+        require(
+            is_int(protocol.get(key)) and protocol[key] >= 0,
+            f"{prefix}: protocol.{key} invalid",
+        )
+    for key in ("activeDurationSeconds", "samplingRateMilliHz", "idleBeforeSeconds", "idleAfterSeconds"):
+        require(
+            protocol[key] > 0,
+            f"{prefix}: protocol.{key} must be positive",
+        )
     require(
         protocol.get("presentationSource") in {
             "wayland_presentation_time_v2", "vulkan_present_timing", "host_other", "unsupported"
@@ -110,7 +119,10 @@ def validate_trial(trial: dict[str, Any], line_number: int) -> None:
     )
 
     for key in ("presented", "discarded", "unknown"):
-        require(is_int(outcomes.get(key)) and outcomes[key] >= 0, f"{prefix}: frameOutcomes.{key} invalid")
+        require(
+            is_int(outcomes.get(key)) and outcomes[key] >= 0,
+            f"{prefix}: frameOutcomes.{key} invalid",
+        )
     provenance = outcomes.get("provenance")
     require(
         provenance in {
@@ -170,10 +182,16 @@ def analyze_trial(
         phase = sample.get("phase")
         power = sample.get("powerMilliwatts")
         uncertainty = sample.get("uncertaintyMilliwatts")
-        require(is_int(timestamp) and timestamp > last_timestamp, f"{prefix}: wall timestamps not strictly increasing")
+        require(
+            is_int(timestamp) and timestamp > last_timestamp,
+            f"{prefix}: wall timestamps not strictly increasing",
+        )
         require(phase in phases, f"{prefix}: invalid power sample phase")
         require(is_int(power) and power >= 0, f"{prefix}: invalid powerMilliwatts")
-        require(is_int(uncertainty) and uncertainty >= 0, f"{prefix}: invalid uncertaintyMilliwatts")
+        require(
+            is_int(uncertainty) and uncertainty >= 0,
+            f"{prefix}: invalid uncertaintyMilliwatts",
+        )
         require(
             isinstance(sample.get("instrument"), str) and sample["instrument"],
             f"{prefix}: missing power instrument",
@@ -185,7 +203,10 @@ def analyze_trial(
         if domain_boundary is None:
             domain_boundary = sample["domainBoundary"]
             instrument = sample["instrument"]
-        require(sample["domainBoundary"] == domain_boundary, f"{prefix}: mixed wall_total domain boundaries")
+        require(
+            sample["domainBoundary"] == domain_boundary,
+            f"{prefix}: mixed wall_total domain boundaries",
+        )
         require(sample["instrument"] == instrument, f"{prefix}: mixed wall_total instruments")
         last_timestamp = timestamp
         phases[phase].append(sample)
@@ -206,7 +227,10 @@ def analyze_trial(
     require(active_seconds[-1] > 0, f"{prefix}: active power window has zero duration")
     require(
         abs(active_seconds[-1] - trial["protocol"]["activeDurationSeconds"]) <= 2.0,
-        f"{prefix}: active sample window differs from declared activeDurationSeconds by more than 2 seconds",
+        (
+            f"{prefix}: active sample window differs from declared "
+            "activeDurationSeconds by more than 2 seconds"
+        ),
     )
     gaps = [b - a for a, b in zip(active_seconds, active_seconds[1:])]
     require(max(gaps) <= max_gap_seconds, f"{prefix}: active wall power sampling gap exceeds limit")
@@ -257,12 +281,17 @@ def analyze_trial(
     # Report other measured domains separately; do not add package/GPU/video
     # counters to wall_total because device-domain boundaries may overlap.
     domain_summary: dict[str, Any] = {}
-    other_domains = sorted({sample["domain"] for sample in samples if sample.get("domain") != "wall_total"})
+    other_domains = sorted({
+        sample["domain"] for sample in samples if sample.get("domain") != "wall_total"
+    })
     for domain in other_domains:
         domain_samples = [sample for sample in samples if sample.get("domain") == domain]
         boundaries = {sample.get("domainBoundary") for sample in domain_samples}
         instruments = {sample.get("instrument") for sample in domain_samples}
-        require(len(boundaries) == 1 and len(instruments) == 1, f"{prefix}: mixed source/boundary within domain {domain}")
+        require(
+            len(boundaries) == 1 and len(instruments) == 1,
+            f"{prefix}: mixed source/boundary within domain {domain}",
+        )
         domain_summary[domain] = {
             "instrument": next(iter(instruments)),
             "domainBoundary": next(iter(boundaries)),
@@ -378,9 +407,15 @@ def aggregate_trials(
             "joulesPerPresentedFrameMedian95PercentileBootstrapCI": bootstrap_median_ci(
                 jpf_values, samples=bootstrap_samples, seed=seed ^ 0x9E3779B97F4A7C15
             ),
-            "medianDiscardedRatio": statistics.median(
-                [record["discardedRatio"] for record in records if record["discardedRatio"] is not None]
-            ) if any(record["discardedRatio"] is not None for record in records) else None,
+            "medianDiscardedRatio": (
+                statistics.median([
+                    record["discardedRatio"]
+                    for record in records
+                    if record["discardedRatio"] is not None
+                ])
+                if any(record["discardedRatio"] is not None for record in records)
+                else None
+            ),
             "unknownOutcomeTrials": sum(
                 1 for record in records if record["unknownFrameOutcomes"] > 0
             ),
@@ -450,10 +485,22 @@ def analyze_records(
         "schemaVersion": 1,
         "status": "analysis_only_not_qualification",
         "metricDefinitions": {
-            "marginalEnergyJ": "Trapezoidal integral of wall_total active power minus linearly interpolated same-trial idle-before/idle-after baseline.",
-            "joulesPerPresentedFrame": "Marginal wall energy divided by compositor/host-evidenced presented frame count; never uses submitted or renderer-only counts.",
-            "meterUncertainty": "Conservative bound from active-sample and interpolated idle-sample per-point uncertainty; does not include all calibration/systematic uncertainty.",
-            "powerDomains": "Only wall_total contributes to whole-system energy. CPU/package/GPU/video_engine domains are retained as separate samples and never summed."
+            "marginalEnergyJ": (
+                "Trapezoidal integral of wall_total active power minus the "
+                "linearly interpolated same-trial idle baseline."
+            ),
+            "joulesPerPresentedFrame": (
+                "Marginal wall energy divided by compositor/host-evidenced "
+                "presented frames; never renderer submissions."
+            ),
+            "meterUncertainty": (
+                "Conservative bound from active and interpolated idle sample "
+                "uncertainty; excludes calibration/systematic uncertainty."
+            ),
+            "powerDomains": (
+                "Only wall_total contributes to whole-system energy. "
+                "CPU/package/GPU/video domains are retained separately."
+            ),
         },
         "minimumTrialsPerGroup": minimum_trials,
         "bootstrapSamples": bootstrap_samples,
@@ -469,7 +516,6 @@ def analyze_records(
 
 
 def synthetic_trial(index: int) -> dict[str, Any]:
-    base_time = 0
     samples = []
     for timestamp, phase, power in [
         (0, "idle_before", 5_000),
@@ -555,7 +601,12 @@ def self_test() -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("input", nargs="?", type=Path, help="JSONL file with one complete trial record per line")
+    parser.add_argument(
+        "input",
+        nargs="?",
+        type=Path,
+        help="JSONL file with one complete trial record per line",
+    )
     parser.add_argument("--output", type=Path, help="write analysis JSON to this path")
     parser.add_argument("--min-trials", type=int, default=DEFAULT_MIN_TRIALS)
     parser.add_argument("--bootstrap-samples", type=int, default=DEFAULT_BOOTSTRAP_SAMPLES)
