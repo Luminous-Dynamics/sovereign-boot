@@ -21,9 +21,7 @@ use sovereign_visual_core::{
         AttentionTarget, OuroborosConfig, OuroborosForm, OuroborosMotionMode, OuroborosScene,
     },
     ouroboros_evidence::capture_ouroboros_evidence,
-    ouroboros_mesh::{
-        OuroborosMesh, OuroborosMeshBudget, OuroborosMeshConfig, OuroborosMeshPlan,
-    },
+    ouroboros_mesh::{OuroborosMesh, OuroborosMeshBudget, OuroborosMeshConfig, OuroborosMeshPlan},
     ouroboros_render::render_reference_artifact,
     ouroboros_trace::{OuroborosEvent, OuroborosTrace},
 };
@@ -229,19 +227,26 @@ fn run_benchmarks(options: Options) {
     measurements.push(measure("loop_control", options, || 1));
 
     measurements.push(measure("scene_advance_60hz", options, || {
-        animated_scene.advance(1.0 / 60.0).expect("60 Hz step is valid");
         animated_scene
-            .transition_to(if animated_scene.frame().target_form == OuroborosForm::Digital {
+            .advance(1.0 / 60.0)
+            .expect("60 Hz step is valid");
+        animated_scene.transition_to(
+            if animated_scene.frame().target_form == OuroborosForm::Digital {
                 OuroborosForm::Humanity
             } else {
                 OuroborosForm::Digital
-            });
+            },
+        );
         u64::from(animated_scene.frame().transition_progress.to_bits())
     }));
 
     measurements.push(measure("semantic_landmarks", options, || {
         let receipt = base_scene.landmarks().receipt();
-        u64::from_le_bytes(receipt.digest[..8].try_into().expect("digest prefix has 8 bytes"))
+        u64::from_le_bytes(
+            receipt.digest[..8]
+                .try_into()
+                .expect("digest prefix has 8 bytes"),
+        )
     }));
 
     measurements.push(measure("checkpoint_encode_decode", options, || {
@@ -252,7 +257,11 @@ fn run_benchmarks(options: Options) {
             OuroborosScene::restore_checkpoint(&bytes).expect("scene checkpoint must restore");
         assert_eq!(receipt, restored_receipt);
         black_box(restored.frame());
-        u64::from_le_bytes(receipt.digest[..8].try_into().expect("digest prefix has 8 bytes"))
+        u64::from_le_bytes(
+            receipt.digest[..8]
+                .try_into()
+                .expect("digest prefix has 8 bytes"),
+        )
     }));
 
     measurements.push(measure("trace_decode_replay", options, || {
@@ -274,7 +283,11 @@ fn run_benchmarks(options: Options) {
         let (mesh, receipt) =
             OuroborosMesh::build(&replayed_scene, plan.config).expect("mesh must build");
         mesh.validate().expect("mesh must validate");
-        u64::from_le_bytes(receipt.digest[..8].try_into().expect("digest prefix has 8 bytes"))
+        u64::from_le_bytes(
+            receipt.digest[..8]
+                .try_into()
+                .expect("digest prefix has 8 bytes"),
+        )
     }));
 
     measurements.push(measure("cpu_reference_capture_320", options, || {
@@ -289,8 +302,8 @@ fn run_benchmarks(options: Options) {
     }));
 
     measurements.push(measure("sealed_evidence_capture_128", options, || {
-        let artifact = capture_ouroboros_evidence(&trace, plan, 128, 128)
-            .expect("evidence capture must seal");
+        let artifact =
+            capture_ouroboros_evidence(&trace, plan, 128, 128).expect("evidence capture must seal");
         u64::from_le_bytes(
             artifact.receipt.bundle_digest[..8]
                 .try_into()
@@ -298,7 +311,11 @@ fn run_benchmarks(options: Options) {
         )
     }));
 
-    let profile = if cfg!(debug_assertions) { "debug" } else { "release" };
+    let profile = if cfg!(debug_assertions) {
+        "debug"
+    } else {
+        "release"
+    };
     let source_rev = env::var("BENCH_SOURCE_REV").unwrap_or_else(|_| "not-provided".into());
     let cpu_model = env::var("BENCH_CPU_MODEL").unwrap_or_else(|_| "not-provided".into());
     let parallelism = std::thread::available_parallelism()
@@ -327,7 +344,10 @@ fn run_benchmarks(options: Options) {
         plan.index_count
     );
     for measurement in &mut measurements {
-        println!("{}", measurement.as_json(options.warmup, options.iterations));
+        println!(
+            "{}",
+            measurement.as_json(options.warmup, options.iterations)
+        );
     }
 }
 
