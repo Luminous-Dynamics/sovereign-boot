@@ -364,6 +364,14 @@ pub fn extract(
         .and_then(|value| {
             value.checked_add(u64::from(config.max_vertices).checked_mul(64)?)
         })
+        .and_then(|value| {
+            // The semantic triangle view is a separate owned copy: f64 XYZ +
+            // feature mask per vertex, plus triangle indices and face labels.
+            let mesh_copy = u64::from(config.max_vertices)
+                .checked_mul(28)?
+                .checked_add(u64::from(config.max_quads).checked_mul(2 * 16)?)?;
+            value.checked_add(mesh_copy)
+        })
         .ok_or(ExtractError::SizeOverflow)?;
     let working_payload = grid_limits
         .sample_bytes
