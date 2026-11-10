@@ -84,7 +84,7 @@ pub struct ComponentSummary {
     pub euler_characteristic: i64,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct MeshAuditReport {
     pub checks: AuditChecks,
     pub vertex_count: u32,
@@ -483,8 +483,8 @@ fn validate_vertex_links(
 
         let boundary_edges = boundary_degree[vertex_index];
         let degree_shape_ok = match boundary_edges {
-            0 => degree_two_only && degree_one == 0,
-            2 => degree_two_only && degree_one == 2,
+            0 => adjacency.len() >= 3 && degree_two_only && degree_one == 0,
+            2 => adjacency.len() >= 2 && degree_two_only && degree_one == 2,
             _ => false,
         };
         if !degree_shape_ok {
@@ -851,6 +851,26 @@ mod tests {
         let report = audit_mesh(&a, AuditLimits::default()).unwrap();
         assert_eq!(report.checks.topology_manifold, CheckStatus::Fail);
         assert_eq!(report.disconnected_vertex_link_count, 1);
+    }
+
+    #[test]
+    fn pinched_boundary_graph_is_not_reported_as_a_single_closed_loop() {
+        let mesh = SemanticTriangleMesh {
+            vertices: vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [-1.0, 0.0, 0.0],
+                [0.0, -1.0, 0.0],
+            ],
+            vertex_feature_masks: vec![1; 5],
+            faces: vec![[0, 1, 2], [0, 3, 4]],
+            face_region_ids: vec![1, 1],
+        };
+        let report = audit_mesh(&mesh, AuditLimits::default()).unwrap();
+        assert_eq!(report.boundary_component_count, 1);
+        assert_eq!(report.non_loop_boundary_component_count, 1);
+        assert_eq!(report.checks.topology_manifold, CheckStatus::Fail);
     }
 
     #[test]
