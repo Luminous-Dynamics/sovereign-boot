@@ -14,6 +14,7 @@ use sovereign_visual_core::{
         AttentionTarget, OuroborosConfig, OuroborosForm, OuroborosMotionMode, OuroborosScene,
     },
     ouroboros_evidence::capture_ouroboros_evidence,
+    ouroboros_face::{OuroborosFaceMesh, OuroborosFaceMeshBudget, OuroborosFaceMeshConfig},
     ouroboros_mesh::{OuroborosMesh, OuroborosMeshBudget, OuroborosMeshConfig},
     ouroboros_render::render_reference_artifact,
     ouroboros_trace::{OuroborosEvent, OuroborosTrace},
@@ -175,6 +176,26 @@ fn main() {
         OuroborosMeshConfig::plan_for_budget(&replay_scene, 0.025, budget)
             .expect("fixed benchmark LOD inputs remain valid")
     });
+    let face_budget = OuroborosFaceMeshBudget {
+        projected_face_radius_px: 32,
+        max_vertices: 50_000,
+        max_indices: 300_000,
+        max_buffer_bytes: 2_500_000,
+    };
+    let face_plan = OuroborosFaceMeshConfig::plan_for_budget(face_budget)
+        .expect("benchmark face LOD budget is feasible");
+    let face_lod_stats = benchmark(iterations, || {
+        OuroborosFaceMeshConfig::plan_for_budget(face_budget)
+            .expect("fixed benchmark face LOD inputs remain valid")
+    });
+    let face_mesh_stats = benchmark(iterations, || {
+        let (mesh, receipt) =
+            OuroborosFaceMesh::build_with_plan(&replay_scene, replay_scene.landmarks(), face_plan)
+                .expect("budgeted face mesh builds");
+        mesh.validate(&replay_scene).expect("face mesh validates");
+        assert_eq!(mesh.receipt().unwrap(), receipt);
+        receipt.digest
+    });
     let mesh_stats = benchmark(iterations, || {
         let (mesh, receipt) =
             OuroborosMesh::build(&replay_scene, plan.config).expect("benchmark mesh builds");
@@ -200,7 +221,7 @@ fn main() {
 
     let evidence_iterations = iterations.min(100);
     let evidence_stats = benchmark(evidence_iterations, || {
-        let artifact = capture_ouroboros_evidence(&trace, plan, 128, 128)
+        let artifact = capture_ouroboros_evidence(&trace, plan, face_plan, 128, 128)
             .expect("sealed evidence capture succeeds");
         black_box(artifact.receipt.bundle_digest)
     });
@@ -242,7 +263,9 @@ fn main() {
     print_stat("landmark_receipt", &landmark_stats);
     print_stat("checkpoint_encode_restore", &checkpoint_stats);
     print_stat("host_budget_lod_plan", &lod_stats);
+    print_stat("face_lod_plan", &face_lod_stats);
     print_stat("mesh_build_validate_receipt", &mesh_stats);
+    print_stat("face_mesh_build_validate_receipt", &face_mesh_stats);
     print_stat("cpu_rgba_256", &render_stats);
     print_stat("sealed_evidence_128", &evidence_stats);
     println!("  }}");
