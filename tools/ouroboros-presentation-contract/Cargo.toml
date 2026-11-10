@@ -1,0 +1,13 @@
+[package]
+name = "ouroboros-presentation-contract"
+version = "0.1.0"
+edition = "2024"
+description = "Dependency-free conformance oracle for persistent visual entity identity and presentation quality"
+license = "AGPL-3.0-or-later"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+
+[workspace]

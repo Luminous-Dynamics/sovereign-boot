@@ -1,0 +1,557 @@
+{
+  "schemaVersion": 1,
+  "benchmarkId": "ouroboros-pareto-negotiation-v1",
+  "source": {
+    "repository": "Luminous-Dynamics/sovereign-boot",
+    "contractPath": "tools/ouroboros-presentation-contract/src/lib.rs",
+    "capabilityEncoding": "OUROCAP2",
+    "baselineDecisionEncoding": "OURODEC2",
+    "paretoPolicyEncoding": "OUROPOL2",
+    "paretoDecisionEncoding": "OUROPDE2"
+  },
+  "objectiveSemantics": {
+    "minimized": [
+      "estimated_vertices",
+      "estimated_indices",
+      "estimated_geometry_bytes",
+      "estimated_frame_time_ns",
+      "estimated_cpu_time_ns",
+      "estimated_gpu_time_ns",
+      "estimated_cpu_memory_bytes",
+      "estimated_gpu_memory_bytes",
+      "silhouette_error_microunits"
+    ],
+    "maximized": [
+      "feature_diameter_millipixels"
+    ],
+    "categoricalMustMatch": [
+      "target_format_id",
+      "animated"
+    ],
+    "energy": "not-present-not-zero"
+  },
+  "defaultRequest": {
+    "maxVertices": 10000,
+    "maxIndices": 30000,
+    "maxGeometryBytes": 1000000,
+    "maxFrameTimeNs": 16700000,
+    "maxCpuTimeNs": 4000000,
+    "maxGpuTimeNs": 10000000,
+    "maxCpuMemoryBytes": 500000,
+    "maxGpuMemoryBytes": 1000000,
+    "minFeatureDiameterMillipixels": 1000,
+    "maxSilhouetteErrorMicrounits": 50000,
+    "preferredFeatureDiameterMillipixels": 2000,
+    "preferredMaxSilhouetteErrorMicrounits": 10000,
+    "reducedMotion": false
+  },
+  "cases": [
+    {
+      "id": "resource-quality-tradeoff-point",
+      "mode": "PointEstimate",
+      "candidates": [
+        {
+          "id": 1,
+          "rank": 0,
+          "targetFormatId": 1,
+          "vertices": 4000,
+          "indices": 12000,
+          "geometryBytes": 400000,
+          "frameTimeNs": 6000000,
+          "cpuTimeNs": 1500000,
+          "gpuTimeNs": 3000000,
+          "cpuMemoryBytes": 250000,
+          "gpuMemoryBytes": 400000,
+          "featureDiameterMillipixels": 1500,
+          "silhouetteErrorMicrounits": 15000,
+          "animated": true,
+          "uncertainty": null
+        },
+        {
+          "id": 2,
+          "rank": 1,
+          "targetFormatId": 1,
+          "vertices": 6500,
+          "indices": 20000,
+          "geometryBytes": 650000,
+          "frameTimeNs": 10000000,
+          "cpuTimeNs": 3000000,
+          "gpuTimeNs": 6000000,
+          "cpuMemoryBytes": 400000,
+          "gpuMemoryBytes": 700000,
+          "featureDiameterMillipixels": 2700,
+          "silhouetteErrorMicrounits": 5000,
+          "animated": true,
+          "uncertainty": null
+        }
+      ],
+      "expected": {
+        "feasibleIds": [
+          1,
+          2
+        ],
+        "frontierIds": [
+          1,
+          2
+        ],
+        "selectedId": 1,
+        "indeterminateIds": [],
+        "dominatedIds": [],
+        "infeasibleIds": []
+      }
+    },
+    {
+      "id": "strict-dominance-point",
+      "mode": "PointEstimate",
+      "candidates": [
+        {
+          "id": 1,
+          "rank": 1,
+          "targetFormatId": 1,
+          "vertices": 4000,
+          "indices": 12000,
+          "geometryBytes": 400000,
+          "frameTimeNs": 6000000,
+          "cpuTimeNs": 1500000,
+          "gpuTimeNs": 3000000,
+          "cpuMemoryBytes": 250000,
+          "gpuMemoryBytes": 350000,
+          "featureDiameterMillipixels": 2800,
+          "silhouetteErrorMicrounits": 4000,
+          "animated": true,
+          "uncertainty": null
+        },
+        {
+          "id": 2,
+          "rank": 0,
+          "targetFormatId": 1,
+          "vertices": 6000,
+          "indices": 18000,
+          "geometryBytes": 600000,
+          "frameTimeNs": 10000000,
+          "cpuTimeNs": 3000000,
+          "gpuTimeNs": 6000000,
+          "cpuMemoryBytes": 400000,
+          "gpuMemoryBytes": 650000,
+          "featureDiameterMillipixels": 1500,
+          "silhouetteErrorMicrounits": 20000,
+          "animated": true,
+          "uncertainty": null
+        }
+      ],
+      "expected": {
+        "feasibleIds": [
+          1,
+          2
+        ],
+        "frontierIds": [
+          1
+        ],
+        "selectedId": 1,
+        "indeterminateIds": [],
+        "dominatedIds": [
+          2
+        ],
+        "dominatorById": {
+          "2": 1
+        },
+        "infeasibleIds": []
+      }
+    },
+    {
+      "id": "hard-budget-before-dominance",
+      "mode": "PointEstimate",
+      "candidates": [
+        {
+          "id": 1,
+          "rank": 0,
+          "targetFormatId": 1,
+          "vertices": 5000,
+          "indices": 15000,
+          "geometryBytes": 500000,
+          "frameTimeNs": 8000000,
+          "cpuTimeNs": 2000000,
+          "gpuTimeNs": 5000000,
+          "cpuMemoryBytes": 300000,
+          "gpuMemoryBytes": 400000,
+          "featureDiameterMillipixels": 1500,
+          "silhouetteErrorMicrounits": 15000,
+          "animated": true,
+          "uncertainty": null
+        },
+        {
+          "id": 2,
+          "rank": 1,
+          "targetFormatId": 1,
+          "vertices": 12000,
+          "indices": 36000,
+          "geometryBytes": 1200000,
+          "frameTimeNs": 12000000,
+          "cpuTimeNs": 3000000,
+          "gpuTimeNs": 6000000,
+          "cpuMemoryBytes": 400000,
+          "gpuMemoryBytes": 700000,
+          "featureDiameterMillipixels": 4000,
+          "silhouetteErrorMicrounits": 1000,
+          "animated": true,
+          "uncertainty": null
+        }
+      ],
+      "expected": {
+        "feasibleIds": [
+          1
+        ],
+        "frontierIds": [
+          1
+        ],
+        "selectedId": 1,
+        "indeterminateIds": [],
+        "dominatedIds": [],
+        "infeasibleIds": [
+          2
+        ],
+        "rejectionFlagsById": {
+          "2": [
+            "vertices",
+            "indices",
+            "geometry_bytes"
+          ]
+        }
+      }
+    },
+    {
+      "id": "conservative-unknown-is-not-zero",
+      "mode": "ConservativeIntervals",
+      "candidates": [
+        {
+          "id": 1,
+          "rank": 0,
+          "targetFormatId": 1,
+          "vertices": 5000,
+          "indices": 15000,
+          "geometryBytes": 500000,
+          "frameTimeNs": 8000000,
+          "cpuTimeNs": 2000000,
+          "gpuTimeNs": 5000000,
+          "cpuMemoryBytes": 300000,
+          "gpuMemoryBytes": 400000,
+          "featureDiameterMillipixels": 2000,
+          "silhouetteErrorMicrounits": 10000,
+          "animated": true,
+          "uncertainty": {
+            "vertices": 0,
+            "indices": 0,
+            "geometryBytes": 0,
+            "frameTimeNs": 0,
+            "cpuTimeNs": 0,
+            "gpuTimeNs": 0,
+            "cpuMemoryBytes": 0,
+            "gpuMemoryBytes": 0,
+            "featureDiameterMillipixels": 0,
+            "silhouetteErrorMicrounits": 0
+          }
+        },
+        {
+          "id": 2,
+          "rank": 1,
+          "targetFormatId": 1,
+          "vertices": 1000,
+          "indices": 3000,
+          "geometryBytes": 100000,
+          "frameTimeNs": 2000000,
+          "cpuTimeNs": 500000,
+          "gpuTimeNs": 1000000,
+          "cpuMemoryBytes": 100000,
+          "gpuMemoryBytes": 100000,
+          "featureDiameterMillipixels": 3000,
+          "silhouetteErrorMicrounits": 1000,
+          "animated": true,
+          "uncertainty": null
+        }
+      ],
+      "expected": {
+        "feasibleIds": [
+          1
+        ],
+        "frontierIds": [
+          1
+        ],
+        "selectedId": 1,
+        "indeterminateIds": [
+          2
+        ],
+        "dominatedIds": [],
+        "infeasibleIds": []
+      }
+    },
+    {
+      "id": "conservative-overlapping-intervals",
+      "mode": "ConservativeIntervals",
+      "candidates": [
+        {
+          "id": 1,
+          "rank": 0,
+          "targetFormatId": 1,
+          "vertices": 4000,
+          "indices": 12000,
+          "geometryBytes": 400000,
+          "frameTimeNs": 6000000,
+          "cpuTimeNs": 1500000,
+          "gpuTimeNs": 3000000,
+          "cpuMemoryBytes": 250000,
+          "gpuMemoryBytes": 350000,
+          "featureDiameterMillipixels": 2500,
+          "silhouetteErrorMicrounits": 5000,
+          "animated": true,
+          "uncertainty": {
+            "vertices": 200,
+            "indices": 500,
+            "geometryBytes": 20000,
+            "frameTimeNs": 200000,
+            "cpuTimeNs": 100000,
+            "gpuTimeNs": 100000,
+            "cpuMemoryBytes": 20000,
+            "gpuMemoryBytes": 20000,
+            "featureDiameterMillipixels": 100,
+            "silhouetteErrorMicrounits": 100
+          }
+        },
+        {
+          "id": 2,
+          "rank": 1,
+          "targetFormatId": 1,
+          "vertices": 4100,
+          "indices": 12100,
+          "geometryBytes": 401000,
+          "frameTimeNs": 6100000,
+          "cpuTimeNs": 1600000,
+          "gpuTimeNs": 3100000,
+          "cpuMemoryBytes": 251000,
+          "gpuMemoryBytes": 351000,
+          "featureDiameterMillipixels": 2450,
+          "silhouetteErrorMicrounits": 5100,
+          "animated": true,
+          "uncertainty": {
+            "vertices": 200,
+            "indices": 500,
+            "geometryBytes": 20000,
+            "frameTimeNs": 200000,
+            "cpuTimeNs": 100000,
+            "gpuTimeNs": 100000,
+            "cpuMemoryBytes": 20000,
+            "gpuMemoryBytes": 20000,
+            "featureDiameterMillipixels": 100,
+            "silhouetteErrorMicrounits": 100
+          }
+        }
+      ],
+      "expected": {
+        "feasibleIds": [
+          1,
+          2
+        ],
+        "frontierIds": [
+          1,
+          2
+        ],
+        "selectedId": 1,
+        "indeterminateIds": [],
+        "dominatedIds": [],
+        "infeasibleIds": []
+      }
+    },
+    {
+      "id": "epsilon-grid-equivalent-vectors",
+      "mode": "EpsilonGrid",
+      "epsilon": {
+        "vertices": 1000,
+        "indices": 3000,
+        "geometryBytes": 100000,
+        "frameTimeNs": 1000000,
+        "cpuTimeNs": 500000,
+        "gpuTimeNs": 500000,
+        "cpuMemoryBytes": 100000,
+        "gpuMemoryBytes": 100000,
+        "featureDiameterMillipixels": 100,
+        "silhouetteErrorMicrounits": 1000
+      },
+      "candidates": [
+        {
+          "id": 1,
+          "rank": 0,
+          "targetFormatId": 1,
+          "vertices": 5500,
+          "indices": 16000,
+          "geometryBytes": 550000,
+          "frameTimeNs": 8500000,
+          "cpuTimeNs": 2200000,
+          "gpuTimeNs": 5200000,
+          "cpuMemoryBytes": 320000,
+          "gpuMemoryBytes": 420000,
+          "featureDiameterMillipixels": 1980,
+          "silhouetteErrorMicrounits": 10500,
+          "animated": true,
+          "uncertainty": null
+        },
+        {
+          "id": 2,
+          "rank": 1,
+          "targetFormatId": 1,
+          "vertices": 5000,
+          "indices": 15000,
+          "geometryBytes": 500000,
+          "frameTimeNs": 8000000,
+          "cpuTimeNs": 2000000,
+          "gpuTimeNs": 5000000,
+          "cpuMemoryBytes": 300000,
+          "gpuMemoryBytes": 400000,
+          "featureDiameterMillipixels": 1990,
+          "silhouetteErrorMicrounits": 10000,
+          "animated": true,
+          "uncertainty": null
+        }
+      ],
+      "expected": {
+        "feasibleIds": [
+          1,
+          2
+        ],
+        "frontierIds": [
+          1
+        ],
+        "selectedId": 1,
+        "indeterminateIds": [],
+        "dominatedIds": [
+          2
+        ],
+        "dominatorById": {
+          "2": 1
+        },
+        "infeasibleIds": []
+      }
+    },
+    {
+      "id": "candidate-universe-expansion-contracts-frontier",
+      "mode": "PointEstimate",
+      "candidates": [
+        {
+          "id": 1,
+          "rank": 0,
+          "targetFormatId": 1,
+          "vertices": 4000,
+          "indices": 12000,
+          "geometryBytes": 400000,
+          "frameTimeNs": 6000000,
+          "cpuTimeNs": 1500000,
+          "gpuTimeNs": 3000000,
+          "cpuMemoryBytes": 250000,
+          "gpuMemoryBytes": 350000,
+          "featureDiameterMillipixels": 1800,
+          "silhouetteErrorMicrounits": 12000,
+          "animated": true,
+          "uncertainty": null
+        },
+        {
+          "id": 2,
+          "rank": 1,
+          "targetFormatId": 1,
+          "vertices": 6000,
+          "indices": 18000,
+          "geometryBytes": 600000,
+          "frameTimeNs": 10000000,
+          "cpuTimeNs": 3000000,
+          "gpuTimeNs": 6000000,
+          "cpuMemoryBytes": 400000,
+          "gpuMemoryBytes": 650000,
+          "featureDiameterMillipixels": 3000,
+          "silhouetteErrorMicrounits": 4000,
+          "animated": true,
+          "uncertainty": null
+        },
+        {
+          "id": 3,
+          "rank": 2,
+          "targetFormatId": 1,
+          "vertices": 3000,
+          "indices": 9000,
+          "geometryBytes": 300000,
+          "frameTimeNs": 5000000,
+          "cpuTimeNs": 1000000,
+          "gpuTimeNs": 2000000,
+          "cpuMemoryBytes": 200000,
+          "gpuMemoryBytes": 300000,
+          "featureDiameterMillipixels": 3500,
+          "silhouetteErrorMicrounits": 2000,
+          "animated": true,
+          "uncertainty": null
+        }
+      ],
+      "expected": {
+        "feasibleIds": [
+          1,
+          2,
+          3
+        ],
+        "frontierIds": [
+          3
+        ],
+        "selectedId": 3,
+        "indeterminateIds": [],
+        "dominatedIds": [
+          1,
+          2
+        ],
+        "dominatorById": {
+          "1": 3,
+          "2": 3
+        },
+        "infeasibleIds": []
+      }
+    }
+  ],
+  "comparisonMetrics": [
+    "feasible_candidate_count",
+    "frontier_candidate_count",
+    "frontier_fraction",
+    "dominated_candidate_fraction",
+    "indeterminate_candidate_fraction",
+    "hard_rejection_count_by_reason",
+    "selected_candidate_id",
+    "input_permutation_canonical_bytes_match",
+    "decision_recomputation_match",
+    "first_feasible_baseline_selects_dominated_candidate"
+  ],
+  "workloadSizes": [
+    1,
+    4,
+    16,
+    64,
+    128
+  ],
+  "trialPolicy": {
+    "warmupRuns": 10,
+    "measuredTrials": 50,
+    "report": [
+      "p50_ns",
+      "p95_ns",
+      "p99_ns",
+      "max_ns"
+    ],
+    "hostMetadata": [
+      "cpu",
+      "os",
+      "kernel",
+      "rustc",
+      "profile",
+      "logical_cpus",
+      "memory",
+      "power_profile"
+    ]
+  },
+  "nonClaims": [
+    "no hidden weighted utility score",
+    "no energy objective until qualified energy source exists",
+    "nominal estimates are not measured telemetry",
+    "frontier size is not a monotone invariant"
+  ]
+}
