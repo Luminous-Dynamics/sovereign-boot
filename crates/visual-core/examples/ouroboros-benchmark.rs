@@ -338,6 +338,9 @@ fn run_benchmarks(options: Options) {
     let kernel = env::var("BENCH_KERNEL").unwrap_or_else(|_| "not-provided".into());
     let memory_mib = env::var("BENCH_RAM_MIB").unwrap_or_else(|_| "not-provided".into());
     let toolchain = env::var("BENCH_RUST_TOOLCHAIN").unwrap_or_else(|_| "not-provided".into());
+    let gpu_model = env::var("BENCH_GPU_MODEL").unwrap_or_else(|_| "not-provided".into());
+    let gpu_driver = env::var("BENCH_GPU_DRIVER").unwrap_or_else(|_| "not-provided".into());
+    let compositor = env::var("BENCH_COMPOSITOR").unwrap_or_else(|_| "not-provided".into());
     let parallelism = std::thread::available_parallelism()
         .map(|value| value.get())
         .unwrap_or(0);
@@ -348,7 +351,8 @@ fn run_benchmarks(options: Options) {
             "\"source_rev\":\"{}\",\"profile\":\"{}\",\"os\":\"{}\",",
             "\"arch\":\"{}\",\"cpu_model\":\"{}\",\"cpu_governor\":\"{}\",",
             "\"power_profile\":\"{}\",\"kernel\":\"{}\",\"ram_mib\":\"{}\",",
-            "\"rust_toolchain\":\"{}\",\"logical_cpus\":{},",
+            "\"rust_toolchain\":\"{}\",\"gpu_model\":\"{}\",",
+            "\"gpu_driver\":\"{}\",\"compositor\":\"{}\",\"logical_cpus\":{},"
             "\"scene_contract_version\":{},\"trace_bytes\":{},",
             "\"mesh_tier\":\"{:?}\",\"mesh_vertices\":{},\"mesh_indices\":{},",
             "\"render_dimensions\":\"320x320\",\"evidence_dimensions\":\"128x128\"}}"
@@ -363,6 +367,9 @@ fn run_benchmarks(options: Options) {
         json_escape(&kernel),
         json_escape(&memory_mib),
         json_escape(&toolchain),
+        json_escape(&gpu_model),
+        json_escape(&gpu_driver),
+        json_escape(&compositor),
         parallelism,
         sovereign_visual_core::contract::SCENE_CONTRACT_VERSION,
         trace_bytes.len(),
