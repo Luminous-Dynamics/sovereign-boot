@@ -87,8 +87,8 @@ let
     armed_at_unix_s="$(${pkgs.gnused}/bin/sed -n 's/^armed_at_unix_s=//p' "$inflight")"
     result_request_id=""
     runner_output_first_line=""
-    if [[ -s "$canaryOutput" ]]; then
-      runner_output_first_line="$(${pkgs.coreutils}/bin/head -n 1 "$canaryOutput")"
+    if [[ -s "${canaryOutput}" ]]; then
+      runner_output_first_line="$(${pkgs.coreutils}/bin/head -n 1 "${canaryOutput}")"
     fi
     if [[ -e "$result" ]]; then
       result_request_id="$(${pkgs.gnused}/bin/sed -n 's/^request_id=//p' "$result")"
