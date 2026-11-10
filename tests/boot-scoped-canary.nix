@@ -179,10 +179,21 @@ in
     assert "ConditionPathExists=/var/lib/sovereign-boot/physical-canary.request" in unit
     assert "StandardInput=tty-fail" in unit
     assert "TTYPath=/dev/tty1" in unit
-    assert "Before=display-manager.service" in unit, unit
-    assert "Before=getty@tty1.service" in unit
-    assert "Conflicts=display-manager.service" in unit
-    assert "Conflicts=getty@tty1.service" in unit
+    # systemd may serialize a list-valued directive on one line with
+    # whitespace-separated units. Parse directive values rather than assuming
+    # NixOS emits one Before=/Conflicts= line per item.
+    before_units = set()
+    conflict_units = set()
+    for unit_line in unit.splitlines():
+        key, separator, value = unit_line.partition("=")
+        if not separator:
+            continue
+        if key == "Before":
+            before_units.update(value.split())
+        elif key == "Conflicts":
+            conflict_units.update(value.split())
+    assert {"display-manager.service", "getty@tty1.service"} <= before_units, unit
+    assert {"display-manager.service", "getty@tty1.service"} <= conflict_units, unit
     assert "CapabilityBoundingSet=" in unit
     assert "NoNewPrivileges=true" in unit
     assert "ReadWritePaths=/var/lib/sovereign-boot" in unit
