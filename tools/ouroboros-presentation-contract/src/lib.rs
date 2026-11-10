@@ -515,16 +515,67 @@ pub fn verify_quality_decision(
 pub enum DominanceMode {
     PointEstimate = 1,
     ConservativeIntervals = 2,
+    EpsilonGrid = 3,
 }
 
-pub const PARETO_POLICY_SCHEMA_VERSION: u16 = 1;
-pub const PARETO_DECISION_SCHEMA_VERSION: u16 = 1;
+/// Additive bucket widths in the exact units of each objective. These are
+/// comparison tolerances, not uncertainty estimates and not weights.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ParetoEpsilon {
+    pub vertices: u32,
+    pub indices: u32,
+    pub geometry_bytes: u32,
+    pub frame_time_ns: u64,
+    pub cpu_time_ns: u64,
+    pub gpu_time_ns: u64,
+    pub cpu_memory_bytes: u64,
+    pub gpu_memory_bytes: u64,
+    pub feature_diameter_millipixels: u32,
+    pub silhouette_error_microunits: u32,
+}
+
+impl ParetoEpsilon {
+    fn validate(&self) -> Result<(), ContractError> {
+        if self.vertices == 0
+            || self.indices == 0
+            || self.geometry_bytes == 0
+            || self.frame_time_ns == 0
+            || self.cpu_time_ns == 0
+            || self.gpu_time_ns == 0
+            || self.cpu_memory_bytes == 0
+            || self.gpu_memory_bytes == 0
+            || self.feature_diameter_millipixels == 0
+            || self.silhouette_error_microunits == 0
+        {
+            return Err(ContractError::InvalidParetoPolicy);
+        }
+        Ok(())
+    }
+
+    fn encode_into(&self, out: &mut Vec<u8>) {
+        put_u32(out, self.vertices);
+        put_u32(out, self.indices);
+        put_u32(out, self.geometry_bytes);
+        put_u64(out, self.frame_time_ns);
+        put_u64(out, self.cpu_time_ns);
+        put_u64(out, self.gpu_time_ns);
+        put_u64(out, self.cpu_memory_bytes);
+        put_u64(out, self.gpu_memory_bytes);
+        put_u32(out, self.feature_diameter_millipixels);
+        put_u32(out, self.silhouette_error_microunits);
+    }
+}
+
+pub const PARETO_POLICY_SCHEMA_VERSION: u16 = 2;
+pub const PARETO_DECISION_SCHEMA_VERSION: u16 = 2;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ParetoPolicy {
     pub schema_version: u16,
     pub policy_version: u16,
     pub dominance_mode: DominanceMode,
+    /// Required exactly for EpsilonGrid; omitted for point/interval modes.
+    pub epsilon: Option<ParetoEpsilon>,
 }
 
 impl ParetoPolicy {
@@ -532,16 +583,29 @@ impl ParetoPolicy {
         if self.schema_version != PARETO_POLICY_SCHEMA_VERSION || self.policy_version == 0 {
             return Err(ContractError::InvalidParetoPolicy);
         }
+        match (self.dominance_mode, self.epsilon) {
+            (DominanceMode::EpsilonGrid, Some(epsilon)) => epsilon.validate()?,
+            (DominanceMode::EpsilonGrid, None) => return Err(ContractError::InvalidParetoPolicy),
+            (_, Some(_)) => return Err(ContractError::InvalidParetoPolicy),
+            (_, None) => {}
+        }
         Ok(())
     }
 
     pub fn canonical_bytes(&self) -> Result<Vec<u8>, ContractError> {
         self.validate()?;
-        let mut out = Vec::with_capacity(8 + 2 + 2 + 1);
-        out.extend_from_slice(b"OUROPOL1");
+        let mut out = Vec::with_capacity(8 + 2 + 2 + 1 + 1 + 60);
+        out.extend_from_slice(b"OUROPOL2");
         put_u16(&mut out, self.schema_version);
         put_u16(&mut out, self.policy_version);
         out.push(self.dominance_mode as u8);
+        match self.epsilon {
+            Some(epsilon) => {
+                out.push(1);
+                epsilon.encode_into(&mut out);
+            }
+            None => out.push(0),
+        }
         Ok(out)
     }
 }
@@ -669,7 +733,7 @@ impl ParetoDecision {
                 + 1 + 2,
         )
         .map_err(|_| ContractError::CollectionTooLarge)?;
-        out.extend_from_slice(b"OUROPDE1");
+        out.extend_from_slice(b"OUROPDE2");
         put_u16(&mut out, self.schema_version);
         put_u16(&mut out, self.policy_version);
         put_u64(&mut out, self.capability_revision);
@@ -816,15 +880,47 @@ fn same_nominal_objective_vector(a: &QualityCandidate, b: &QualityCandidate) -> 
 fn dominates(
     a: &QualityCandidate,
     b: &QualityCandidate,
-    mode: DominanceMode,
+    policy: &ParetoPolicy,
 ) -> Option<DominanceReason> {
+    let mode = policy.dominance_mode;
     if a.candidate_id == b.candidate_id
         || a.target_format_id != b.target_format_id
         || a.animated != b.animated
     {
         return None;
     }
-    if same_nominal_objective_vector(a, b) && a.uncertainty == b.uncertainty {
+    if same_nominal_objective_vector(a, b)
+        && (mode != DominanceMode::ConservativeIntervals || a.uncertainty == b.uncertainty)
+    {
+        return (a.candidate_id < b.candidate_id)
+            .then_some(DominanceReason::EquivalentVectorStableIdTieBreak);
+    }
+
+    if mode == DominanceMode::EpsilonGrid {
+        let epsilon = policy.epsilon?;
+        let cost_pairs = [
+            (a.estimated_vertices / epsilon.vertices, b.estimated_vertices / epsilon.vertices),
+            (a.estimated_indices / epsilon.indices, b.estimated_indices / epsilon.indices),
+            (a.estimated_geometry_bytes / epsilon.geometry_bytes, b.estimated_geometry_bytes / epsilon.geometry_bytes),
+            ((a.estimated_frame_time_ns / epsilon.frame_time_ns), (b.estimated_frame_time_ns / epsilon.frame_time_ns)),
+            ((a.estimated_cpu_time_ns / epsilon.cpu_time_ns), (b.estimated_cpu_time_ns / epsilon.cpu_time_ns)),
+            ((a.estimated_gpu_time_ns / epsilon.gpu_time_ns), (b.estimated_gpu_time_ns / epsilon.gpu_time_ns)),
+            ((a.estimated_cpu_memory_bytes / epsilon.cpu_memory_bytes), (b.estimated_cpu_memory_bytes / epsilon.cpu_memory_bytes)),
+            ((a.estimated_gpu_memory_bytes / epsilon.gpu_memory_bytes), (b.estimated_gpu_memory_bytes / epsilon.gpu_memory_bytes)),
+            (a.silhouette_error_microunits / epsilon.silhouette_error_microunits, b.silhouette_error_microunits / epsilon.silhouette_error_microunits),
+        ];
+        let feature_a = a.feature_diameter_millipixels / epsilon.feature_diameter_millipixels;
+        let feature_b = b.feature_diameter_millipixels / epsilon.feature_diameter_millipixels;
+        if cost_pairs.iter().any(|(a_bucket, b_bucket)| a_bucket > b_bucket)
+            || feature_a < feature_b
+        {
+            return None;
+        }
+        let strict = cost_pairs.iter().any(|(a_bucket, b_bucket)| a_bucket < b_bucket)
+            || feature_a > feature_b;
+        if strict {
+            return Some(DominanceReason::StrictlyBetterObjectiveVector);
+        }
         return (a.candidate_id < b.candidate_id)
             .then_some(DominanceReason::EquivalentVectorStableIdTieBreak);
     }
@@ -940,7 +1036,7 @@ pub fn negotiate_pareto(
     for candidate in &eligible {
         let mut dominators = Vec::new();
         for other in &eligible {
-            if let Some(reason) = dominates(other, candidate, policy.dominance_mode) {
+            if let Some(reason) = dominates(other, candidate, policy) {
                 dominators.push((other.candidate_id, reason));
             }
         }
@@ -1751,6 +1847,22 @@ mod tests {
             schema_version: PARETO_POLICY_SCHEMA_VERSION,
             policy_version: 1,
             dominance_mode,
+            epsilon: if dominance_mode == DominanceMode::EpsilonGrid {
+                Some(ParetoEpsilon {
+                    vertices: 1_000,
+                    indices: 3_000,
+                    geometry_bytes: 100_000,
+                    frame_time_ns: 1_000_000,
+                    cpu_time_ns: 500_000,
+                    gpu_time_ns: 500_000,
+                    cpu_memory_bytes: 100_000,
+                    gpu_memory_bytes: 100_000,
+                    feature_diameter_millipixels: 100,
+                    silhouette_error_microunits: 1_000,
+                })
+            } else {
+                None
+            },
         }
     }
 
