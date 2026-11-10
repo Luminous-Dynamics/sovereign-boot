@@ -2148,7 +2148,9 @@ mod tests {
     fn semantic_landmarks_preserve_root_and_proportions_across_all_forms() {
         let expected = scene(OuroborosForm::Nature).landmarks();
         for form in OuroborosForm::ALL {
-            let current = scene(form).landmarks();
+            let source_scene = scene(form);
+            let current = source_scene.landmarks();
+            assert_eq!(current.validate(&source_scene), Ok(()));
             assert_eq!(current.head_anchor, [0.38, 0.0, 0.0]);
             assert_eq!(current.head_anchor, expected.head_anchor);
             assert_eq!(current.left_eye, expected.left_eye);
@@ -2173,6 +2175,7 @@ mod tests {
             scene.set_attention_target(target).unwrap();
             advance_for(&mut scene, 8.0);
             let landmarks = scene.landmarks();
+            assert_eq!(landmarks.validate(&scene), Ok(()));
             let dot = |a: [f32; 3], b: [f32; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
             let length = |v: [f32; 3]| dot(v, v).sqrt();
 
