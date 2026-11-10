@@ -56,6 +56,9 @@ jobs:
       - name: Test
         run: cargo +1.96.0 test --workspace --locked
 
+      - name: Build Ouroboros CPU qualification harness
+        run: cargo +1.96.0 build --release --locked -p sovereign-visual-core --example ouroboros-benchmark
+
       - name: Build browser WASM adapter
         run: cargo +1.96.0 build -p sovereign-visual-wasm --target wasm32-unknown-unknown --features web --release --locked
 
