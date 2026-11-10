@@ -14,6 +14,9 @@ pub const FIELD_SCHEMA_VERSION: u16 = 1;
 pub const DISTANCE_QUANTIZATION: i64 = 1_000_000;
 pub const MAX_SAMPLES: u64 = 2_097_152;
 pub const MAX_CANONICAL_BYTES: u64 = 16 * 1024 * 1024;
+/// Maximum simultaneous sample-vector + canonical-output payload; excludes
+/// allocator metadata and runtime/process overhead.
+pub const MAX_WORKING_PAYLOAD_BYTES: u64 = 32 * 1024 * 1024;
 pub const MAX_SMOOTH_UNION_WIDTH: f64 = 0.05;
 pub const FIXTURE_ID: &str = "ouroboros-face-skin-v1";
 
@@ -311,6 +314,9 @@ pub struct GridSpec {
     pub max_samples: u64,
     /// Maximum complete canonical-grid size, including header and samples.
     pub max_canonical_bytes: u64,
+    /// Maximum simultaneous sample vector plus canonical output payload.
+    /// Does not represent total process RSS or allocator overhead.
+    pub max_working_payload_bytes: u64,
 }
 
 impl GridSpec {
@@ -343,6 +349,14 @@ impl GridSpec {
         {
             return Err(SdfError::ByteBudgetExceeded);
         }
+        let working_payload_bytes = sample_bytes
+            .checked_add(canonical_bytes)
+            .ok_or(SdfError::SizeOverflow)?;
+        if working_payload_bytes > MAX_WORKING_PAYLOAD_BYTES
+            || working_payload_bytes > self.max_working_payload_bytes
+        {
+            return Err(SdfError::WorkingPayloadBudgetExceeded);
+        }
         let minimum_fixed = self.minimum.map(coordinate_to_microunits);
         let maximum_fixed = self.maximum.map(coordinate_to_microunits);
         for axis in 0..3 {
@@ -357,6 +371,7 @@ impl GridSpec {
             sample_count,
             sample_bytes,
             canonical_bytes,
+            working_payload_bytes,
             count,
         })
     }
@@ -433,6 +448,7 @@ pub struct GridLimits {
     pub sample_count: u64,
     pub sample_bytes: u64,
     pub canonical_bytes: u64,
+    pub working_payload_bytes: u64,
     count: usize,
 }
 
@@ -574,6 +590,7 @@ pub enum SdfError {
     SizeOverflow,
     SampleBudgetExceeded,
     ByteBudgetExceeded,
+    WorkingPayloadBudgetExceeded,
     AllocationFailed,
     GridIndexOutOfBounds,
     SampleCountMismatch,
@@ -683,6 +700,7 @@ mod tests {
             dimensions: [5, 4, 3],
             max_samples: 128,
             max_canonical_bytes: 4_096,
+            max_working_payload_bytes: 8_192,
         }
     }
 
@@ -861,6 +879,21 @@ mod tests {
             ..small_grid()
         };
         assert_eq!(collapsed.validate(), Err(SdfError::InvalidGrid));
+    }
+
+    #[test]
+    fn grid_rejects_simultaneous_sample_and_encoded_payload_over_budget() {
+        let too_much_payload = GridSpec {
+            dimensions: [8, 8, 8],
+            max_samples: 1_000,
+            max_canonical_bytes: 4_096,
+            max_working_payload_bytes: 1_000,
+            ..small_grid()
+        };
+        assert_eq!(
+            too_much_payload.validate(),
+            Err(SdfError::WorkingPayloadBudgetExceeded)
+        );
     }
 
     #[test]
