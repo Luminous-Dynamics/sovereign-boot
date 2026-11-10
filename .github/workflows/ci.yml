@@ -67,7 +67,7 @@ jobs:
         run: |
           cargo +1.96.0 run --release --locked -p sovereign-visual-core --example ouroboros-benchmark -- --iterations 3 --warmup 1 > "$RUNNER_TEMP/ouroboros-benchmark.jsonl"
           jq -e -s '
-            length == 10 and
+            length == 11 and
             .[0].type == "metadata" and
             .[0].schema == "luminous-ouroboros-cpu-benchmark-v2" and
             (.[1:] | all(.[]; .type == "measurement" and .iterations == 3 and .p95_ns >= .p50_ns and .p99_ns >= .p95_ns)) and
@@ -79,6 +79,7 @@ jobs:
               "mesh_lod_planning",
               "sealed_evidence_capture_128",
               "scene_advance_60hz",
+              "scene_retarget_1hz_at_60fps",
               "semantic_landmarks",
               "trace_decode_replay"
             ]
