@@ -295,9 +295,9 @@ fn run_benchmarks(options: Options) {
     }));
 
     measurements.push(measure("mesh_build_validate", options, || {
+        // build() includes the canonical geometry validator; do not time it twice.
         let (mesh, receipt) =
             OuroborosMesh::build(&replayed_scene, plan.config).expect("mesh must build");
-        mesh.validate().expect("mesh must validate");
         u64::from_le_bytes(
             receipt.digest[..8]
                 .try_into()
@@ -307,14 +307,13 @@ fn run_benchmarks(options: Options) {
 
     measurements.push(measure("face_mesh_build_validate", options, || {
         let landmarks = replayed_scene.landmarks();
+        // build() includes exact canonical geometry revalidation; time once.
         let (mesh, receipt) = OuroborosFaceMesh::build(
             &replayed_scene,
             landmarks,
             OuroborosFaceMeshConfig::default(),
         )
         .expect("face mesh must build");
-        mesh.validate(&replayed_scene)
-            .expect("face mesh must validate");
         u64::from_le_bytes(
             receipt.digest[..8]
                 .try_into()
@@ -362,15 +361,12 @@ fn run_benchmarks(options: Options) {
     let parallelism = std::thread::available_parallelism()
         .map(|value| value.get())
         .unwrap_or(0);
-    let (face_mesh, face_mesh_receipt) = OuroborosFaceMesh::build(
+    let (_face_mesh, face_mesh_receipt) = OuroborosFaceMesh::build(
         &replayed_scene,
         replayed_scene.landmarks(),
         OuroborosFaceMeshConfig::default(),
     )
     .expect("benchmark face mesh must build");
-    face_mesh
-        .validate(&replayed_scene)
-        .expect("benchmark face mesh must validate");
 
     println!(
         concat!(
