@@ -142,9 +142,7 @@ impl QualityRequest {
             || h.max_geometry_bytes == 0
             || h.max_frame_time_ns == 0
             || h.max_cpu_time_ns == 0
-            || h.max_gpu_time_ns == 0
             || h.max_cpu_memory_bytes == 0
-            || h.max_gpu_memory_bytes == 0
             || h.min_feature_diameter_millipixels == 0
             || self.soft.preferred_feature_diameter_millipixels
                 < h.min_feature_diameter_millipixels
@@ -211,7 +209,6 @@ impl QualityCandidate {
             || self.estimated_geometry_bytes == 0
             || self.estimated_frame_time_ns == 0
             || self.estimated_cpu_time_ns == 0
-            || self.estimated_gpu_time_ns == 0
             || self.estimated_frame_time_ns < self.estimated_cpu_time_ns
             || self.estimated_frame_time_ns < self.estimated_gpu_time_ns
             || self.estimated_cpu_memory_bytes == 0
@@ -854,6 +851,19 @@ mod tests {
             decision.infeasible_reason(),
             Some(InfeasibleReason::NoCandidateSatisfiesAllHardConstraints)
         );
+    }
+
+    #[test]
+    fn cpu_only_renderer_is_feasible_with_zero_gpu_budget() {
+        let mut req = request(1_000_000, false);
+        req.hard.max_gpu_time_ns = 0;
+        req.hard.max_gpu_memory_bytes = 0;
+        let mut cpu_only = candidate(1, 0, 0, true, 3_000, 1_000);
+        cpu_only.estimated_gpu_time_ns = 0;
+        let caps = capabilities(vec![cpu_only]);
+        let decision = negotiate(&req, &caps, 1).unwrap();
+        assert!(decision.is_feasible());
+        assert_eq!(decision.selected_candidate().unwrap().estimated_gpu_memory_bytes, 0);
     }
 
     #[test]
