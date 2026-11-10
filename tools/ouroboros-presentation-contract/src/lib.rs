@@ -505,6 +505,514 @@ pub fn verify_quality_decision(
     Ok(())
 }
 
+/// Objective comparison mode for Pareto policy. Point estimates are
+/// explicitly nominal. ConservativeIntervals requires both candidates to
+/// declare uncertainty bounds; unknown uncertainty is never silently treated
+/// as zero.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum DominanceMode {
+    PointEstimate = 1,
+    ConservativeIntervals = 2,
+}
+
+pub const PARETO_POLICY_SCHEMA_VERSION: u16 = 1;
+pub const PARETO_DECISION_SCHEMA_VERSION: u16 = 1;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ParetoPolicy {
+    pub schema_version: u16,
+    pub policy_version: u16,
+    pub dominance_mode: DominanceMode,
+}
+
+impl ParetoPolicy {
+    pub fn validate(&self) -> Result<(), ContractError> {
+        if self.schema_version != PARETO_POLICY_SCHEMA_VERSION || self.policy_version == 0 {
+            return Err(ContractError::InvalidParetoPolicy);
+        }
+        Ok(())
+    }
+
+    pub fn canonical_bytes(&self) -> Result<Vec<u8>, ContractError> {
+        self.validate()?;
+        let mut out = Vec::with_capacity(8 + 2 + 2 + 1);
+        out.extend_from_slice(b"OUROPOL1");
+        put_u16(&mut out, self.schema_version);
+        put_u16(&mut out, self.policy_version);
+        out.push(self.dominance_mode as u8);
+        Ok(out)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum CandidateDisposition {
+    Infeasible = 1,
+    Indeterminate = 2,
+    Dominated = 3,
+    Frontier = 4,
+    Selected = 5,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum DominanceReason {
+    StrictlyBetterConservativeBounds = 1,
+    EquivalentVectorStableIdTieBreak = 2,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum ParetoInfeasibleReason {
+    NoCandidateSatisfiesHardConstraints = 1,
+    NoCandidateHasRequiredUncertainty = 2,
+}
+
+pub const REJECT_VERTICES: u16 = 1 << 0;
+pub const REJECT_INDICES: u16 = 1 << 1;
+pub const REJECT_GEOMETRY_BYTES: u16 = 1 << 2;
+pub const REJECT_FRAME_TIME: u16 = 1 << 3;
+pub const REJECT_CPU_TIME: u16 = 1 << 4;
+pub const REJECT_GPU_TIME: u16 = 1 << 5;
+pub const REJECT_CPU_MEMORY: u16 = 1 << 6;
+pub const REJECT_GPU_MEMORY: u16 = 1 << 7;
+pub const REJECT_FEATURE_DIAMETER: u16 = 1 << 8;
+pub const REJECT_SILHOUETTE_ERROR: u16 = 1 << 9;
+pub const REJECT_REDUCED_MOTION: u16 = 1 << 10;
+
+/// One reproducible explanation for every candidate in the snapshot.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CandidateEvaluation {
+    pub candidate_id: u16,
+    pub disposition: CandidateDisposition,
+    pub hard_rejection_flags: u16,
+    /// True means conservative comparison is unavailable because this
+    /// candidate has no declared uncertainty vector.
+    pub uncertainty_unknown: bool,
+    pub dominated_by_candidate_id: Option<u16>,
+    pub dominance_reason: Option<DominanceReason>,
+    pub degradation_flags: u8,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ParetoDecision {
+    schema_version: u16,
+    policy_version: u16,
+    capability_revision: u64,
+    request_bytes: Vec<u8>,
+    capability_bytes: Vec<u8>,
+    policy_bytes: Vec<u8>,
+    /// Sorted by candidate_id, independent of host input ordering.
+    evaluations: Vec<CandidateEvaluation>,
+    /// Frontier IDs are sorted ascending, not by host preference.
+    frontier_candidate_ids: Vec<u16>,
+    selected_candidate_id: Option<u16>,
+    infeasible_reason: Option<ParetoInfeasibleReason>,
+    degradation_flags: u8,
+}
+
+impl ParetoDecision {
+    pub fn evaluations(&self) -> &[CandidateEvaluation] {
+        &self.evaluations
+    }
+
+    pub fn frontier_candidate_ids(&self) -> &[u16] {
+        &self.frontier_candidate_ids
+    }
+
+    pub fn selected_candidate_id(&self) -> Option<u16> {
+        self.selected_candidate_id
+    }
+
+    pub fn infeasible_reason(&self) -> Option<ParetoInfeasibleReason> {
+        self.infeasible_reason
+    }
+
+    pub fn degradation_flags(&self) -> u8 {
+        self.degradation_flags
+    }
+
+    pub fn is_feasible(&self) -> bool {
+        self.selected_candidate_id.is_some() && self.infeasible_reason.is_none()
+    }
+
+    pub fn canonical_bytes(&self) -> Result<Vec<u8>, ContractError> {
+        if self.schema_version != PARETO_DECISION_SCHEMA_VERSION
+            || self.policy_version == 0
+            || self.capability_revision == 0
+            || (self.selected_candidate_id.is_some() == self.infeasible_reason.is_some())
+            || self.degradation_flags & !0b11 != 0
+            || self.evaluations.len() > MAX_CANDIDATES
+            || self.frontier_candidate_ids.len() > self.evaluations.len()
+            || self.evaluations.windows(2).any(|pair| {
+                pair[0].candidate_id >= pair[1].candidate_id
+            })
+            || self.frontier_candidate_ids.windows(2).any(|pair| pair[0] >= pair[1])
+        {
+            return Err(ContractError::InvalidParetoDecision);
+        }
+        let request_len = u32::try_from(self.request_bytes.len())
+            .map_err(|_| ContractError::CollectionTooLarge)?;
+        let capability_len = u32::try_from(self.capability_bytes.len())
+            .map_err(|_| ContractError::CollectionTooLarge)?;
+        let policy_len = u32::try_from(self.policy_bytes.len())
+            .map_err(|_| ContractError::CollectionTooLarge)?;
+        let mut out = Vec::new();
+        out.try_reserve_exact(
+            8 + 2 + 2 + 8 + 4 + self.request_bytes.len()
+                + 4 + self.capability_bytes.len()
+                + 4 + self.policy_bytes.len()
+                + 2 + self.evaluations.len() * 13
+                + 2 + self.frontier_candidate_ids.len() * 2
+                + 1 + 2,
+        )
+        .map_err(|_| ContractError::CollectionTooLarge)?;
+        out.extend_from_slice(b"OUROPDE1");
+        put_u16(&mut out, self.schema_version);
+        put_u16(&mut out, self.policy_version);
+        put_u64(&mut out, self.capability_revision);
+        put_u32(&mut out, request_len);
+        out.extend_from_slice(&self.request_bytes);
+        put_u32(&mut out, capability_len);
+        out.extend_from_slice(&self.capability_bytes);
+        put_u32(&mut out, policy_len);
+        out.extend_from_slice(&self.policy_bytes);
+        put_u16(&mut out, self.evaluations.len() as u16);
+        for evaluation in &self.evaluations {
+            put_u16(&mut out, evaluation.candidate_id);
+            out.push(evaluation.disposition as u8);
+            put_u16(&mut out, evaluation.hard_rejection_flags);
+            out.push(u8::from(evaluation.uncertainty_unknown));
+            match evaluation.dominated_by_candidate_id {
+                Some(id) => {
+                    out.push(1);
+                    put_u16(&mut out, id);
+                }
+                None => out.push(0),
+            }
+            out.push(match evaluation.dominance_reason {
+                Some(reason) => reason as u8,
+                None => 0,
+            });
+            out.push(evaluation.degradation_flags);
+        }
+        put_u16(&mut out, self.frontier_candidate_ids.len() as u16);
+        for candidate_id in &self.frontier_candidate_ids {
+            put_u16(&mut out, *candidate_id);
+        }
+        match self.selected_candidate_id {
+            Some(id) => {
+                out.push(1);
+                put_u16(&mut out, id);
+            }
+            None => {
+                out.push(0);
+                put_u16(&mut out, 0);
+            }
+        }
+        out.push(match self.infeasible_reason {
+            Some(reason) => reason as u8,
+            None => 0,
+        });
+        out.push(self.degradation_flags);
+        Ok(out)
+    }
+}
+
+fn rejection_flags(
+    candidate: &QualityCandidate,
+    request: &QualityRequest,
+    mode: DominanceMode,
+) -> (u16, bool) {
+    if mode == DominanceMode::ConservativeIntervals && candidate.uncertainty.is_none() {
+        let reduced_motion = request.reduced_motion && candidate.animated;
+        return (
+            if reduced_motion { REJECT_REDUCED_MOTION } else { 0 },
+            true,
+        );
+    }
+    let uncertainty = candidate.uncertainty.unwrap_or(QualityUncertainty {
+        vertices: 0,
+        indices: 0,
+        geometry_bytes: 0,
+        frame_time_ns: 0,
+        cpu_time_ns: 0,
+        gpu_time_ns: 0,
+        cpu_memory_bytes: 0,
+        gpu_memory_bytes: 0,
+        feature_diameter_millipixels: 0,
+        silhouette_error_microunits: 0,
+    });
+    let conservative = mode == DominanceMode::ConservativeIntervals;
+    let upper = |value: u64, margin: u64| {
+        if conservative { value as u128 + margin as u128 } else { value as u128 }
+    };
+    let lower = |value: u64, margin: u64| {
+        if conservative { (value as u128).saturating_sub(margin as u128) } else { value as u128 }
+    };
+    let h = request.hard;
+    let mut flags = 0;
+    if upper(candidate.estimated_vertices as u64, uncertainty.vertices as u64) > h.max_vertices as u128 {
+        flags |= REJECT_VERTICES;
+    }
+    if upper(candidate.estimated_indices as u64, uncertainty.indices as u64) > h.max_indices as u128 {
+        flags |= REJECT_INDICES;
+    }
+    if upper(candidate.estimated_geometry_bytes as u64, uncertainty.geometry_bytes as u64) > h.max_geometry_bytes as u128 {
+        flags |= REJECT_GEOMETRY_BYTES;
+    }
+    if upper(candidate.estimated_frame_time_ns, uncertainty.frame_time_ns) > h.max_frame_time_ns as u128 {
+        flags |= REJECT_FRAME_TIME;
+    }
+    if upper(candidate.estimated_cpu_time_ns, uncertainty.cpu_time_ns) > h.max_cpu_time_ns as u128 {
+        flags |= REJECT_CPU_TIME;
+    }
+    if upper(candidate.estimated_gpu_time_ns, uncertainty.gpu_time_ns) > h.max_gpu_time_ns as u128 {
+        flags |= REJECT_GPU_TIME;
+    }
+    if upper(candidate.estimated_cpu_memory_bytes, uncertainty.cpu_memory_bytes) > h.max_cpu_memory_bytes as u128 {
+        flags |= REJECT_CPU_MEMORY;
+    }
+    if upper(candidate.estimated_gpu_memory_bytes, uncertainty.gpu_memory_bytes) > h.max_gpu_memory_bytes as u128 {
+        flags |= REJECT_GPU_MEMORY;
+    }
+    if lower(
+        candidate.feature_diameter_millipixels as u64,
+        uncertainty.feature_diameter_millipixels as u64,
+    ) < h.min_feature_diameter_millipixels as u128
+    {
+        flags |= REJECT_FEATURE_DIAMETER;
+    }
+    if upper(
+        candidate.silhouette_error_microunits as u64,
+        uncertainty.silhouette_error_microunits as u64,
+    ) > h.max_silhouette_error_microunits as u128
+    {
+        flags |= REJECT_SILHOUETTE_ERROR;
+    }
+    if request.reduced_motion && candidate.animated {
+        flags |= REJECT_REDUCED_MOTION;
+    }
+    (flags, false)
+}
+
+fn same_nominal_objective_vector(a: &QualityCandidate, b: &QualityCandidate) -> bool {
+    a.target_format_id == b.target_format_id
+        && a.animated == b.animated
+        && a.estimated_vertices == b.estimated_vertices
+        && a.estimated_indices == b.estimated_indices
+        && a.estimated_geometry_bytes == b.estimated_geometry_bytes
+        && a.estimated_frame_time_ns == b.estimated_frame_time_ns
+        && a.estimated_cpu_time_ns == b.estimated_cpu_time_ns
+        && a.estimated_gpu_time_ns == b.estimated_gpu_time_ns
+        && a.estimated_cpu_memory_bytes == b.estimated_cpu_memory_bytes
+        && a.estimated_gpu_memory_bytes == b.estimated_gpu_memory_bytes
+        && a.feature_diameter_millipixels == b.feature_diameter_millipixels
+        && a.silhouette_error_microunits == b.silhouette_error_microunits
+}
+
+fn dominates(
+    a: &QualityCandidate,
+    b: &QualityCandidate,
+    mode: DominanceMode,
+) -> Option<DominanceReason> {
+    if a.candidate_id == b.candidate_id
+        || a.target_format_id != b.target_format_id
+        || a.animated != b.animated
+    {
+        return None;
+    }
+    if same_nominal_objective_vector(a, b) && a.uncertainty == b.uncertainty {
+        return (a.candidate_id < b.candidate_id)
+            .then_some(DominanceReason::EquivalentVectorStableIdTieBreak);
+    }
+
+    if mode == DominanceMode::ConservativeIntervals
+        && (a.uncertainty.is_none() || b.uncertainty.is_none())
+    {
+        return None;
+    }
+    let au = a.uncertainty.unwrap_or(QualityUncertainty {
+        vertices: 0, indices: 0, geometry_bytes: 0, frame_time_ns: 0,
+        cpu_time_ns: 0, gpu_time_ns: 0, cpu_memory_bytes: 0, gpu_memory_bytes: 0,
+        feature_diameter_millipixels: 0, silhouette_error_microunits: 0,
+    });
+    let bu = b.uncertainty.unwrap_or(QualityUncertainty {
+        vertices: 0, indices: 0, geometry_bytes: 0, frame_time_ns: 0,
+        cpu_time_ns: 0, gpu_time_ns: 0, cpu_memory_bytes: 0, gpu_memory_bytes: 0,
+        feature_diameter_millipixels: 0, silhouette_error_microunits: 0,
+    });
+    let conservative = mode == DominanceMode::ConservativeIntervals;
+    let upper = |value: u64, margin: u64| {
+        if conservative { value as u128 + margin as u128 } else { value as u128 }
+    };
+    let lower = |value: u64, margin: u64| {
+        if conservative { (value as u128).saturating_sub(margin as u128) } else { value as u128 }
+    };
+
+    let cost_pairs = [
+        (upper(a.estimated_vertices as u64, au.vertices as u64), lower(b.estimated_vertices as u64, bu.vertices as u64)),
+        (upper(a.estimated_indices as u64, au.indices as u64), lower(b.estimated_indices as u64, bu.indices as u64)),
+        (upper(a.estimated_geometry_bytes as u64, au.geometry_bytes as u64), lower(b.estimated_geometry_bytes as u64, bu.geometry_bytes as u64)),
+        (upper(a.estimated_frame_time_ns, au.frame_time_ns), lower(b.estimated_frame_time_ns, bu.frame_time_ns)),
+        (upper(a.estimated_cpu_time_ns, au.cpu_time_ns), lower(b.estimated_cpu_time_ns, bu.cpu_time_ns)),
+        (upper(a.estimated_gpu_time_ns, au.gpu_time_ns), lower(b.estimated_gpu_time_ns, bu.gpu_time_ns)),
+        (upper(a.estimated_cpu_memory_bytes, au.cpu_memory_bytes), lower(b.estimated_cpu_memory_bytes, bu.cpu_memory_bytes)),
+        (upper(a.estimated_gpu_memory_bytes, au.gpu_memory_bytes), lower(b.estimated_gpu_memory_bytes, bu.gpu_memory_bytes)),
+        (upper(a.silhouette_error_microunits as u64, au.silhouette_error_microunits as u64), lower(b.silhouette_error_microunits as u64, bu.silhouette_error_microunits as u64)),
+    ];
+    let feature_lower = lower(
+        a.feature_diameter_millipixels as u64,
+        au.feature_diameter_millipixels as u64,
+    );
+    let feature_upper_b = upper(
+        b.feature_diameter_millipixels as u64,
+        bu.feature_diameter_millipixels as u64,
+    );
+    if cost_pairs.iter().any(|(a_upper, b_lower)| a_upper > b_lower)
+        || feature_lower < feature_upper_b
+    {
+        return None;
+    }
+    let strict = cost_pairs.iter().any(|(a_upper, b_lower)| a_upper < b_lower)
+        || feature_lower > feature_upper_b;
+    strict.then_some(DominanceReason::StrictlyBetterConservativeBounds)
+}
+
+pub fn negotiate_pareto(
+    request: &QualityRequest,
+    capabilities: &CapabilitySnapshot,
+    policy: &ParetoPolicy,
+) -> Result<ParetoDecision, ContractError> {
+    request.validate()?;
+    capabilities.validate()?;
+    policy.validate()?;
+    let request_bytes = request.canonical_bytes()?;
+    let capability_bytes = capabilities.canonical_bytes()?;
+    let policy_bytes = policy.canonical_bytes()?;
+
+    let mut candidate_refs: Vec<&QualityCandidate> = capabilities.candidates.iter().collect();
+    candidate_refs.sort_by_key(|candidate| candidate.candidate_id);
+
+    let mut evaluations = Vec::with_capacity(candidate_refs.len());
+    let mut eligible = Vec::new();
+    let mut any_unknown = false;
+    for candidate in &candidate_refs {
+        let (hard_rejection_flags, uncertainty_unknown) =
+            rejection_flags(candidate, request, policy.dominance_mode);
+        if hard_rejection_flags != 0 {
+            evaluations.push(CandidateEvaluation {
+                candidate_id: candidate.candidate_id,
+                disposition: CandidateDisposition::Infeasible,
+                hard_rejection_flags,
+                uncertainty_unknown,
+                dominated_by_candidate_id: None,
+                dominance_reason: None,
+                degradation_flags: 0,
+            });
+        } else if uncertainty_unknown {
+            any_unknown = true;
+            evaluations.push(CandidateEvaluation {
+                candidate_id: candidate.candidate_id,
+                disposition: CandidateDisposition::Indeterminate,
+                hard_rejection_flags: 0,
+                uncertainty_unknown: true,
+                dominated_by_candidate_id: None,
+                dominance_reason: None,
+                degradation_flags: 0,
+            });
+        } else {
+            eligible.push(*candidate);
+            evaluations.push(CandidateEvaluation {
+                candidate_id: candidate.candidate_id,
+                disposition: CandidateDisposition::Frontier,
+                hard_rejection_flags: 0,
+                uncertainty_unknown: false,
+                dominated_by_candidate_id: None,
+                dominance_reason: None,
+                degradation_flags: candidate.degradation_flags(request),
+            });
+        }
+    }
+
+    for candidate in &eligible {
+        let mut dominators = Vec::new();
+        for other in &eligible {
+            if let Some(reason) = dominates(other, candidate, policy.dominance_mode) {
+                dominators.push((other.candidate_id, reason));
+            }
+        }
+        if let Some((dominator_id, reason)) = dominators.into_iter().min_by_key(|entry| entry.0) {
+            let evaluation = evaluations
+                .iter_mut()
+                .find(|evaluation| evaluation.candidate_id == candidate.candidate_id)
+                .ok_or(ContractError::InvalidParetoDecision)?;
+            evaluation.disposition = CandidateDisposition::Dominated;
+            evaluation.dominated_by_candidate_id = Some(dominator_id);
+            evaluation.dominance_reason = Some(reason);
+        }
+    }
+
+    let mut frontier_candidate_ids: Vec<u16> = evaluations
+        .iter()
+        .filter(|evaluation| evaluation.disposition == CandidateDisposition::Frontier)
+        .map(|evaluation| evaluation.candidate_id)
+        .collect();
+    frontier_candidate_ids.sort_unstable();
+
+    let selected_candidate = eligible
+        .iter()
+        .copied()
+        .filter(|candidate| frontier_candidate_ids.binary_search(&candidate.candidate_id).is_ok())
+        .min_by_key(|candidate| (candidate.preference_rank, candidate.candidate_id));
+    let selected_candidate_id = selected_candidate.map(|candidate| candidate.candidate_id);
+    let degradation_flags = selected_candidate
+        .map(|candidate| candidate.degradation_flags(request))
+        .unwrap_or(0);
+    if let Some(selected_id) = selected_candidate_id {
+        let evaluation = evaluations
+            .iter_mut()
+            .find(|evaluation| evaluation.candidate_id == selected_id)
+            .ok_or(ContractError::InvalidParetoDecision)?;
+        evaluation.disposition = CandidateDisposition::Selected;
+    }
+    let infeasible_reason = if selected_candidate_id.is_some() {
+        None
+    } else if any_unknown {
+        Some(ParetoInfeasibleReason::NoCandidateHasRequiredUncertainty)
+    } else {
+        Some(ParetoInfeasibleReason::NoCandidateSatisfiesHardConstraints)
+    };
+
+    Ok(ParetoDecision {
+        schema_version: PARETO_DECISION_SCHEMA_VERSION,
+        policy_version: policy.policy_version,
+        capability_revision: capabilities.revision,
+        request_bytes,
+        capability_bytes,
+        policy_bytes,
+        evaluations,
+        frontier_candidate_ids,
+        selected_candidate_id,
+        infeasible_reason,
+        degradation_flags,
+    })
+}
+
+pub fn verify_pareto_decision(
+    request: &QualityRequest,
+    capabilities: &CapabilitySnapshot,
+    policy: &ParetoPolicy,
+    decision: &ParetoDecision,
+) -> Result<(), ContractError> {
+    let expected = negotiate_pareto(request, capabilities, policy)?;
+    if expected.canonical_bytes()? != decision.canonical_bytes()? {
+        return Err(ContractError::ParetoDecisionMismatch);
+    }
+    Ok(())
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum PresentationStatus {
@@ -1146,6 +1654,9 @@ pub enum ContractError {
     ConflictingTerminalFeedback,
     RetiredFrameCommit,
     PendingFrameFeedback,
+    InvalidParetoPolicy,
+    InvalidParetoDecision,
+    ParetoDecisionMismatch,
 }
 
 impl fmt::Display for ContractError {
