@@ -1249,6 +1249,22 @@ mod tests {
     }
 
     #[test]
+    fn frame_receipt_rejects_clock_metadata_that_disagrees_with_presented_observation() {
+        let mut frame = receipt(
+            1,
+            1,
+            PresentationStatus::Presented,
+            EvidenceLevel::CompositorFeedback,
+            Some(10),
+        );
+        frame.presentation_clock_id = Some(2);
+        assert_eq!(
+            frame.validate(),
+            Err(ContractError::PresentationClockMismatch)
+        );
+    }
+
+    #[test]
     fn wayland_feedback_combines_split_timestamp_and_refresh_sequence() {
         let event = WaylandPresentedEvent {
             seconds_hi: 1,
