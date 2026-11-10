@@ -305,13 +305,13 @@ fn validate_input_before_workspace(
     }
 
     // Conservative payload estimate for edge records, three vertex-link edges
-    // per face, vertex flags, DSU and sorted component sets. This is not RSS.
+    // per face, vertex adjacency, DSU and sorted component sets. This is not RSS.
     let edge_records = (mesh.faces.len() as u64)
         .checked_mul(3)
-        .and_then(|value| value.checked_mul(64))
+        .and_then(|value| value.checked_mul(144))
         .ok_or(AuditError::SizeOverflow)?;
     let vertex_workspace = (mesh.vertices.len() as u64)
-        .checked_mul(48)
+        .checked_mul(64)
         .ok_or(AuditError::SizeOverflow)?;
     let working_bytes = edge_records
         .checked_add(vertex_workspace)
