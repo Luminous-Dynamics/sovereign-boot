@@ -2427,7 +2427,7 @@ mod tests {
         );
         let nominally_better_higher_id = quality_candidate(
             2, 1, 5_000, 15_000, 500_000, 8_000_000, 2_000_000, 5_000_000,
-            300_000, 400_000, 2_000, 10_000,
+            300_000, 400_000, 1_990, 10_000,
         );
         let decision = negotiate_pareto(
             &request(1_000_000, false),
@@ -2440,6 +2440,27 @@ mod tests {
         let grouped = decision.evaluations().iter().find(|e| e.candidate_id == 2).unwrap();
         assert_eq!(grouped.disposition, CandidateDisposition::Dominated);
         assert_eq!(grouped.dominance_reason, Some(DominanceReason::EquivalentVectorStableIdTieBreak));
+    }
+
+    #[test]
+    fn epsilon_grid_maximizes_feature_diameter_instead_of_minimizing_it() {
+        let lower_feature = quality_candidate(
+            1, 0, 5_000, 15_000, 500_000, 8_000_000, 2_000_000, 5_000_000,
+            300_000, 400_000, 1_500, 10_000,
+        );
+        let higher_feature = quality_candidate(
+            2, 1, 5_000, 15_000, 500_000, 8_000_000, 2_000_000, 5_000_000,
+            300_000, 400_000, 2_500, 10_000,
+        );
+        let decision = negotiate_pareto(
+            &request(1_000_000, false),
+            &capabilities(vec![lower_feature, higher_feature]),
+            &pareto_policy(DominanceMode::EpsilonGrid),
+        )
+        .unwrap();
+        assert_eq!(decision.frontier_candidate_ids(), &[2]);
+        let rejected = decision.evaluations().iter().find(|e| e.candidate_id == 1).unwrap();
+        assert_eq!(rejected.dominated_by_candidate_id, Some(2));
     }
 
     #[test]
