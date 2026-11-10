@@ -1,0 +1,386 @@
+{
+  "schemaVersion": 1,
+  "suiteId": "ouroboros-industry-matched-workloads-v1",
+  "createdDate": "2026-11-10",
+  "status": "research-design-not-executed",
+  "sourceBaselineCommit": "d5a7f877d71757db49e63ad1b1582a661f6e4ef2",
+  "principles": [
+    "measure actual presentation, not render submission",
+    "compare matched feature intersections and identical assets",
+    "report marginal energy against same-host idle",
+    "keep CPU, GPU, video decode, display and package power domains separate",
+    "publish raw trials and preserve unsupported cells",
+    "publish Pareto frontiers rather than one weighted score"
+  ],
+  "workloads": [
+    {
+      "id": "W0",
+      "name": "static-compositor-baseline",
+      "purpose": "Measure host/compositor/display baseline and marginal cost reference",
+      "assets": [],
+      "outputs": [
+        {
+          "width": 1920,
+          "height": 1080,
+          "refresh_hz": 60
+        },
+        {
+          "width": 3840,
+          "height": 2160,
+          "refresh_hz": 60
+        }
+      ],
+      "motion": "none",
+      "capabilities": [
+        "static-image"
+      ],
+      "metrics": [
+        "marginal_energy",
+        "memory",
+        "cpu_time",
+        "gpu_time",
+        "startup_time"
+      ]
+    },
+    {
+      "id": "W1",
+      "name": "hardware-video-playback",
+      "purpose": "Compare media playback on an identical encoded stream",
+      "assets": [
+        "video-1080p60-h264-v1",
+        "video-4k60-av1-v1"
+      ],
+      "outputs": [
+        {
+          "width": 1920,
+          "height": 1080,
+          "refresh_hz": 60
+        },
+        {
+          "width": 3840,
+          "height": 2160,
+          "refresh_hz": 60
+        }
+      ],
+      "motion": "fixed-bitstream",
+      "capabilities": [
+        "video",
+        "hardware-decode"
+      ],
+      "metrics": [
+        "presented_fps",
+        "discarded_ratio",
+        "presentation_interval_p50_p95_p99",
+        "marginal_energy",
+        "joules_per_presented_frame",
+        "cpu_package_power",
+        "gpu_power",
+        "video_engine_power",
+        "memory"
+      ]
+    },
+    {
+      "id": "W2",
+      "name": "procedural-2d-parallax",
+      "purpose": "Matched deterministic 2D animated workload",
+      "assets": [
+        "ouroboros-parallax-scene-v1"
+      ],
+      "outputs": [
+        {
+          "width": 1920,
+          "height": 1080,
+          "refresh_hz": 60
+        },
+        {
+          "width": 3840,
+          "height": 2160,
+          "refresh_hz": 60
+        }
+      ],
+      "motion": "scripted-pan-parallax-60fps",
+      "capabilities": [
+        "programmable-scene",
+        "2d"
+      ],
+      "metrics": [
+        "presented_fps",
+        "discarded_ratio",
+        "p95_presentation_interval",
+        "marginal_energy",
+        "joules_per_presented_frame",
+        "cpu_time",
+        "gpu_time",
+        "memory"
+      ]
+    },
+    {
+      "id": "W3",
+      "name": "particle-feedback-scene",
+      "purpose": "Fixed deterministic shader/particle load where supported",
+      "assets": [
+        "ouroboros-particle-scene-v1"
+      ],
+      "outputs": [
+        {
+          "width": 1920,
+          "height": 1080,
+          "refresh_hz": 60
+        },
+        {
+          "width": 3840,
+          "height": 2160,
+          "refresh_hz": 60
+        }
+      ],
+      "motion": "seeded-particle-sequence-v1",
+      "capabilities": [
+        "programmable-scene",
+        "gpu-shader"
+      ],
+      "metrics": [
+        "presented_fps",
+        "discarded_ratio",
+        "p95_presentation_interval",
+        "marginal_energy",
+        "joules_per_presented_frame",
+        "gpu_time",
+        "gpu_memory",
+        "cpu_time"
+      ]
+    },
+    {
+      "id": "W4",
+      "name": "gltf-character-scene",
+      "purpose": "Matched 3D asset/animation benchmark for glTF-capable runtimes",
+      "assets": [
+        "ouroboros-neutral-head-body-gltf-v1"
+      ],
+      "outputs": [
+        {
+          "width": 1920,
+          "height": 1080,
+          "refresh_hz": 60
+        },
+        {
+          "width": 3840,
+          "height": 2160,
+          "refresh_hz": 60
+        }
+      ],
+      "motion": "fixed-joint-animation-trace-v1",
+      "capabilities": [
+        "gltf",
+        "3d-animation"
+      ],
+      "metrics": [
+        "presented_fps",
+        "discarded_ratio",
+        "p95_presentation_interval",
+        "marginal_energy",
+        "joules_per_presented_frame",
+        "cpu_time",
+        "gpu_time",
+        "gpu_memory",
+        "geometry_bytes",
+        "silhouette_error"
+      ]
+    },
+    {
+      "id": "W5",
+      "name": "ouroboros-persistent-identity",
+      "purpose": "Test identity continuity, C1 retargeting, semantic LOD and cross-renderer state",
+      "assets": [
+        "ouroboros-entity-fixture-v1"
+      ],
+      "outputs": [
+        {
+          "width": 1920,
+          "height": 1080,
+          "refresh_hz": 60
+        },
+        {
+          "width": 3840,
+          "height": 2160,
+          "refresh_hz": 60
+        },
+        {
+          "width": 1920,
+          "height": 1080,
+          "refresh_hz": 120
+        }
+      ],
+      "motion": "deterministic-retarget-trace-v1",
+      "capabilities": [
+        "persistent-entity",
+        "checkpoint",
+        "semantic-landmarks",
+        "3d"
+      ],
+      "metrics": [
+        "identity_recognition",
+        "landmark_drift",
+        "transition_velocity_jump",
+        "checkpoint_continuation_divergence",
+        "p95_presentation_interval",
+        "marginal_energy",
+        "joules_per_presented_frame",
+        "geometry_budget_violations"
+      ]
+    },
+    {
+      "id": "W6",
+      "name": "visibility-and-power-state",
+      "purpose": "Measure hidden, occluded, fullscreen, battery, suspend and resume behavior",
+      "assets": [
+        "ouroboros-parallax-scene-v1"
+      ],
+      "outputs": [
+        {
+          "width": 1920,
+          "height": 1080,
+          "refresh_hz": 60
+        }
+      ],
+      "motion": "visible-then-occluded-then-visible",
+      "capabilities": [
+        "visibility-detection",
+        "pause-resume"
+      ],
+      "metrics": [
+        "pause_latency_ms",
+        "hidden_marginal_energy",
+        "resume_to_presented_ms",
+        "stale_frame_count",
+        "state_restore_divergence"
+      ]
+    },
+    {
+      "id": "W7",
+      "name": "multi-output-mixed-refresh",
+      "purpose": "Test per-output budgets, synchrony, refresh and hotplug behavior",
+      "assets": [
+        "ouroboros-parallax-scene-v1",
+        "ouroboros-neutral-head-body-gltf-v1"
+      ],
+      "outputs": [
+        {
+          "width": 1920,
+          "height": 1080,
+          "refresh_hz": 60
+        },
+        {
+          "width": 2560,
+          "height": 1440,
+          "refresh_hz": 144
+        }
+      ],
+      "motion": "same-entity-two-output",
+      "capabilities": [
+        "multi-monitor",
+        "mixed-refresh",
+        "hotplug"
+      ],
+      "metrics": [
+        "per_output_presented_fps",
+        "per_output_discarded_ratio",
+        "per_output_p95_interval",
+        "marginal_energy",
+        "memory_scaling",
+        "output_rebind_latency",
+        "cross_output_identity_consistency"
+      ]
+    }
+  ],
+  "assets": {
+    "video-1080p60-h264-v1": {
+      "status": "must-be-created-and-hashed",
+      "container": "mp4",
+      "codec": "H.264",
+      "resolution": "1920x1080",
+      "fps": 60
+    },
+    "video-4k60-av1-v1": {
+      "status": "must-be-created-and-hashed",
+      "container": "mkv",
+      "codec": "AV1",
+      "resolution": "3840x2160",
+      "fps": 60
+    },
+    "ouroboros-parallax-scene-v1": {
+      "status": "must-be-created-and-hashed",
+      "description": "deterministic seeded 2D parallax scene"
+    },
+    "ouroboros-particle-scene-v1": {
+      "status": "must-be-created-and-hashed",
+      "description": "fixed shader and deterministic particle trace"
+    },
+    "ouroboros-neutral-head-body-gltf-v1": {
+      "status": "must-be-created-and-hashed",
+      "description": "same glTF mesh/material/animation for every runtime"
+    },
+    "ouroboros-entity-fixture-v1": {
+      "status": "must-be-created-and-hashed",
+      "description": "canonical entity descriptor, semantic landmarks and event trace"
+    }
+  },
+  "cadenceProfiles": [
+    {
+      "name": "60hz",
+      "refresh_hz": 60,
+      "period_ns": 16666667
+    },
+    {
+      "name": "120hz",
+      "refresh_hz": 120,
+      "period_ns": 8333333
+    },
+    {
+      "name": "144hz",
+      "refresh_hz": 144,
+      "period_ns": 6944444
+    }
+  ],
+  "experimentalMethod": {
+    "warmupSeconds": 300,
+    "measuredSeconds": 900,
+    "pairedTrialsMinimum": 10,
+    "ordering": "randomized ABBA or randomized paired blocks",
+    "idleBaseline": "same host immediately before and after each active run",
+    "rawSampleIntervalHz": 10,
+    "preserveEveryTrial": true,
+    "statistics": [
+      "median",
+      "p50",
+      "p95",
+      "p99",
+      "p99.9",
+      "95% confidence interval"
+    ],
+    "power": "external wall meter for total system; RAPL/turbostat and vendor GPU counters only for documented non-overlapping domains",
+    "presentation": "compositor feedback where available; render-submit is never equivalent to presented",
+    "blindedPerception": "pre-registered, separate measures for recognition, motion continuity, preference, distraction and comfort"
+  },
+  "metrics": {
+    "marginalEnergyJ": "Integral(active system power - paired idle baseline power) over the measured interval, with uncertainty propagated from meter resolution and baseline drift.",
+    "joulesPerPresentedFrame": "Marginal energy divided by actual compositor-presented frame count; do not divide by submitted or rendered frames.",
+    "discardedRatio": "Compositor-discarded updates / terminal feedback outcomes; report Unknown separately.",
+    "presentationInterval": "Difference between consecutive compositor presentation timestamps in the same clock domain and output; do not mix outputs or clock IDs.",
+    "energyDomains": "Report each measured physical domain and its documented boundaries; do not sum overlapping package/GPU counters."
+  },
+  "trustLabels": [
+    "measured_external",
+    "measured_host",
+    "compositor_reported",
+    "renderer_reported",
+    "estimated",
+    "unknown",
+    "unsupported"
+  ],
+  "unsupportedPolicy": "Emit an explicit unsupported result with a reason; do not replace a missing capability with a different workload.",
+  "nonClaims": [
+    "no comparative runs performed",
+    "no competitor superiority or inferiority established",
+    "all referenced competitor feature claims require version pinning at test time"
+  ]
+}
