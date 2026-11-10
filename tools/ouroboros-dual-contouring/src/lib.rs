@@ -17,9 +17,9 @@ use ouroboros_sdf_lab::{SampledGrid, SdfError};
 pub const EXTRACTOR_SCHEMA_VERSION: u16 = 1;
 pub const EXTRACTOR_MAGIC: [u8; 8] = *b"OURODCQ1";
 pub const MAX_ACTIVE_CELLS: u64 = 2_097_152;
-pub const MAX_CANONICAL_RECEIPT_BYTES: u64 = 24 * 1024 * 1024;
-pub const DEFAULT_MAX_GEOMETRY_BYTES: u64 = 2_500_000;
-pub const DEFAULT_MAX_WORKING_BYTES: u64 = 64 * 1024 * 1024;
+pub const MAX_CANONICAL_RECEIPT_BYTES: u64 = 32 * 1024 * 1024;
+pub const DEFAULT_MAX_GEOMETRY_BYTES: u64 = 8 * 1024 * 1024;
+pub const DEFAULT_MAX_WORKING_BYTES: u64 = 128 * 1024 * 1024;
 pub const SKIN_FEATURE_MASK: u32 = (1 << 0) | (1 << 3);
 pub const SKIN_FACE_REGION_ID: u32 = 1;
 
@@ -91,6 +91,13 @@ impl DualContourConfig {
             || self.max_working_bytes == 0
             || self.max_working_bytes > DEFAULT_MAX_WORKING_BYTES
         {
+            return Err(ExtractError::InvalidConfig);
+        }
+        let max_geometry = u64::from(self.max_vertices)
+            .checked_mul(40)
+            .and_then(|value| value.checked_add(u64::from(self.max_quads).checked_mul(40)?))
+            .ok_or(ExtractError::SizeOverflow)?;
+        if max_geometry > self.max_geometry_bytes {
             return Err(ExtractError::InvalidConfig);
         }
         Ok(())
