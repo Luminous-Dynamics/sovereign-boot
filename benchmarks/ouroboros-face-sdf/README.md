@@ -58,14 +58,18 @@ All four meshes were also reported by Trimesh as winding-consistent positive vol
 
 The current production face mesh uses 36 bytes per vertex and 4 bytes per index, with hard ceilings of 50,000 vertices, 300,000 indices and 2,500,000 geometry bytes.
 
-| Grid | Estimated production-layout bytes | Existing vertex ceiling |
-|---|---:|---|
-| 64³ | 254,568 | Fits |
-| 96³ | 583,600 | Fits |
-| 128³ | 1,044,016 | Fits |
-| 192³ | 2,362,344 | **Fails vertex ceiling** |
+The production index buffer contains **three u32 indices per triangle**. The earlier estimate incorrectly charged only one index per triangle; the table below corrects that accounting.
 
-The 192³ case is below the byte ceiling but exceeds the independent vertex ceiling. This is exactly why negotiated geometry quality must retain separate, explicit limits rather than one aggregate budget.
+| Grid | Vertices | Triangles | Indices | Estimated bytes | All current limits |
+|---|---:|---:|---:|---:|---|
+| 64³ | 5,786 | 11,568 | 34,704 | 347,112 | Fits |
+| 96³ | 13,264 | 26,524 | 79,572 | 795,792 | Fits |
+| 128³ | 23,728 | 47,452 | 142,356 | 1,423,632 | Fits |
+| 192³ | 53,690 | 107,376 | 322,128 | 3,221,352 | **Fails all three** |
+
+The 192³ case exceeds the 50,000 vertex ceiling, the 300,000 index ceiling and the 2.5 MB geometry-byte ceiling. The 128³ case remains under all three. This is exactly why negotiated geometry quality must retain independent, explicit limits rather than one aggregate budget.
+
+The full five-width / three-grid extraction matrix, including all three timing trials per case, is recorded in [`sweep-results-v1.json`](sweep-results-v1.json).
 
 ### Intersection/occlusion clue
 
