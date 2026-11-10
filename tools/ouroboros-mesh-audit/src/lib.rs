@@ -678,7 +678,7 @@ impl MeshAuditReport {
             .checked_mul(20)
             .ok_or(AuditError::SizeOverflow)?;
         let receipt_bytes = input_bytes
-            .checked_add(8 + 2 + 4 + 4 + 8 + 14 * 4 + 7 * 8 + 3 * 4 + 4)
+            .checked_add(8 + 2 + 4 + 4 + 8 + 15 * 4 + 7 * 8 + 3 * 4 + 4)
             .and_then(|value| value.checked_add(component_bytes))
             .ok_or(AuditError::SizeOverflow)?;
         if receipt_bytes > MAX_RECEIPT_BYTES {
