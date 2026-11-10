@@ -519,6 +519,32 @@ mod tests {
     }
 
     #[test]
+    fn evidence_sealer_rejects_tampered_face_lod_budget_and_selection() {
+        let source = trace();
+        let body_plan = plan();
+        let mut invalid_budget = face_plan();
+        invalid_budget.budget.max_vertices -= 1;
+        assert!(matches!(
+            capture_ouroboros_evidence(&source, body_plan, invalid_budget, 128, 128),
+            Err(OuroborosEvidenceError::FaceMesh(_))
+        ));
+
+        let mut invalid_requested = face_plan();
+        invalid_requested.requested.latitude_segments = 8;
+        assert!(matches!(
+            capture_ouroboros_evidence(&source, body_plan, invalid_requested, 128, 128),
+            Err(OuroborosEvidenceError::FaceMesh(_))
+        ));
+
+        let mut invalid_estimate = face_plan();
+        invalid_estimate.estimated_buffer_bytes -= 1;
+        assert!(matches!(
+            capture_ouroboros_evidence(&source, body_plan, invalid_estimate, 128, 128),
+            Err(OuroborosEvidenceError::FaceMesh(_))
+        ));
+    }
+
+    #[test]
     fn evidence_sealer_rejects_invalid_capture_dimensions() {
         assert!(matches!(
             capture_ouroboros_evidence(&trace(), plan(), face_plan(), 0, 128),
