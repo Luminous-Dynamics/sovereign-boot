@@ -2344,6 +2344,46 @@ mod tests {
     }
 
     #[test]
+    fn epsilon_grid_groups_close_metrics_and_uses_stable_candidate_id() {
+        let nominally_weaker_lower_id = quality_candidate(
+            1, 0, 5_500, 16_000, 550_000, 8_500_000, 2_200_000, 5_200_000,
+            320_000, 420_000, 1_980, 10_500,
+        );
+        let nominally_better_higher_id = quality_candidate(
+            2, 1, 5_000, 15_000, 500_000, 8_000_000, 2_000_000, 5_000_000,
+            300_000, 400_000, 2_000, 10_000,
+        );
+        let decision = negotiate_pareto(
+            &request(1_000_000, false),
+            &capabilities(vec![nominally_better_higher_id, nominally_weaker_lower_id]),
+            &pareto_policy(DominanceMode::EpsilonGrid),
+        )
+        .unwrap();
+        assert_eq!(decision.frontier_candidate_ids(), &[1]);
+        assert_eq!(decision.selected_candidate_id(), Some(1));
+        let grouped = decision.evaluations().iter().find(|e| e.candidate_id == 2).unwrap();
+        assert_eq!(grouped.disposition, CandidateDisposition::Dominated);
+        assert_eq!(grouped.dominance_reason, Some(DominanceReason::EquivalentVectorStableIdTieBreak));
+    }
+
+    #[test]
+    fn epsilon_grid_policy_requires_and_binds_positive_per_metric_widths() {
+        let mut missing = pareto_policy(DominanceMode::EpsilonGrid);
+        missing.epsilon = None;
+        assert_eq!(missing.validate(), Err(ContractError::InvalidParetoPolicy));
+
+        let mut zero_width = pareto_policy(DominanceMode::EpsilonGrid);
+        zero_width.epsilon.as_mut().unwrap().gpu_memory_bytes = 0;
+        assert_eq!(zero_width.validate(), Err(ContractError::InvalidParetoPolicy));
+
+        let first = pareto_policy(DominanceMode::EpsilonGrid).canonical_bytes().unwrap();
+        let mut second = pareto_policy(DominanceMode::EpsilonGrid);
+        second.epsilon.as_mut().unwrap().gpu_memory_bytes += 1;
+        assert_ne!(first, second.canonical_bytes().unwrap());
+        assert!(first.starts_with(b"OUROPOL2"));
+    }
+
+    #[test]
     fn presented_requires_compositor_or_stronger_evidence() {
         let false_claim = receipt(
             1,
