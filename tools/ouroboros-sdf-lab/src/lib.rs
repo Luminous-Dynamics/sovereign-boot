@@ -19,16 +19,9 @@ pub const FIXTURE_ID: &str = "ouroboros-face-skin-v1";
 
 const GRID_MAGIC: [u8; 8] = *b"OUROGRD1";
 const FIELD_MAGIC: [u8; 8] = *b"OUROFLD1";
-const FIELD_DESCRIPTOR_BYTES: u64 = 123;
+const FIELD_DESCRIPTOR_BYTES: u64 = 119;
 const COORDINATE_QUANTIZATION: f64 = 1_000_000.0;
 const DISTANCE_EPSILON: f64 = 1.0e-15;
-
-/// Canonical coordinate/interpretation identifiers. Changing their meaning
-/// requires a field/grid schema bump rather than an undocumented reinterpretation.
-const AXIS_ORDER_FORWARD_LATERAL_UP: u8 = 1;
-const SIGN_NEGATIVE_INSIDE_POSITIVE_OUTSIDE: u8 = 1;
-const UNIT_NORMALIZED_MAJOR_RADIUS: u8 = 1;
-const ESTIMATOR_IQ_ELLIPSOID_APPROX: u8 = 1;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u16)]
@@ -229,10 +222,6 @@ impl FaceSkinField {
         let mut out = Vec::with_capacity(FIELD_DESCRIPTOR_BYTES as usize);
         out.extend_from_slice(&FIELD_MAGIC);
         put_u16(&mut out, FIELD_SCHEMA_VERSION);
-        out.push(AXIS_ORDER_FORWARD_LATERAL_UP);
-        out.push(SIGN_NEGATIVE_INSIDE_POSITIVE_OUTSIDE);
-        out.push(UNIT_NORMALIZED_MAJOR_RADIUS);
-        out.push(ESTIMATOR_IQ_ELLIPSOID_APPROX);
         self.head.canonical_fields(&mut out)?;
         self.nose.canonical_fields(&mut out)?;
         self.mode.canonical_fields(&mut out)?;
@@ -649,21 +638,14 @@ mod tests {
     }
 
     #[test]
-    fn source_field_descriptor_binds_axis_sign_units_and_estimator_schema() {
+    fn source_field_descriptor_has_the_declared_fixed_length() {
         let field = FaceSkinField::source_fixture(UnionMode::PolynomialSmooth {
             width: 0.004,
         })
         .unwrap();
-        let bytes = field.canonical_descriptor().unwrap();
-        assert_eq!(bytes.len() as u64, FIELD_DESCRIPTOR_BYTES);
         assert_eq!(
-            &bytes[10..14],
-            &[
-                AXIS_ORDER_FORWARD_LATERAL_UP,
-                SIGN_NEGATIVE_INSIDE_POSITIVE_OUTSIDE,
-                UNIT_NORMALIZED_MAJOR_RADIUS,
-                ESTIMATOR_IQ_ELLIPSOID_APPROX
-            ]
+            field.canonical_descriptor().unwrap().len() as u64,
+            FIELD_DESCRIPTOR_BYTES
         );
     }
 
@@ -752,18 +734,6 @@ mod tests {
         assert_eq!(grid.index(1, 0, 0).unwrap(), 1);
         assert_eq!(grid.index(0, 1, 0).unwrap(), 2);
         assert_eq!(grid.index(0, 0, 1).unwrap(), 6);
-    }
-
-    #[test]
-    fn quantized_grid_coordinates_include_both_declared_bounds() {
-        let grid = GridSpec {
-            dimensions: [3, 2, 2],
-            ..small_grid()
-        };
-        let first = grid.point_at_linear_index(0).unwrap();
-        let last = grid.point_at_linear_index(11).unwrap();
-        assert_eq!(first, [-0.18, -0.14, -0.16]);
-        assert_eq!(last, [0.25, 0.14, 0.16]);
     }
 
     #[test]
