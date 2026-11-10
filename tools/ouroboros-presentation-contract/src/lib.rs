@@ -1658,9 +1658,6 @@ pub enum ContractError {
     ConflictingTerminalFeedback,
     RetiredFrameCommit,
     PendingFrameFeedback,
-    InvalidParetoPolicy,
-    InvalidParetoDecision,
-    ParetoDecisionMismatch,
 }
 
 impl fmt::Display for ContractError {
