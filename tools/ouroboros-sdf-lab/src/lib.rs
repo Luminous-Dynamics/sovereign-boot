@@ -53,6 +53,11 @@ impl EllipsoidRegion {
         {
             return Err(SdfError::InvalidFeature);
         }
+        for value in self.center.into_iter().chain(self.radii) {
+            if !is_canonical_microunit(value)? {
+                return Err(SdfError::NonCanonicalParameter);
+            }
+        }
         Ok(())
     }
 
@@ -117,7 +122,11 @@ impl UnionMode {
             Self::PolynomialSmooth { width }
                 if width.is_finite() && width > 0.0 && width <= MAX_SMOOTH_UNION_WIDTH =>
             {
-                Ok(())
+                if is_canonical_microunit(width)? {
+                    Ok(())
+                } else {
+                    Err(SdfError::NonCanonicalParameter)
+                }
             }
             Self::PolynomialSmooth { .. } => Err(SdfError::InvalidSmoothWidth),
         }
@@ -436,6 +445,9 @@ impl SampledGrid {
         );
         out.extend_from_slice(fixture);
         let field_descriptor = self.field.canonical_descriptor()?;
+        if field_descriptor.len() as u64 != FIELD_DESCRIPTOR_BYTES {
+            return Err(SdfError::FieldDescriptorSizeMismatch);
+        }
         put_u32(
             &mut out,
             u32::try_from(field_descriptor.len()).map_err(|_| SdfError::SizeOverflow)?,
@@ -480,6 +492,8 @@ pub enum SdfError {
     GridIndexOutOfBounds,
     SampleCountMismatch,
     QuantizationOverflow,
+    NonCanonicalParameter,
+    FieldDescriptorSizeMismatch,
 }
 
 impl fmt::Display for SdfError {
@@ -513,6 +527,11 @@ fn grid_coordinate(
     let min = coordinate_to_microunits(minimum)? as f64 / COORDINATE_QUANTIZATION;
     let max = coordinate_to_microunits(maximum)? as f64 / COORDINATE_QUANTIZATION;
     Ok(min + (max - min) * index as f64 / (count - 1) as f64)
+}
+
+fn is_canonical_microunit(value: f64) -> Result<bool, SdfError> {
+    let quantized = coordinate_to_microunits(value)?;
+    Ok(quantized as f64 / COORDINATE_QUANTIZATION == value)
 }
 
 fn coordinate_to_microunits(value: f64) -> Result<i64, SdfError> {
@@ -631,6 +650,26 @@ mod tests {
     }
 
     #[test]
+    fn field_parameters_must_be_exactly_representable_in_canonical_units() {
+        let mut head = source_face_features()[0];
+        head.center[0] = 0.0300001;
+        assert_eq!(
+            FaceSkinField::new(
+                head,
+                source_face_features()[3],
+                UnionMode::Sharp
+            ),
+            Err(SdfError::NonCanonicalParameter)
+        );
+        assert_eq!(
+            FaceSkinField::source_fixture(UnionMode::PolynomialSmooth {
+                width: 0.0040001
+            }),
+            Err(SdfError::NonCanonicalParameter)
+        );
+    }
+
+    #[test]
     fn invalid_smooth_widths_fail_closed() {
         assert_eq!(
             FaceSkinField::source_fixture(UnionMode::PolynomialSmooth { width: 0.0 }),
@@ -734,6 +773,8 @@ mod tests {
         let second = grid.sample(field).unwrap().canonical_bytes().unwrap();
         assert_eq!(first, second);
         assert!(first.starts_with(&GRID_MAGIC));
+        let sample = grid.sample(field).unwrap();
+        assert_eq!(sample.canonical_len().unwrap(), first.len() as u64);
     }
 
     #[test]
