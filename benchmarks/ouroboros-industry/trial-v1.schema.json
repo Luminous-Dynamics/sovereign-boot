@@ -1,0 +1,316 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Luminous-Dynamics/sovereign-boot/blob/research/ouroboros-industry-benchmarks-v1/benchmarks/ouroboros-industry/trial-v1.schema.json",
+  "title": "Ouroboros industry benchmark trial v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "trialId",
+    "pairingBlockId",
+    "system",
+    "workload",
+    "host",
+    "protocol",
+    "powerSamples",
+    "frameOutcomes"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "trialId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "pairingBlockId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Shared ID across systems tested under the same host/workload/condition block; enables matched comparisons."
+    },
+    "system": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "version",
+        "buildRevision"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "buildRevision": {
+          "type": "string",
+          "minLength": 1
+        },
+        "buildDigestSha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "workload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "assetHashes",
+        "widthPx",
+        "heightPx",
+        "refreshMilliHz",
+        "colorSpace"
+      ],
+      "properties": {
+        "id": {
+          "enum": [
+            "W0",
+            "W1",
+            "W2",
+            "W3",
+            "W4",
+            "W5",
+            "W6",
+            "W7"
+          ]
+        },
+        "assetHashes": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "widthPx": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "heightPx": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "refreshMilliHz": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "colorSpace": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sceneTraceSha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "host": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fingerprintSha256",
+        "os",
+        "kernel",
+        "compositor",
+        "gpu",
+        "driver",
+        "powerProfile",
+        "displayMode"
+      ],
+      "properties": {
+        "fingerprintSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "os": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kernel": {
+          "type": "string",
+          "minLength": 1
+        },
+        "compositor": {
+          "type": "string",
+          "minLength": 1
+        },
+        "gpu": {
+          "type": "string",
+          "minLength": 1
+        },
+        "driver": {
+          "type": "string",
+          "minLength": 1
+        },
+        "firmware": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "powerProfile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "displayMode": {
+          "type": "string",
+          "minLength": 1
+        },
+        "temperatureCentiC": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      }
+    },
+    "protocol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "warmupSeconds",
+        "activeDurationSeconds",
+        "samplingRateMilliHz",
+        "idleBeforeSeconds",
+        "idleAfterSeconds",
+        "presentationSource"
+      ],
+      "properties": {
+        "warmupSeconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "activeDurationSeconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "samplingRateMilliHz": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "idleBeforeSeconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "idleAfterSeconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "presentationSource": {
+          "enum": [
+            "wayland_presentation_time_v2",
+            "vulkan_present_timing",
+            "host_other",
+            "unsupported"
+          ]
+        },
+        "randomizedOrderToken": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "powerSamples": {
+      "type": "array",
+      "minItems": 6,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "timestampMonotonicNs",
+          "phase",
+          "domain",
+          "powerMilliwatts",
+          "uncertaintyMilliwatts",
+          "instrument"
+        ],
+        "properties": {
+          "timestampMonotonicNs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "phase": {
+            "enum": [
+              "idle_before",
+              "active",
+              "idle_after"
+            ]
+          },
+          "domain": {
+            "enum": [
+              "wall_total",
+              "cpu_package",
+              "cpu_core",
+              "gpu",
+              "video_engine",
+              "vram",
+              "other"
+            ]
+          },
+          "powerMilliwatts": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "uncertaintyMilliwatts": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "instrument": {
+            "type": "string",
+            "minLength": 1
+          },
+          "domainBoundary": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "frameOutcomes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "presented",
+        "discarded",
+        "unknown",
+        "provenance"
+      ],
+      "properties": {
+        "presented": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "discarded": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unknown": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "provenance": {
+          "enum": [
+            "compositor_reported",
+            "host_reported",
+            "renderer_reported",
+            "external_instrument",
+            "unknown"
+          ]
+        }
+      }
+    },
+    "notes": {
+      "type": "string"
+    }
+  }
+}
