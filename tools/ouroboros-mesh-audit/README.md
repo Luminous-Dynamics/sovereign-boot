@@ -41,10 +41,10 @@ Zero masks/region IDs and unsupported bits/regions are rejected. Indices and vec
 | Orientation | Two incident faces use every shared edge in opposite directions |
 | Computed zero-area | The floating-point cross product evaluates to zero; not an exact-predicate proof |
 | Near degeneracy | Finite, nonzero squared cross-product magnitude at or below the declared threshold |
-| Semantic provenance | Nonzero, supported vertex feature masks and face-region IDs; no orphan vertices |
+| Semantic provenance | Nonzero, supported vertex feature masks and face-region IDs; every face's region bit must be present on each of its vertices; no orphan vertices |
 | Self intersections | **NotEvaluated** in this Rust-only first phase |
 
-The report also includes boundary-component count, components that are not simple closed loops, semantic region-transition edge count, edge-incidence classes, coincident-position groups, orphan vertices, connected face components, and per-component Euler characteristic.
+The report also includes boundary-component count, components that are not simple closed loops, semantic region-transition edge count, face-to-vertex region mismatch count, edge-incidence classes, coincident-position groups, orphan vertices, connected face components, and per-component Euler characteristic.
 
 Euler characteristic is descriptive, not a universal correctness target. A sphere-like component has `χ=2`; handles and other topologies have different values.
 
@@ -73,7 +73,7 @@ The receipt builder recomputes the audit against the supplied mesh and limits an
 
 ## Adversarial unit fixtures
 
-The 20 authored tests cover:
+The 21 authored tests cover:
 - closed tetrahedron;
 - two coincident closed tetrahedra that remain self-intersection NotEvaluated;
 - open disk and boundary loop;
@@ -85,12 +85,13 @@ The 20 authored tests cover:
 - computed-zero-area and near-degenerate triangles;
 - coincident positions and orphan vertices;
 - invalid feature masks/region IDs;
+- face-region/vertex-feature provenance mismatch;
 - bad indices, repeated indices and NaN;
 - input and workspace budgets;
 - semantic region-transition edges;
 - receipt determinism, tolerance binding and mutation rejection.
 
-These 20 tests are authored, not executed. No passing Rust test/CI claim is made.
+These 21 tests are authored, not executed. No passing Rust test/CI claim is made.
 
 ## Self-intersection: separate future qualification
 
