@@ -358,7 +358,15 @@ impl GridSpec {
 
     pub fn point_at_linear_index(self, index: usize) -> Result<[f64; 3], SdfError> {
         let limits = self.validate()?;
-        if index >= limits.count {
+        self.point_at_linear_index_validated(index, limits.count)
+    }
+
+    fn point_at_linear_index_validated(
+        self,
+        index: usize,
+        sample_count: usize,
+    ) -> Result<[f64; 3], SdfError> {
+        if index >= sample_count {
             return Err(SdfError::GridIndexOutOfBounds);
         }
         let nx = self.dimensions[0] as usize;
@@ -381,7 +389,7 @@ impl GridSpec {
             .try_reserve_exact(limits.count)
             .map_err(|_| SdfError::AllocationFailed)?;
         for linear_index in 0..limits.count {
-            let point = self.point_at_linear_index(linear_index)?;
+            let point = self.point_at_linear_index_validated(linear_index, limits.count)?;
             let value = field.evaluate(point)?;
             samples.push(quantize_distance(value)?);
         }
