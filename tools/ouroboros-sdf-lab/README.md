@@ -120,9 +120,10 @@ The current unit tests cover:
 - zero dimensions, dimension-product overflow, sample-count and encoded-byte budget failures;
 - non-finite/overflowing distance quantization;
 - canonical descriptor size and repeatable grid bytes;
+- fixed-point parity against ten source-grounded Python float64 probe values in `fixtures/reference-probes-v1.json`;
 - metadata changes when the field mode or bounds change.
 
-The tests are authored but have not been compiled or executed. No green CI is implied.
+The tests are authored but have not been compiled or executed. The numerical probe fixture is a cross-language reference corpus, not evidence of a successful Rust run. No green CI is implied.
 
 ## Next algorithms
 
