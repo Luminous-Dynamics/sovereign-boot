@@ -1,6 +1,9 @@
 use std::{env, error::Error, fs};
 
-use ouroboros_sdf_lab::{FaceSkinField, GridSpec, UnionMode, MAX_CANONICAL_BYTES, MAX_SAMPLES};
+use ouroboros_sdf_lab::{
+    FaceSkinField, GridSpec, UnionMode, MAX_CANONICAL_BYTES, MAX_SAMPLES,
+    MAX_WORKING_PAYLOAD_BYTES,
+};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let output = env::args()
