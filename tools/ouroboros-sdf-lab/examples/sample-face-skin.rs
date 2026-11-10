@@ -13,6 +13,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         dimensions: [128, 128, 128],
         max_samples: MAX_SAMPLES,
         max_canonical_bytes: MAX_CANONICAL_BYTES,
+        max_working_payload_bytes: MAX_WORKING_PAYLOAD_BYTES,
     };
     let field = FaceSkinField::source_fixture(UnionMode::PolynomialSmooth {
         width: 0.004,
