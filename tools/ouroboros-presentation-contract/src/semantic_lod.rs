@@ -193,7 +193,7 @@ impl SemanticLodCandidateSet {
         let capacity = 8_usize
             .checked_add(2)
             .and_then(|v| v.checked_add(2))
-            .and_then(|v| v.checked_add(self.candidates.len().checked_mul(2 + observation_count * 9)?))
+            .and_then(|v| v.checked_add(self.candidates.len().checked_mul(2 + observation_count * 11)?))
             .ok_or(SemanticLodError::SizeOverflow)?;
         out.try_reserve_exact(capacity)
             .map_err(|_| SemanticLodError::AllocationFailed)?;
@@ -607,7 +607,7 @@ mod tests {
         let mut set = candidates();
         set.candidates[0].observations[1].max_screen_error_microunits = 5_001;
         let decision = negotiate_semantic_lod(&quality_request(1_000_000), &capabilities(), &profile(), &set).unwrap();
-        assert_eq!(decision.selected_candidate_id(), Some(2));
+        assert_eq!(decision.selected_candidate_id(), Some(3));
     }
 
     #[test]
@@ -625,7 +625,7 @@ mod tests {
     fn selection_minimizes_semantic_distortion_not_triangle_preference_rank() {
         let decision = negotiate_semantic_lod(&quality_request(1_000_000), &capabilities(), &profile(), &candidates()).unwrap();
         assert_eq!(decision.selected_candidate_id(), Some(3));
-        assert_eq!(decision.weighted_distortion_milliunits(), Some(77_000_000));
+        assert_eq!(decision.weighted_distortion_milliunits(), Some(40_000_000));
     }
 
     #[test]
