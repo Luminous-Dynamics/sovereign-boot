@@ -18,6 +18,7 @@ pub const FRAME_RECEIPT_SCHEMA_VERSION: u16 = 1;
 const MAX_FEATURE_IDS: usize = 128;
 const MAX_REPRESENTATION_ROOTS: usize = 128;
 const MAX_CANDIDATES: usize = 128;
+const QUALITY_CANDIDATE_ENCODED_LEN: usize = 67;
 
 pub type Digest = [u8; 32];
 
@@ -211,6 +212,8 @@ impl QualityCandidate {
             || self.estimated_frame_time_ns == 0
             || self.estimated_cpu_time_ns == 0
             || self.estimated_gpu_time_ns == 0
+            || self.estimated_frame_time_ns < self.estimated_cpu_time_ns
+            || self.estimated_frame_time_ns < self.estimated_gpu_time_ns
             || self.estimated_cpu_memory_bytes == 0
             || self.feature_diameter_millipixels == 0
         {
@@ -302,7 +305,7 @@ impl CapabilitySnapshot {
 
     pub fn canonical_bytes(&self) -> Result<Vec<u8>, ContractError> {
         self.validate()?;
-        let mut out = Vec::with_capacity(8 + 2 + 8 + 2 + self.candidates.len() * 49);
+        let mut out = Vec::with_capacity(8 + 2 + 8 + 2 + self.candidates.len() * QUALITY_CANDIDATE_ENCODED_LEN);
         out.extend_from_slice(b"OUROCAP1");
         put_u16(&mut out, self.schema_version);
         put_u64(&mut out, self.revision);
@@ -380,7 +383,7 @@ impl QualityDecision {
             .map_err(|_| ContractError::CollectionTooLarge)?;
         let mut out = Vec::with_capacity(
             8 + 2 + 2 + 8 + 4 + self.request_bytes.len()
-                + 4 + self.capability_bytes.len() + 1 + 49 + 1 + 1,
+                + 4 + self.capability_bytes.len() + 1 + QUALITY_CANDIDATE_ENCODED_LEN + 1 + 1,
         );
         out.extend_from_slice(b"OURODEC1");
         put_u16(&mut out, self.schema_version);
@@ -830,6 +833,15 @@ mod tests {
             Degradation::FeatureResolution as u8
                 | Degradation::SilhouetteError as u8
         );
+    }
+
+    #[test]
+    fn candidate_rejects_total_frame_estimate_below_cpu_or_gpu_component() {
+        let mut inconsistent = candidate(1, 0, 500_000, true, 2_000, 5_000);
+        inconsistent.estimated_frame_time_ns = 4_000_000;
+        inconsistent.estimated_gpu_time_ns = 5_000_000;
+        let caps = capabilities(vec![inconsistent]);
+        assert_eq!(caps.validate(), Err(ContractError::InvalidCandidate));
     }
 
     #[test]
