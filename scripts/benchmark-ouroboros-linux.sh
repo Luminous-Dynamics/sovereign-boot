@@ -71,7 +71,7 @@ if ((dirty && allow_dirty == 0)); then
 fi
 
 if [[ -z "$output_dir" ]]; then
-  output_dir="$root/artifacts/benchmarks/ouroboros/$source_rev"
+  output_dir="$root/target/benchmarks/ouroboros/$source_rev/$(date -u +%Y%m%dT%H%M%SZ)"
 elif [[ "$output_dir" != /* ]]; then
   output_dir="$root/$output_dir"
 fi
