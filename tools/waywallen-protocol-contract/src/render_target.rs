@@ -300,6 +300,15 @@ impl RenderTargetSession {
             }
         }
         self.capabilities = Some(capabilities);
+        // A newer capability revision invalidates any in-flight allocation
+        // decision made against the previous display/producer contract. Keep
+        // the last-known-good pool, but never promote a stale completion.
+        if self
+            .pending
+            .is_some_and(|pending| pending.capabilities_revision != capabilities.revision)
+        {
+            self.pending = None;
+        }
         Ok(true)
     }
 
@@ -531,6 +540,93 @@ mod tests {
             session.publish_capabilities(conflict),
             Err(ContractError::RenderTargetCapabilityRevisionConflict)
         );
+    }
+
+    #[test]
+    fn newer_capabilities_invalidate_pending_target_without_replacing_last_good() {
+        let mut session = RenderTargetSession::default();
+        let first_capabilities = capabilities(RenderTargetMode::ScalableFixedAspect);
+        session.publish_capabilities(first_capabilities).unwrap();
+
+        let first_config = config(1, 1, 1_920, 1_080);
+        session
+            .receive_config(first_config, &producer_capabilities())
+            .unwrap();
+        assert_eq!(session.pending(), Some(first_config));
+
+        let first_pool = PublishedTargetPool {
+            generation: 1,
+            extent: first_config.extent,
+        };
+        assert_eq!(
+            session
+                .finish(
+                    RenderTargetOutcome {
+                        revision: 1,
+                        status: RenderTargetStatus::Applied,
+                        extent: first_config.extent,
+                        pool_generation: 1,
+                    },
+                    Some(first_pool),
+                )
+                .unwrap(),
+            RenderTargetCompletion::Applied {
+                revision: 1,
+                pool_generation: 1
+            }
+        );
+        assert_eq!(session.applied(), Some(first_config));
+
+        let mut newer_capabilities = first_capabilities;
+        newer_capabilities.revision = 2;
+        newer_capabilities.max = Extent {
+            width: 1_920,
+            height: 1_080,
+        };
+        session.publish_capabilities(newer_capabilities).unwrap();
+
+        let stale_config = config(2, 1, 1_920, 1_080);
+        // The capability revision changed, so a new request against the old
+        // revision cannot enter the pending slot.
+        assert_eq!(
+            session.receive_config(stale_config, &producer_capabilities()),
+            Err(ContractError::StaleRenderTargetCapabilities)
+        );
+
+        let fresh_config = config(3, 2, 1_920, 1_080);
+        session
+            .receive_config(fresh_config, &producer_capabilities())
+            .unwrap();
+        assert_eq!(session.pending(), Some(fresh_config));
+
+        // Rev 3 is now in flight against capability rev 2. A newer capability
+        // invalidates that request before its stale success response arrives.
+        let mut newest_capabilities = newer_capabilities;
+        newest_capabilities.revision = 3;
+        session.publish_capabilities(newest_capabilities).unwrap();
+        assert_eq!(session.pending(), None);
+        assert_eq!(session.applied(), Some(first_config));
+        assert_eq!(session.applied_pool_generation(), 1);
+
+        assert_eq!(
+            session
+                .finish(
+                    RenderTargetOutcome {
+                        revision: 3,
+                        status: RenderTargetStatus::Applied,
+                        extent: fresh_config.extent,
+                        pool_generation: 2,
+                    },
+                    Some(PublishedTargetPool {
+                        generation: 2,
+                        extent: fresh_config.extent,
+                    }),
+                )
+                .unwrap(),
+            RenderTargetCompletion::IgnoredStale
+        );
+        assert_eq!(session.applied(), Some(first_config));
+        assert_eq!(session.applied_pool_generation(), 1);
     }
 
     #[test]
