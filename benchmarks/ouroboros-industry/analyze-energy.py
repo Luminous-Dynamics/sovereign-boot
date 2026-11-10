@@ -69,6 +69,8 @@ def bootstrap_median_ci(
 def validate_trial(trial: dict[str, Any], line_number: int) -> None:
     prefix = f"line {line_number}"
     require(trial.get("schemaVersion") == SCHEMA_VERSION, f"{prefix}: unsupported schemaVersion")
+    for key in ("trialId", "pairingBlockId"):
+        require(isinstance(trial.get(key), str) and trial[key], f"{prefix}: {key} missing")
     for section in ("system", "workload", "host", "protocol", "frameOutcomes"):
         require(isinstance(trial.get(section), dict), f"{prefix}: missing object {section}")
 
@@ -87,12 +89,21 @@ def validate_trial(trial: dict[str, Any], line_number: int) -> None:
         require(isinstance(workload.get(key), int) and workload[key] > 0, f"{prefix}: workload.{key} invalid")
     require(
         isinstance(host.get("fingerprintSha256"), str)
-        and len(host["fingerprintSha256"]) == 64,
-        f"{prefix}: host fingerprint missing",
+        and len(host["fingerprintSha256"]) == 64
+        and all(ch in "0123456789abcdef" for ch in host["fingerprintSha256"]),
+        f"{prefix}: host fingerprint missing or invalid",
     )
+    for key in ("os", "kernel", "compositor", "gpu", "driver", "powerProfile", "displayMode"):
+        require(isinstance(host.get(key), str) and host[key], f"{prefix}: host.{key} missing")
     for key in ("warmupSeconds", "activeDurationSeconds", "samplingRateMilliHz", "idleBeforeSeconds", "idleAfterSeconds"):
         require(isinstance(protocol.get(key), int) and protocol[key] >= 0, f"{prefix}: protocol.{key} invalid")
     require(protocol["activeDurationSeconds"] > 0, f"{prefix}: active duration must be positive")
+    require(
+        protocol.get("presentationSource") in {
+            "wayland_presentation_time_v2", "vulkan_present_timing", "host_other", "unsupported"
+        },
+        f"{prefix}: invalid presentation source",
+    )
 
     for key in ("presented", "discarded", "unknown"):
         require(isinstance(outcomes.get(key), int) and outcomes[key] >= 0, f"{prefix}: frameOutcomes.{key} invalid")
@@ -111,6 +122,10 @@ def validate_trial(trial: dict[str, Any], line_number: int) -> None:
         require(
             provenance not in RENDERER_ONLY,
             f"{prefix}: renderer/unknown provenance cannot support a presented-frame count",
+        )
+        require(
+            trial["protocol"]["presentationSource"] != "unsupported",
+            f"{prefix}: unsupported presentation source cannot claim presented frames",
         )
 
     hashes = workload.get("assetHashes", {})
@@ -156,7 +171,7 @@ def analyze_trial(
         require(isinstance(power, int) and power >= 0, f"{prefix}: invalid powerMilliwatts")
         require(isinstance(uncertainty, int) and uncertainty >= 0, f"{prefix}: invalid uncertaintyMilliwatts")
         require(isinstance(sample.get("instrument"), str) and sample["instrument"], f"{prefix}: missing power instrument")
-        require(isinstance(sample.get("domainBoundary"), str) and sample["domainBoundary"], f"{prefix}: wall_total domainBoundary required")
+        require(isinstance(sample.get("domainBoundary"), str) and sample["domainBoundary"], f"{prefix}: power domainBoundary required")
         if domain_boundary is None:
             domain_boundary = sample["domainBoundary"]
             instrument = sample["instrument"]
@@ -179,6 +194,10 @@ def analyze_trial(
     active_times = [sample["timestampMonotonicNs"] for sample in active]
     active_seconds = [(timestamp - active_times[0]) / 1_000_000_000 for timestamp in active_times]
     require(active_seconds[-1] > 0, f"{prefix}: active power window has zero duration")
+    require(
+        abs(active_seconds[-1] - trial["protocol"]["activeDurationSeconds"]) <= 2.0,
+        f"{prefix}: active sample window differs from declared activeDurationSeconds by more than 2 seconds",
+    )
     gaps = [b - a for a, b in zip(active_seconds, active_seconds[1:])]
     require(max(gaps) <= max_gap_seconds, f"{prefix}: active wall power sampling gap exceeds limit")
 
@@ -218,6 +237,32 @@ def analyze_trial(
             + baseline_uncertainty[index + 1]
         ) * 0.5
         conservative_uncertainty_j += endpoint_uncertainty_mw * duration_s / 1000.0
+
+    # Report other measured domains separately; do not add package/GPU/video
+    # counters to wall_total because device-domain boundaries may overlap.
+    domain_summary: dict[str, Any] = {}
+    other_domains = sorted({sample["domain"] for sample in samples if sample.get("domain") != "wall_total"})
+    for domain in other_domains:
+        domain_samples = [sample for sample in samples if sample.get("domain") == domain]
+        boundaries = {sample.get("domainBoundary") for sample in domain_samples}
+        instruments = {sample.get("instrument") for sample in domain_samples}
+        require(len(boundaries) == 1 and len(instruments) == 1, f"{prefix}: mixed source/boundary within domain {domain}")
+        domain_summary[domain] = {
+            "instrument": next(iter(instruments)),
+            "domainBoundary": next(iter(boundaries)),
+            "meanPowerMilliwattsByPhase": {
+                phase: (
+                    statistics.fmean(
+                        sample["powerMilliwatts"]
+                        for sample in domain_samples
+                        if sample.get("phase") == phase
+                    )
+                    if any(sample.get("phase") == phase for sample in domain_samples)
+                    else None
+                )
+                for phase in ("idle_before", "active", "idle_after")
+            },
+        }
 
     outcomes = trial["frameOutcomes"]
     presented = outcomes["presented"]
@@ -260,6 +305,7 @@ def analyze_trial(
         "nonWallPowerSamplesRetainedButNotSummed": sum(
             1 for sample in samples if sample.get("domain") != "wall_total"
         ),
+        "otherPowerDomainSummaries": domain_summary,
     }
 
 
