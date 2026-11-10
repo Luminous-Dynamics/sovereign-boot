@@ -78,7 +78,7 @@ The sign convention is negative inside, zero on the approximate surface, and pos
 - `OUROF32D` is a diagnostic interchange encoding for external extractors. It carries the same metadata and exact same header length, but writes each canonical microunit sample as a dequantized little-endian `f32`. It is not a second/higher-precision SDF evaluation; pair it with the `OUROGRD1` receipt.
 - `GridSpec` checks dimension products, sample ceilings, integer conversion, canonical byte ceilings and bounds before allocating the sample vector.
 
-Current hard ceiling: 2,097,152 samples (128³), with a maximum complete canonical grid of 16 MiB. Larger grids require a deliberate versioned budget change rather than an implicit allocation.
+Current hard ceilings: 2,097,152 samples (128³), 16 MiB per canonical grid, and 32 MiB for the simultaneous sample-vector plus encoded-output payload. The working-payload budget excludes allocator metadata and process/runtime overhead; it is not an RSS guarantee. Larger grids require a deliberate versioned budget change rather than an implicit allocation.
 
 ## SIGGRAPH 2026 discrete-SDF dual contouring reference
 
@@ -118,7 +118,7 @@ The current unit tests cover:
 - sharp-union and bounded smooth-union behavior;
 - rejection of noncanonical microunit parameters;
 - first-axis-fastest index and sample ordering;
-- zero dimensions, dimension-product overflow, sample-count and encoded-byte budget failures;
+- zero dimensions, dimension-product overflow, sample-count, encoded-byte and simultaneous working-payload budget failures;
 - non-finite/overflowing distance quantization;
 - canonical descriptor size and repeatable grid bytes;
 - `OUROF32D` metadata/length parity and f32 reconstruction from the canonical samples;
