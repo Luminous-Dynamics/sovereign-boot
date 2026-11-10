@@ -19,7 +19,7 @@ The crate is intentionally isolated from the repository's production Cargo works
 - `CapabilitySnapshot` contains explicitly ordered candidate plans and a revision.
 - `negotiate` deterministically selects the first feasible candidate, records soft degradation, or returns an explicit infeasible decision. A CPU-only candidate can advertise zero GPU time/memory and remain feasible under a zero-GPU budget.
 - `FrameReceipt` binds the entity/revision/state/decision roots, backend build digest, target format/extent, pool generation, terminal status, evidence level and presentation-clock identity. Presented requires compositor-or-stronger evidence plus a clock-qualified presentation timestamp.
-- `FrameSequenceGuard` rejects stale buffer generations, duplicate/non-monotonic frame sequences and cross-session receipts.
+- `SessionBinding` and `FrameSequenceGuard` pin every frame to one entity ID/revision, backend build, negotiated decision, session, target format/extent and buffer generation. Reconfiguration requires a strictly newer pool generation; frame sequence remains monotonic.
 
 The crate emits canonical little-endian byte strings with versioned magic values. Hash those exact bytes using the chosen project digest at the integration boundary. This avoids coupling the conformance oracle to a cryptographic implementation; the content digest is not itself an authentication claim.
 
