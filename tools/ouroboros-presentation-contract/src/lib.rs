@@ -108,6 +108,9 @@ pub struct HardConstraints {
     pub max_geometry_bytes: u32,
     /// Maximum estimated render work for one frame; observed time is separate.
     pub max_frame_time_ns: u64,
+    pub max_cpu_time_ns: u64,
+    pub max_gpu_time_ns: u64,
+    pub max_cpu_memory_bytes: u64,
     pub max_gpu_memory_bytes: u64,
     pub min_feature_diameter_millipixels: u32,
     pub max_silhouette_error_microunits: u32,
@@ -137,6 +140,9 @@ impl QualityRequest {
             || h.max_indices == 0
             || h.max_geometry_bytes == 0
             || h.max_frame_time_ns == 0
+            || h.max_cpu_time_ns == 0
+            || h.max_gpu_time_ns == 0
+            || h.max_cpu_memory_bytes == 0
             || h.max_gpu_memory_bytes == 0
             || h.min_feature_diameter_millipixels == 0
             || self.soft.preferred_feature_diameter_millipixels
@@ -151,13 +157,16 @@ impl QualityRequest {
 
     pub fn canonical_bytes(&self) -> Result<Vec<u8>, ContractError> {
         self.validate()?;
-        let mut out = Vec::with_capacity(8 + 2 + 4 * 4 + 8 * 2 + 1);
+        let mut out = Vec::with_capacity(8 + 2 + 4 * 7 + 8 * 5 + 1);
         out.extend_from_slice(b"OUROQRE1");
         put_u16(&mut out, self.schema_version);
         put_u32(&mut out, self.hard.max_vertices);
         put_u32(&mut out, self.hard.max_indices);
         put_u32(&mut out, self.hard.max_geometry_bytes);
         put_u64(&mut out, self.hard.max_frame_time_ns);
+        put_u64(&mut out, self.hard.max_cpu_time_ns);
+        put_u64(&mut out, self.hard.max_gpu_time_ns);
+        put_u64(&mut out, self.hard.max_cpu_memory_bytes);
         put_u64(&mut out, self.hard.max_gpu_memory_bytes);
         put_u32(&mut out, self.hard.min_feature_diameter_millipixels);
         put_u32(&mut out, self.hard.max_silhouette_error_microunits);
@@ -183,6 +192,9 @@ pub struct QualityCandidate {
     pub estimated_indices: u32,
     pub estimated_geometry_bytes: u32,
     pub estimated_frame_time_ns: u64,
+    pub estimated_cpu_time_ns: u64,
+    pub estimated_gpu_time_ns: u64,
+    pub estimated_cpu_memory_bytes: u64,
     pub estimated_gpu_memory_bytes: u64,
     pub feature_diameter_millipixels: u32,
     pub silhouette_error_microunits: u32,
@@ -197,6 +209,9 @@ impl QualityCandidate {
             || self.estimated_indices == 0
             || self.estimated_geometry_bytes == 0
             || self.estimated_frame_time_ns == 0
+            || self.estimated_cpu_time_ns == 0
+            || self.estimated_gpu_time_ns == 0
+            || self.estimated_cpu_memory_bytes == 0
             || self.feature_diameter_millipixels == 0
         {
             return Err(ContractError::InvalidCandidate);
@@ -210,6 +225,9 @@ impl QualityCandidate {
             && self.estimated_indices <= h.max_indices
             && self.estimated_geometry_bytes <= h.max_geometry_bytes
             && self.estimated_frame_time_ns <= h.max_frame_time_ns
+            && self.estimated_cpu_time_ns <= h.max_cpu_time_ns
+            && self.estimated_gpu_time_ns <= h.max_gpu_time_ns
+            && self.estimated_cpu_memory_bytes <= h.max_cpu_memory_bytes
             && self.estimated_gpu_memory_bytes <= h.max_gpu_memory_bytes
             && self.feature_diameter_millipixels >= h.min_feature_diameter_millipixels
             && self.silhouette_error_microunits <= h.max_silhouette_error_microunits
@@ -239,6 +257,9 @@ impl QualityCandidate {
         put_u32(out, self.estimated_indices);
         put_u32(out, self.estimated_geometry_bytes);
         put_u64(out, self.estimated_frame_time_ns);
+        put_u64(out, self.estimated_cpu_time_ns);
+        put_u64(out, self.estimated_gpu_time_ns);
+        put_u64(out, self.estimated_cpu_memory_bytes);
         put_u64(out, self.estimated_gpu_memory_bytes);
         put_u32(out, self.feature_diameter_millipixels);
         put_u32(out, self.silhouette_error_microunits);
@@ -675,6 +696,9 @@ mod tests {
                 max_indices: 30_000,
                 max_geometry_bytes: 1_000_000,
                 max_frame_time_ns: 16_700_000,
+                max_cpu_time_ns: 4_000_000,
+                max_gpu_time_ns: 10_000_000,
+                max_cpu_memory_bytes: 500_000,
                 max_gpu_memory_bytes,
                 min_feature_diameter_millipixels: 1_000,
                 max_silhouette_error_microunits: 50_000,
@@ -703,6 +727,9 @@ mod tests {
             estimated_indices: 15_000,
             estimated_geometry_bytes: 500_000,
             estimated_frame_time_ns: 8_000_000,
+            estimated_cpu_time_ns: 2_000_000,
+            estimated_gpu_time_ns: 5_000_000,
+            estimated_cpu_memory_bytes: 300_000,
             estimated_gpu_memory_bytes: gpu_bytes,
             feature_diameter_millipixels: feature_px,
             silhouette_error_microunits: silhouette_error,
@@ -815,6 +842,16 @@ mod tests {
             decision.infeasible_reason(),
             Some(InfeasibleReason::NoCandidateSatisfiesAllHardConstraints)
         );
+    }
+
+    #[test]
+    fn cpu_budget_is_enforced_independently_of_gpu_budget() {
+        let req = request(1_000_000, false);
+        let mut over_cpu = candidate(1, 0, 400_000, true, 3_000, 1_000);
+        over_cpu.estimated_cpu_time_ns = 5_000_000;
+        let caps = capabilities(vec![over_cpu]);
+        let decision = negotiate(&req, &caps, 1).unwrap();
+        assert!(!decision.is_feasible());
     }
 
     #[test]
