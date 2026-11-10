@@ -593,6 +593,9 @@ pub struct FrameReceipt {
     pub height: u32,
     pub status: PresentationStatus,
     pub evidence_level: EvidenceLevel,
+    /// Identifies the protocol that reported a terminal presentation outcome,
+    /// including Discarded outcomes which have no presentation timestamp.
+    pub presentation_source: Option<PresentationSource>,
     /// Present only when the compositor supplied a Presented outcome.
     pub presentation: Option<PresentationObservation>,
 }
@@ -616,6 +619,7 @@ impl FrameReceipt {
         match self.status {
             PresentationStatus::Rendered => {
                 if self.evidence_level > EvidenceLevel::HostObserved
+                    || self.presentation_source.is_some()
                     || self.presentation.is_some()
                 {
                     return Err(ContractError::UnsupportedPresentationClaim);
@@ -623,6 +627,7 @@ impl FrameReceipt {
             }
             PresentationStatus::Submitted => {
                 if self.evidence_level < EvidenceLevel::HostObserved
+                    || self.presentation_source.is_some()
                     || self.presentation.is_some()
                 {
                     return Err(ContractError::UnsupportedPresentationClaim);
@@ -630,20 +635,23 @@ impl FrameReceipt {
             }
             PresentationStatus::Presented => {
                 if self.evidence_level < EvidenceLevel::CompositorFeedback
+                    || self.presentation_source.is_none()
                     || self.presentation.is_none()
+                    || self.presentation.map(|value| value.source) != self.presentation_source
                 {
                     return Err(ContractError::UnsupportedPresentationClaim);
                 }
             }
             PresentationStatus::Discarded => {
                 if self.evidence_level < EvidenceLevel::CompositorFeedback
+                    || self.presentation_source.is_none()
                     || self.presentation.is_some()
                 {
                     return Err(ContractError::UnsupportedPresentationClaim);
                 }
             }
             PresentationStatus::Unknown => {
-                if self.presentation.is_some() {
+                if self.presentation_source.is_some() || self.presentation.is_some() {
                     return Err(ContractError::UnsupportedPresentationClaim);
                 }
             }
@@ -668,7 +676,7 @@ impl FrameReceipt {
 
     pub fn canonical_bytes(&self) -> Result<Vec<u8>, ContractError> {
         self.validate()?;
-        let mut out = Vec::with_capacity(8 + 2 + 16 + 32 * 4 + 16 + 8 * 2 + 2 + 4 * 2 + 1 + 61);
+        let mut out = Vec::with_capacity(8 + 2 + 16 + 32 * 4 + 16 + 8 * 2 + 2 + 4 * 2 + 3 + 61);
         out.extend_from_slice(b"OUROFRM2");
         put_u16(&mut out, self.schema_version);
         out.extend_from_slice(&self.entity_id.0);
@@ -684,6 +692,13 @@ impl FrameReceipt {
         put_u32(&mut out, self.height);
         out.push(self.status as u8);
         out.push(self.evidence_level as u8);
+        match self.presentation_source {
+            Some(source) => {
+                out.push(1);
+                put_u16(&mut out, source as u16);
+            }
+            None => out.push(0),
+        }
         match self.presentation {
             Some(presentation) => {
                 out.push(1);
@@ -927,6 +942,7 @@ mod tests {
             height: 1080,
             status,
             evidence_level: evidence,
+            presentation_source: time.map(|_| PresentationSource::WaylandPresentationTimeV2),
             presentation: time.map(|presentation_time_ns| PresentationObservation {
                 source: PresentationSource::WaylandPresentationTimeV2,
                 clock_id: 1,
@@ -1095,6 +1111,7 @@ mod tests {
             EvidenceLevel::CompositorFeedback,
             Some(10),
         );
+        missing_clock.presentation_source = None;
         missing_clock.presentation = None;
         assert_eq!(
             missing_clock.validate(),
@@ -1170,6 +1187,65 @@ mod tests {
     }
 
     #[test]
+    fn wayland_feedback_rejects_timestamp_overflow() {
+        let event = WaylandPresentedEvent {
+            seconds_hi: u32::MAX,
+            seconds_lo: u32::MAX,
+            nanoseconds: 999_999_999,
+            refresh_interval_ns: 0,
+            sequence_hi: 0,
+            sequence_lo: 0,
+            flags: 0,
+        };
+        assert_eq!(
+            event.into_observation(1, None),
+            Err(ContractError::PresentationTimestampOverflow)
+        );
+    }
+
+    #[test]
+    fn compositor_hardware_flags_do_not_upgrade_evidence_level() {
+        let observation = WaylandPresentedEvent {
+            seconds_hi: 0,
+            seconds_lo: 1,
+            nanoseconds: 2,
+            refresh_interval_ns: 0,
+            sequence_hi: 0,
+            sequence_lo: 0,
+            flags: WAYLAND_PRESENTATION_HW_CLOCK
+                | WAYLAND_PRESENTATION_HW_COMPLETION
+                | WAYLAND_PRESENTATION_ZERO_COPY,
+        }
+        .into_observation(1, None)
+        .unwrap();
+        let mut frame = receipt(
+            1,
+            1,
+            PresentationStatus::Presented,
+            EvidenceLevel::CompositorFeedback,
+            None,
+        );
+        frame.presentation_source = Some(PresentationSource::WaylandPresentationTimeV2);
+        frame.presentation = Some(observation);
+        frame.validate().unwrap();
+        assert_eq!(frame.evidence_level, EvidenceLevel::CompositorFeedback);
+    }
+
+    #[test]
+    fn discarded_wayland_feedback_is_source_bound_without_present_time() {
+        let mut frame = receipt(
+            1,
+            1,
+            PresentationStatus::Discarded,
+            EvidenceLevel::CompositorFeedback,
+            None,
+        );
+        frame.presentation_source = Some(PresentationSource::WaylandPresentationTimeV2);
+        assert!(frame.validate().is_ok());
+        assert!(frame.canonical_bytes().is_ok());
+    }
+
+    #[test]
     fn presentation_observation_canonical_bytes_bind_protocol_feedback() {
         let base = WaylandPresentedEvent {
             seconds_hi: 0,
@@ -1218,6 +1294,7 @@ mod tests {
             EvidenceLevel::CompositorFeedback,
             None,
         );
+        invalid.presentation_source = Some(PresentationSource::WaylandPresentationTimeV2);
         invalid.presentation = Some(PresentationObservation {
             source: PresentationSource::WaylandPresentationTimeV2,
             clock_id: 1,
