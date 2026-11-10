@@ -126,11 +126,25 @@ for ((trial = 1; trial <= trials; trial++)); do
   BENCH_COMPOSITOR="$compositor" \
     "$benchmark_bin" --iterations "$iterations" --warmup "$warmup" > "$trial_path"
 
-  jq -e -s --argjson expected "$iterations" '
+  jq -e -s --argjson expected "$iterations" --arg source_rev "$source_rev" '
     length == 11 and
     .[0].type == "metadata" and
     .[0].schema == "luminous-ouroboros-cpu-benchmark-v2" and
-    (.[1:] | all(.[]; .type == "measurement" and .iterations == $expected and .p95_ns >= .p50_ns and .p99_ns >= .p95_ns))
+    .[0].source_rev == $source_rev and
+    .[0].profile == "release" and
+    (.[1:] | all(.[]; .type == "measurement" and .iterations == $expected and .p95_ns >= .p50_ns and .p99_ns >= .p95_ns)) and
+    (.[1:] | map(.name) | sort) == [
+      "checkpoint_encode_decode",
+      "cpu_reference_capture_320",
+      "loop_control",
+      "mesh_build_validate",
+      "mesh_lod_planning",
+      "sealed_evidence_capture_128",
+      "scene_advance_60hz",
+      "scene_retarget_1hz_at_60fps",
+      "semantic_landmarks",
+      "trace_decode_replay"
+    ]
   ' "$trial_path" >/dev/null
   trial_files+=("$trial_path")
 done
@@ -177,29 +191,10 @@ jq -n \
     ]
   }' > "$output_dir/manifest.json"
 
-jq -s '
-  def median:
-    sort as $values
-    | ($values | length) as $count
-    | if $count == 0 then null
-      elif ($count % 2) == 1 then $values[($count / 2 | floor)]
-      else (($values[($count / 2 | floor) - 1] + $values[($count / 2 | floor)]) / 2)
-      end;
-  [ .[] | select(.type == "measurement") ]
-  | group_by(.name)
-  | map({
-      workload: .[0].name,
-      trial_count: length,
-      median_trial_p50_ns: ([.[].p50_ns] | median),
-      median_trial_p95_ns: ([.[].p95_ns] | median),
-      median_trial_p99_ns: ([.[].p99_ns] | median),
-      median_trial_mean_ns: ([.[].mean_ns] | median),
-      minimum_observed_trial_p95_ns: ([.[].p95_ns] | min),
-      maximum_observed_trial_p95_ns: ([.[].p95_ns] | max),
-      p95_trial_spread_ns: (([.[].p95_ns] | max) - ([.[].p95_ns] | min))
-    })
-' "\${trial_files[@]}" > "$output_dir/aggregate.json"
-
+jq -s --argjson expected_trials "$trials" -f benchmarks/ouroboros/aggregate.jq "${trial_files[@]}" > "$output_dir/aggregate.json"
+jq -e --argjson expected "$trials" '
+  length == 10 and all(.[]; .trial_count == $expected)
+' "$output_dir/aggregate.json" >/dev/null
 (
   cd "$output_dir"
   sha256sum manifest.json aggregate.json trial-*.jsonl > SHA256SUMS
