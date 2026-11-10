@@ -434,7 +434,7 @@ mod tests {
             first.receipt.image.pixel_digest,
             *blake3::hash(&first.pixels).as_bytes()
         );
-        assert_eq!(first.bundle_bytes.len(), 418);
+        assert_eq!(first.bundle_bytes.len(), 463);
         assert_eq!(
             first.checkpoint_bytes.len(),
             first.receipt.checkpoint.byte_length as usize
