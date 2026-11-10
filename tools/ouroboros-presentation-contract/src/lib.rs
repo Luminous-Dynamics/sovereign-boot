@@ -634,8 +634,8 @@ impl FrameReceipt {
                 }
             }
             PresentationStatus::Presented => {
-                if self.evidence_level < EvidenceLevel::CompositorFeedback
-                    || self.presentation_source.is_none()
+                if self.evidence_level != EvidenceLevel::CompositorFeedback
+                    || self.presentation_source != Some(PresentationSource::WaylandPresentationTimeV2)
                     || self.presentation.is_none()
                     || self.presentation.map(|value| value.source) != self.presentation_source
                 {
@@ -643,8 +643,8 @@ impl FrameReceipt {
                 }
             }
             PresentationStatus::Discarded => {
-                if self.evidence_level < EvidenceLevel::CompositorFeedback
-                    || self.presentation_source.is_none()
+                if self.evidence_level != EvidenceLevel::CompositorFeedback
+                    || self.presentation_source != Some(PresentationSource::WaylandPresentationTimeV2)
                     || self.presentation.is_some()
                 {
                     return Err(ContractError::UnsupportedPresentationClaim);
@@ -1229,6 +1229,48 @@ mod tests {
         frame.presentation = Some(observation);
         frame.validate().unwrap();
         assert_eq!(frame.evidence_level, EvidenceLevel::CompositorFeedback);
+    }
+
+    #[test]
+    fn wayland_source_cannot_claim_hardware_or_external_instrument_evidence() {
+        let observation = WaylandPresentedEvent {
+            seconds_hi: 0,
+            seconds_lo: 1,
+            nanoseconds: 2,
+            refresh_interval_ns: 0,
+            sequence_hi: 0,
+            sequence_lo: 0,
+            flags: WAYLAND_PRESENTATION_HW_CLOCK | WAYLAND_PRESENTATION_HW_COMPLETION,
+        }
+        .into_observation(1, None)
+        .unwrap();
+        for level in [EvidenceLevel::HardwareObserved, EvidenceLevel::ExternalInstrument] {
+            let mut frame = receipt(
+                1,
+                1,
+                PresentationStatus::Presented,
+                level,
+                None,
+            );
+            frame.presentation_source = Some(PresentationSource::WaylandPresentationTimeV2);
+            frame.presentation = Some(observation);
+            assert_eq!(
+                frame.validate(),
+                Err(ContractError::UnsupportedPresentationClaim)
+            );
+        }
+        let mut discarded = receipt(
+            2,
+            1,
+            PresentationStatus::Discarded,
+            EvidenceLevel::ExternalInstrument,
+            None,
+        );
+        discarded.presentation_source = Some(PresentationSource::WaylandPresentationTimeV2);
+        assert_eq!(
+            discarded.validate(),
+            Err(ContractError::UnsupportedPresentationClaim)
+        );
     }
 
     #[test]
