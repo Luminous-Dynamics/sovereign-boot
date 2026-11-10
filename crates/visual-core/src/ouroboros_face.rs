@@ -129,73 +129,8 @@ impl OuroborosFaceMesh {
             .validate(scene)
             .map_err(OuroborosFaceMeshError::InvalidLandmarks)?;
 
-        let (vertex_count, index_count, _) = face_resource_estimate(config)?;
-        if vertex_count > MAX_FACE_VERTICES || index_count > MAX_FACE_INDICES {
-            return Err(OuroborosFaceMeshError::SizeLimitExceeded);
-        }
-
-        let mut vertices = Vec::new();
-        vertices
-            .try_reserve_exact(vertex_count)
-            .map_err(|_| OuroborosFaceMeshError::AllocationFailed)?;
-        let mut indices = Vec::new();
-        indices
-            .try_reserve_exact(index_count)
-            .map_err(|_| OuroborosFaceMeshError::AllocationFailed)?;
-
         let radius = scene.config().major_radius;
-        let forward = landmarks.forward;
-        let lateral = landmarks.lateral;
-        let up = landmarks.up;
-
-        // The shell is intentionally restrained. Feature volumes remain
-        // independently addressable and are attached through the landmarks.
-        append_ellipsoid(
-            &mut vertices,
-            &mut indices,
-            config,
-            point(landmarks.head_anchor, forward, lateral, up, 0.030 * radius, 0.0, 0.0),
-            [forward, lateral, up],
-            [0.120 * radius, 0.060 * radius, 0.110 * radius],
-            FACE_REGION_HEAD,
-        )?;
-        append_ellipsoid(
-            &mut vertices,
-            &mut indices,
-            config,
-            landmarks.left_eye,
-            [forward, lateral, up],
-            [0.016 * radius, 0.018 * radius, 0.014 * radius],
-            FACE_REGION_LEFT_EYE,
-        )?;
-        append_ellipsoid(
-            &mut vertices,
-            &mut indices,
-            config,
-            landmarks.right_eye,
-            [forward, lateral, up],
-            [0.016 * radius, 0.018 * radius, 0.014 * radius],
-            FACE_REGION_RIGHT_EYE,
-        )?;
-        let nose_center = sub(landmarks.nose_tip, scale(forward, 0.020 * radius));
-        append_ellipsoid(
-            &mut vertices,
-            &mut indices,
-            config,
-            nose_center,
-            [forward, lateral, up],
-            [0.020 * radius, 0.014 * radius, 0.018 * radius],
-            FACE_REGION_NOSE,
-        )?;
-        append_ellipsoid(
-            &mut vertices,
-            &mut indices,
-            config,
-            landmarks.mouth_center,
-            [forward, lateral, up],
-            [0.008 * radius, 0.035 * radius, 0.006 * radius],
-            FACE_REGION_MOUTH,
-        )?;
+        let (vertices, indices) = generate_face_geometry(landmarks, config, radius)?;
 
         let mesh = Self {
             vertices,
@@ -228,6 +163,19 @@ impl OuroborosFaceMesh {
             || self.vertices.len() != expected_vertices
             || self.indices.len() != expected_indices
         {
+            return Err(OuroborosFaceMeshError::InvalidGeneratedGeometry);
+        }
+
+        // Public mesh fields are mutable. Regenerate the canonical parameter
+        // surface and compare every vertex/index before treating this artifact
+        // as validated; counts and outward normals alone do not prove that the
+        // geometry still follows its semantic landmark attachments.
+        let (expected_vertices_data, expected_indices_data) = generate_face_geometry(
+            self.landmarks,
+            self.config,
+            self.source_major_radius,
+        )?;
+        if self.vertices != expected_vertices_data || self.indices != expected_indices_data {
             return Err(OuroborosFaceMeshError::InvalidGeneratedGeometry);
         }
 
@@ -336,6 +284,86 @@ impl OuroborosFaceMesh {
             digest: *blake3::hash(&bytes).as_bytes(),
         })
     }
+}
+
+fn generate_face_geometry(
+    landmarks: OuroborosLandmarks,
+    config: OuroborosFaceMeshConfig,
+    radius: f32,
+) -> Result<(Vec<OuroborosFaceVertex>, Vec<u32>), OuroborosFaceMeshError> {
+    config.validate()?;
+    if !radius.is_finite() || !(0.1..=0.45).contains(&radius) {
+        return Err(OuroborosFaceMeshError::InvalidGeneratedGeometry);
+    }
+
+    let (vertex_count, index_count, _) = face_resource_estimate(config)?;
+    if vertex_count > MAX_FACE_VERTICES || index_count > MAX_FACE_INDICES {
+        return Err(OuroborosFaceMeshError::SizeLimitExceeded);
+    }
+
+    let mut vertices = Vec::new();
+    vertices
+        .try_reserve_exact(vertex_count)
+        .map_err(|_| OuroborosFaceMeshError::AllocationFailed)?;
+    let mut indices = Vec::new();
+    indices
+        .try_reserve_exact(index_count)
+        .map_err(|_| OuroborosFaceMeshError::AllocationFailed)?;
+
+    let forward = landmarks.forward;
+    let lateral = landmarks.lateral;
+    let up = landmarks.up;
+
+    // The shell is intentionally restrained. Feature volumes remain
+    // independently addressable and are attached through the landmarks.
+    append_ellipsoid(
+        &mut vertices,
+        &mut indices,
+        config,
+        point(landmarks.head_anchor, forward, lateral, up, 0.030 * radius, 0.0, 0.0),
+        [forward, lateral, up],
+        [0.120 * radius, 0.060 * radius, 0.110 * radius],
+        FACE_REGION_HEAD,
+    )?;
+    append_ellipsoid(
+        &mut vertices,
+        &mut indices,
+        config,
+        landmarks.left_eye,
+        [forward, lateral, up],
+        [0.016 * radius, 0.018 * radius, 0.014 * radius],
+        FACE_REGION_LEFT_EYE,
+    )?;
+    append_ellipsoid(
+        &mut vertices,
+        &mut indices,
+        config,
+        landmarks.right_eye,
+        [forward, lateral, up],
+        [0.016 * radius, 0.018 * radius, 0.014 * radius],
+        FACE_REGION_RIGHT_EYE,
+    )?;
+    let nose_center = sub(landmarks.nose_tip, scale(forward, 0.020 * radius));
+    append_ellipsoid(
+        &mut vertices,
+        &mut indices,
+        config,
+        nose_center,
+        [forward, lateral, up],
+        [0.020 * radius, 0.014 * radius, 0.018 * radius],
+        FACE_REGION_NOSE,
+    )?;
+    append_ellipsoid(
+        &mut vertices,
+        &mut indices,
+        config,
+        landmarks.mouth_center,
+        [forward, lateral, up],
+        [0.008 * radius, 0.035 * radius, 0.006 * radius],
+        FACE_REGION_MOUTH,
+    )?;
+
+    Ok((vertices, indices))
 }
 
 fn sphere_vertex_count(config: OuroborosFaceMeshConfig) -> Result<usize, OuroborosFaceMeshError> {
