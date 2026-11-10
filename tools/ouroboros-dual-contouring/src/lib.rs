@@ -138,6 +138,7 @@ pub struct DualContourMetrics {
     pub quad_count: u32,
     pub qef_centroid_fallback_count: u32,
     pub qef_clamped_vertex_count: u32,
+    pub finite_difference_gradient_fallback_count: u32,
     pub qef_residual_p50_nanounits: u64,
     pub qef_residual_p95_nanounits: u64,
     pub qef_residual_max_nanounits: u64,
@@ -209,7 +210,7 @@ impl DualContourMesh {
             .and_then(|v| v.checked_add(vertex_bytes))
             .and_then(|v| v.checked_add(quad_bytes))
             .and_then(|v| v.checked_add(triangle_bytes))
-            .and_then(|v| v.checked_add(4 * 4 + 5 * 8 + 4))
+            .and_then(|v| v.checked_add(5 * 4 + 5 * 8 + 4))
             .and_then(|v| v.checked_add(audit_bytes.len() as u64))
             .ok_or(ExtractError::SizeOverflow)?;
         if total > MAX_CANONICAL_RECEIPT_BYTES {
@@ -253,6 +254,7 @@ impl DualContourMesh {
         put_u32(&mut out, self.metrics.sign_changing_edge_count);
         put_u32(&mut out, self.metrics.qef_centroid_fallback_count);
         put_u32(&mut out, self.metrics.qef_clamped_vertex_count);
+        put_u32(&mut out, self.metrics.finite_difference_gradient_fallback_count);
         put_u64(&mut out, self.metrics.qef_residual_p50_nanounits);
         put_u64(&mut out, self.metrics.qef_residual_p95_nanounits);
         put_u64(&mut out, self.metrics.qef_residual_max_nanounits);
@@ -394,6 +396,7 @@ pub fn extract(
         .map_err(|_| ExtractError::AllocationFailed)?;
     let mut qef_centroid_fallback_count = 0_u32;
     let mut qef_clamped_vertex_count = 0_u32;
+    let mut finite_difference_gradient_fallback_count = 0_u32;
     let mut active_cell_count = 0_u32;
 
     let min = spec.minimum.map(canonical_coordinate);
@@ -485,6 +488,7 @@ pub fn extract(
                     let normal = if length3(interpolated)
                         <= config.gradient_epsilon_nanounits as f64 / NORMAL_QUANTIZATION
                     {
+                        finite_difference_gradient_fallback_count += 1;
                         axis_fallback_normal(grid_a, grid_b, va < 0)
                     } else {
                         normalize3(interpolated).ok_or(ExtractError::NonFiniteFieldGradient)?
@@ -658,6 +662,7 @@ pub fn extract(
         quad_count: u32::try_from(quads.len()).map_err(|_| ExtractError::SizeOverflow)?,
         qef_centroid_fallback_count,
         qef_clamped_vertex_count,
+        finite_difference_gradient_fallback_count,
         qef_residual_p50_nanounits: residual_quantile(&residuals, 50)?,
         qef_residual_p95_nanounits: residual_quantile(&residuals, 95)?,
         qef_residual_max_nanounits: residual_to_nanounits(*residuals.last().ok_or(ExtractError::NoSurfaceCrossings)?)?,
