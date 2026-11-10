@@ -1,4 +1,6 @@
 #![forbid(unsafe_code)]
+
+pub mod semantic_lod;
 //! Dependency-free conformance oracle for Ouroboros persistent identity and
 //! negotiated presentation quality.
 //!
