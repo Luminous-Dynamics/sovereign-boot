@@ -6,22 +6,22 @@ Tracking: [Issue #38](https://github.com/Luminous-Dynamics/sovereign-boot/issues
 Source baseline: PR #15 head `d5a7f877d71757db49e63ad1b1582a661f6e4ef2`  
 Workload manifest: [`workloads-v1.json`](workloads-v1.json)
 
-## Industry snapshot as of 2026-11-10
+## Industry snapshot as of 2026-11-10 (late-day release refresh)
 
 The desktop wallpaper category has moved quickly. Our comparison should reflect actual late-2026 capabilities, not stale competitor assumptions.
 
 | Runtime | Documented strengths | Where Ouroboros should compare |
 |---|---|---|
-| Waywallen 0.6.0 (8 Nov 2026) | Dynamic wallpaper manager, plugin discovery, hardware video, glTF scene rendering, per-display management and integrations across KDE/GNOME/wlroots/COSMIC | Desktop integration, display lifecycle, glTF path, multi-output and presentation overhead |
-| Fresco 1.1.53 (28 Oct 2026) | Video/GIF/image/slideshow/playlist, VA-API/NVDEC, power-saving, pause policies, multi-monitor and widgets | Hardware decode, marginal energy, hidden/visible power-state behavior |
+| Waywallen 0.6.0 (upstream 8 Nov; Flathub package updated 9 Nov 2026) | Dynamic wallpaper manager, plugin discovery, hardware video, glTF scene rendering, per-display management and integrations across KDE/GNOME/wlroots/COSMIC | Desktop integration, display lifecycle, glTF path, multi-output and presentation overhead |
+| Fresco 1.1.54 (1 Nov 2026; latest release found) | Video/GIF/image/slideshow/playlist, VA-API/NVDEC, power-saving, pause policies, multi-monitor and widgets; 1.1.54 fixed GNOME X11 wallpaper window stacking and relaxed several Deepin package dependencies | Hardware decode, marginal energy, hidden/visible power-state behavior |
 | OpenWallpaper | WASM programmable scenes, Wallpaper Engine scene conversion, media, multi-monitor and auto-pause; auto-pause documented as desktop-environment-dependent | Programmable scene startup, WASM portability, scene runtime and pause behavior |
 | Wallpaper Engine KDE active continuation | Plasma 6/Qt 6 scene/web/video playback with a custom Vulkan scene renderer | 3D scene rendering, memory and presentation cadence on a matched asset |
 | Ouroboros | Persistent semantic entity, C1 morphing, portable checkpoints, semantic landmarks and content-addressed evidence; CPU reference renderer only | Cross-form identity, state portability, semantic LOD and proof-bearing presentation |
 
 Sources:
-- [Waywallen 0.6.0 release history](https://flathubupdates.popey.com/app/org.waywallen.waywallen) and [upstream repository](https://github.com/waywallen/waywallen)
+- [Waywallen 0.6.0 release history and Flathub publication](https://flathubupdates.popey.com/app/org.waywallen.waywallen) and [upstream repository](https://github.com/waywallen/waywallen)
 - [Waywallen display adapter](https://github.com/waywallen/waywallen-display)
-- [Fresco implementation and performance section](https://github.com/DibbayajyotiRoy/Fresco)
+- [Fresco 1.1.54 release history](https://github.com/DibbayajyotiRoy/Fresco/releases) and [implementation/performance section](https://github.com/DibbayajyotiRoy/Fresco)
 - [OpenWallpaper](https://openwallpaper.org/)
 - [Wallpaper Engine KDE active continuation](https://github.com/CaptSilver/wallpaper-engine-kde-plugin)
 
@@ -29,7 +29,7 @@ Pin exact release commits and driver/runtime versions at test time. Feature desc
 
 ## External power reference: Fresco
 
-Fresco documents measurements by an external contributor using `turbostat` on an Intel N150, Deepin 25 and VA-API, with two runs per setting:
+Fresco 1.1.53's performance section documents measurements by an external contributor using `turbostat` on an Intel N150, Deepin 25 and VA-API, with two runs per setting. Fresco 1.1.54 (released 1 Nov 2026) is newer; the measurement table below is still the 1.1.53-published reference, not a claim that 1.1.54 re-ran the experiment:
 
 | Video | Power mode | GPU power | Total package power |
 |---|---|---:|---:|
