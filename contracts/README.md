@@ -20,6 +20,11 @@ collision-resistant cryptographic authentication.
 The positive manifest is the existing byte-pinned
 `tests/fixtures/first-germination.scene.json`.
 
+The schema's memory-budget property is spelled exactly `maxMemoryMiB` (uppercase
+`MiB`). The Rust field uses an explicit Serde rename rather than relying on
+`camelCase` inference from `max_memory_mib`; a regression test checks both the
+canonical spelling and rejection of the noncanonical `maxMemoryMib` variant.
+
 The Python validator checks standard JSON Schema validity and cross-field /
 package invariants. The Rust parser has a separate test that applies the shared
 negative fixtures (except the valid-but-adapter-unsupported GPU capability case)

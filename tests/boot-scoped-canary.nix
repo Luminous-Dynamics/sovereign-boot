@@ -2,6 +2,12 @@
 let
   fakeRenderer = pkgs.writeShellScriptBin "quicken-fb" ''
     set -euo pipefail
+    for utility in readlink sleep; do
+      if ! command -v "$utility" >/dev/null 2>&1; then
+        echo "fake quicken-fb: missing runtime utility: $utility (PATH=$PATH)" >&2
+        exit 127
+      fi
+    done
     [[ "$(< /sys/class/tty/tty0/active)" == "tty1" ]]
     [[ "$(readlink /proc/self/fd/0)" == "/dev/tty1" ]]
     is_probe=0
@@ -111,6 +117,19 @@ in
     result = machine.succeed(
         "cat /var/lib/sovereign-boot/physical-canary.result"
     )
+    if "status=PASS" not in result:
+        print("physical-canary service status:")
+        print(
+            machine.succeed(
+                "systemctl status sovereign-boot-physical-canary.service --no-pager --full || true"
+            )
+        )
+        print("physical-canary service journal:")
+        print(
+            machine.succeed(
+                "journalctl -b -u sovereign-boot-physical-canary.service --no-pager -o cat || true"
+            )
+        )
     assert "status=PASS" in result, result
     assert "device=/dev/dri/card99" in result, result
     assert "seconds=1" in result, result
@@ -160,7 +179,7 @@ in
     assert "ConditionPathExists=/var/lib/sovereign-boot/physical-canary.request" in unit
     assert "StandardInput=tty-fail" in unit
     assert "TTYPath=/dev/tty1" in unit
-    assert "Before=display-manager.service" in unit
+    assert "Before=display-manager.service" in unit, unit
     assert "Before=getty@tty1.service" in unit
     assert "Conflicts=display-manager.service" in unit
     assert "Conflicts=getty@tty1.service" in unit

@@ -286,6 +286,7 @@ pub struct SceneAccessibility {
 pub struct SceneResourceBudget {
     pub max_fps: u32,
     pub max_branches: u32,
+    #[serde(rename = "maxMemoryMiB")]
     pub max_memory_mib: u32,
     pub pause_when_hidden: bool,
     pub pause_when_display_asleep: bool,
@@ -1251,6 +1252,19 @@ mod tests {
         );
         assert!(matches!(
             parse_scene_pack_v1(unknown.as_bytes()),
+            Err(ScenePackError::SchemaViolation(_))
+        ));
+    }
+
+    #[test]
+    fn scene_pack_memory_budget_uses_schema_defined_mib_acronym() {
+        assert!(FIXTURE.contains("\"maxMemoryMiB\": 128"));
+        let parsed = parse_scene_pack_v1(FIXTURE.as_bytes()).unwrap();
+        assert_eq!(parsed.resource_budget().max_memory_mib, 128);
+
+        let legacy_spelling = FIXTURE.replace("maxMemoryMiB", "maxMemoryMib");
+        assert!(matches!(
+            parse_scene_pack_v1(legacy_spelling.as_bytes()),
             Err(ScenePackError::SchemaViolation(_))
         ));
     }

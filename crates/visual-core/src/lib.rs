@@ -6,5 +6,11 @@
 pub mod color;
 pub mod contract;
 pub mod mycelium;
+pub mod ouroboros;
+pub mod ouroboros_evidence;
+pub mod ouroboros_face;
+pub mod ouroboros_mesh;
+pub mod ouroboros_render;
+pub mod ouroboros_trace;
 
 pub mod settings;

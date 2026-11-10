@@ -35,6 +35,14 @@ jobs:
       - name: Standalone contract
         run: bash tests/standalone-contract.sh
 
+      - name: Check benchmark driver and aggregation smoke syntax
+        run: |
+          bash -n scripts/benchmark-ouroboros-linux.sh
+          bash -n tests/benchmark-aggregate-smoke.sh
+
+      - name: Verify independent-trial percentile aggregation
+        run: bash tests/benchmark-aggregate-smoke.sh
+
       - name: Format
         run: cargo +1.96.0 fmt --all -- --check
 
@@ -55,6 +63,36 @@ jobs:
 
       - name: Test
         run: cargo +1.96.0 test --workspace --locked
+
+      - name: Build Ouroboros CPU qualification harness
+        run: cargo +1.96.0 build --release --locked -p sovereign-visual-core --example ouroboros-benchmark
+
+      - name: Smoke-run and validate Ouroboros benchmark JSONL
+        env:
+          BENCH_SOURCE_REV: ${{ github.sha }}
+          BENCH_RUST_TOOLCHAIN: rustc-1.96.0
+          BENCH_CPU_MODEL: hosted-runner-not-a-comparison-baseline
+        run: |
+          cargo +1.96.0 run --release --locked -p sovereign-visual-core --example ouroboros-benchmark -- --iterations 3 --warmup 1 > "$RUNNER_TEMP/ouroboros-benchmark.jsonl"
+          jq -e -s '
+            length == 12 and
+            .[0].type == "metadata" and
+            .[0].schema == "luminous-ouroboros-cpu-benchmark-v2" and
+            (.[1:] | all(.[]; .type == "measurement" and .iterations == 3 and .p95_ns >= .p50_ns and .p99_ns >= .p95_ns)) and
+            (.[1:] | map(.name) | sort) == [
+              "checkpoint_encode_decode",
+              "cpu_reference_capture_320",
+              "face_mesh_build_validate",
+              "loop_control",
+              "mesh_build_validate",
+              "mesh_lod_planning",
+              "sealed_evidence_capture_128",
+              "scene_advance_60hz",
+              "scene_retarget_1hz_at_60fps",
+              "semantic_landmarks",
+              "trace_decode_replay"
+            ]
+          ' "$RUNNER_TEMP/ouroboros-benchmark.jsonl" > /dev/null
 
       - name: Build browser WASM adapter
         run: cargo +1.96.0 build -p sovereign-visual-wasm --target wasm32-unknown-unknown --features web --release --locked

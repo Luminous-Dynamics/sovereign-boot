@@ -1,0 +1,16 @@
+[plugin]
+id = "org.luminous-dynamics.ouroboros"
+name = "Ouroboros"
+version = "0.1.0"
+
+[renderers.luminous-ouroboros]
+bin = "../../../../bin/luminous-ouroboros-renderer"
+types = ["ouroboros"]
+priority = 100
+activity = "continuous"
+spawn_version = 10
+
+[renderers.luminous-ouroboros.settings]
+fps = { type = "u32", default = 60, min = 1, max = 120, step = 1, identity = true }
+quality = { type = "string", default = "balanced", choices = ["economy", "balanced", "cinematic"], identity = false }
+motion = { type = "string", default = "balanced", choices = ["reduced", "low_power", "balanced", "cinematic"], identity = false }

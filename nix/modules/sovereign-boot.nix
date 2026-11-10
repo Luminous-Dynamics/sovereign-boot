@@ -47,6 +47,12 @@ let
     # System services do not inherit an interactive shell PATH. Keep every
     # external utility used by this post-stop path pinned to the Nix store.
     export PATH="${lib.makeBinPath [ pkgs.coreutils pkgs.gnugrep pkgs.gnused ]}"
+    for utility in mktemp chmod cat mv rm mkdir sha256sum cut date; do
+      if ! command -v "$utility" >/dev/null 2>&1; then
+        echo "sovereign-boot: required canary utility missing from runtime PATH: $utility" >&2
+        exit 127
+      fi
+    done
 
     request=${lib.escapeShellArg canaryRequest}
     inflight="$request.inflight"
@@ -80,6 +86,10 @@ let
     device="$(${pkgs.gnused}/bin/sed -n 's/^device=//p' "$inflight")"
     armed_at_unix_s="$(${pkgs.gnused}/bin/sed -n 's/^armed_at_unix_s=//p' "$inflight")"
     result_request_id=""
+    runner_output_first_line=""
+    if [[ -s "${canaryOutput}" ]]; then
+      runner_output_first_line="$(${pkgs.coreutils}/bin/head -n 1 "${canaryOutput}")"
+    fi
     if [[ -e "$result" ]]; then
       result_request_id="$(${pkgs.gnused}/bin/sed -n 's/^request_id=//p' "$result")"
     fi
@@ -106,8 +116,8 @@ let
       *) status="FAIL_SERVICE_ABORTED" ;;
     esac
 
-    printf 'status=%s\nboot_id=%s\nrequest_id=%s\narmed_at_unix_s=%s\ndevice=%s\nservice_result=%s\nexit_code=%s\nexit_status=%s\n' \
-      "$status" "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$armed_at_unix_s" "$device" "''${SERVICE_RESULT:-unknown}" "''${EXIT_CODE:-unknown}" "''${EXIT_STATUS:-unknown}" | write_atomic "$result"
+    printf 'status=%s\nboot_id=%s\nrequest_id=%s\narmed_at_unix_s=%s\ndevice=%s\nservice_result=%s\nexit_code=%s\nexit_status=%s\nrunner_output_first_line=%s\n' \
+      "$status" "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$armed_at_unix_s" "$device" "''${SERVICE_RESULT:-unknown}" "''${EXIT_CODE:-unknown}" "''${EXIT_STATUS:-unknown}" "$runner_output_first_line" | write_atomic "$result"
 
     if [[ "$request_id" =~ ^[0-9a-f]{32}$ ]]; then
       mkdir -p "$archive_dir"
@@ -126,6 +136,12 @@ let
     # This runs before the display manager with a deliberately strict systemd
     # sandbox. Never depend on the ambient manager PATH for shell utilities.
     export PATH="${lib.makeBinPath [ pkgs.coreutils pkgs.gnugrep pkgs.gnused ]}"
+    for utility in mktemp chmod cat mv rm mkdir head; do
+      if ! command -v "$utility" >/dev/null 2>&1; then
+        echo "sovereign-boot: required post-stop utility missing from runtime PATH: $utility" >&2
+        exit 127
+      fi
+    done
 
     request=${lib.escapeShellArg canaryRequest}
     inflight="$request.inflight"
@@ -142,6 +158,16 @@ let
       tmp="$(mktemp "$target.tmp.XXXXXX")"
       chmod 0600 "$tmp"
       cat >"$tmp"
+      mv -f "$tmp" "$target"
+    }
+
+    copy_atomic() {
+      local source="$1"
+      local target="$2"
+      local tmp
+      tmp="$(mktemp "$target.tmp.XXXXXX")"
+      chmod 0600 "$tmp"
+      cat "$source" >"$tmp"
       mv -f "$tmp" "$target"
     }
 
@@ -305,7 +331,7 @@ let
     if [[ -n "$restore_receipt" ]]; then
       restore_sha="$(printf '%s\n' "$restore_receipt" | sha256sum | cut -d' ' -f1)"
     fi
-    printf 'status=%s\nboot_id=%s\nrequest_id=%s\narmed_at_unix_s=%s\nexpires_at_unix_s=%s\ndevice=%s\nseconds=%s\nexit_code=%s\nartifact_sha256=%s\npreboot_probe_sha256=%s\nboot_probe_sha256=%s\nrenderer_output_sha256=%s\nrestore_receipt_sha256=%s\n' \
+    printf 'status=%s\nboot_id=%s\nrequest_id=%s\narmed_at_unix_s=%s\nexpires_at_unix_s=%s\ndevice=%s\nseconds=%s\nexit_code=%s\nartifact_sha256=%s\npreboot_probe_sha256=%s\npreboot_probe_actual_sha256=%s\nboot_probe_sha256=%s\nrenderer_output_sha256=%s\nrestore_receipt_sha256=%s\n' \
       "$status" "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$armed_at_unix_s" "$expires_at_unix_s" "$device" "$seconds" "$rc" "$actual_sha" "$preboot_probe_sha" "$preboot_probe_actual_sha" "$probe_sha" "$output_sha" "$restore_sha" | write_atomic "$result"
     mkdir -p "$archive_dir"
     if [[ -e "$archive_dir/$request_id.request" || -e "$archive_dir/$request_id.result" || -e "$archive_dir/$request_id.probe" || -e "$archive_dir/$request_id.output" || -e "$archive_dir/$request_id.preboot-probe" ]]; then
@@ -389,7 +415,7 @@ in
     ];
 
     systemd.services.sovereign-boot-physical-canary = {
-      description = "Sovereign Boot one-shot physical DRM/KMS canary";
+    description = "Sovereign Boot one-shot physical DRM/KMS canary";
       wantedBy = [ "multi-user.target" ];
       before = [
         "display-manager.service"
