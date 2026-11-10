@@ -807,6 +807,29 @@ mod tests {
     }
 
     #[test]
+    fn coincident_closed_components_do_not_claim_self_intersection_was_checked() {
+        let a = tetrahedron();
+        let b = tetrahedron();
+        let offset = a.vertices.len() as u32;
+        let mut mesh = a.clone();
+        mesh.vertices.extend(b.vertices);
+        mesh.vertex_feature_masks.extend(b.vertex_feature_masks);
+        mesh.faces.extend(
+            b.faces
+                .into_iter()
+                .map(|face| face.map(|index| index + offset)),
+        );
+        mesh.face_region_ids.extend(b.face_region_ids);
+        let report = audit_mesh(&mesh, AuditLimits::default()).unwrap();
+        assert_eq!(report.checks.topology_manifold, CheckStatus::Pass);
+        assert_eq!(report.checks.closed_surface, CheckStatus::Pass);
+        assert_eq!(report.checks.orientation_consistency, CheckStatus::Pass);
+        assert_eq!(report.components.len(), 2);
+        assert_eq!(report.coincident_position_group_count, 4);
+        assert_eq!(report.checks.self_intersections, CheckStatus::NotEvaluated);
+    }
+
+    #[test]
     fn open_disk_is_manifold_but_not_closed() {
         let report = audit_mesh(&open_disk(), AuditLimits::default()).unwrap();
         assert_eq!(report.checks.topology_manifold, CheckStatus::Pass);
