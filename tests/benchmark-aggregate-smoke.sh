@@ -10,6 +10,7 @@ trap 'rm -rf "$tmp"' EXIT
 workloads='[
   "checkpoint_encode_decode",
   "cpu_reference_capture_320",
+  "face_mesh_build_validate",
   "loop_control",
   "mesh_build_validate",
   "mesh_lod_planning",
@@ -40,7 +41,7 @@ jq -s --argjson expected_trials 2 -f benchmarks/ouroboros/aggregate.jq \
   "$tmp/trial-1.jsonl" "$tmp/trial-2.jsonl" > "$tmp/aggregate.json"
 
 jq -e '
-  length == 10
+  length == 11
   and all(.[]; .trial_count == 2)
   and all(.[]; .median_trial_p50_ns == 65)
   and all(.[]; .median_trial_p95_ns == 130)
@@ -48,4 +49,4 @@ jq -e '
   and all(.[]; .p95_trial_spread_ns == 20)
 ' "$tmp/aggregate.json" > /dev/null
 
-echo "ouroboros-benchmark-aggregate: PASS (10 workloads, 2 independent trials)"
+echo "ouroboros-benchmark-aggregate: PASS (11 workloads, 2 independent trials)"
