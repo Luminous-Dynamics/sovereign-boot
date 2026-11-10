@@ -1,0 +1,146 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "ouroboros-face-skin-v1",
+  "sourceCommit": "d5a7f877d71757db49e63ad1b1582a661f6e4ef2",
+  "field": {
+    "estimator": "IQ-style approximate ellipsoid distance",
+    "exactEuclideanSdf": false,
+    "composition": "polynomial smooth-min",
+    "smoothUnionWidth": 0.004,
+    "signConvention": "negative-inside-positive-outside",
+    "quantization": "round to signed int32 microunits; scale=1000000"
+  },
+  "referenceImplementation": {
+    "language": "Python",
+    "version": "3.13.5",
+    "arithmetic": "IEEE-754 float64",
+    "note": "Probe values are reference outputs for formula/quantization parity; they are not exact geometric distances."
+  },
+  "probes": [
+    {
+      "id": "head_center",
+      "point": [
+        0.03,
+        0,
+        0
+      ],
+      "headApprox": -0.06,
+      "noseApprox": 0.11009511811638238,
+      "union": -0.06,
+      "quantizedMicrounits": -60000
+    },
+    {
+      "id": "nose_center",
+      "point": [
+        0.16,
+        0,
+        0.005
+      ],
+      "headApprox": 0.010112691782826163,
+      "noseApprox": -0.014,
+      "union": -0.014,
+      "quantizedMicrounits": -14000
+    },
+    {
+      "id": "nose_forward_tip",
+      "point": [
+        0.18,
+        0,
+        0.005
+      ],
+      "headApprox": 0.03009536380334549,
+      "noseApprox": -1.1102230246251566e-17,
+      "union": -1.1102230246251566e-17,
+      "quantizedMicrounits": 0
+    },
+    {
+      "id": "nose_lateral_boundary",
+      "point": [
+        0.16,
+        0.014,
+        0.005
+      ],
+      "headApprox": 0.012300031127677838,
+      "noseApprox": 0,
+      "union": 0,
+      "quantizedMicrounits": 0
+    },
+    {
+      "id": "between_head_nose",
+      "point": [
+        0.12,
+        0,
+        0
+      ],
+      "headApprox": -0.03,
+      "noseApprox": 0.020338865390789773,
+      "union": -0.03,
+      "quantizedMicrounits": -30000
+    },
+    {
+      "id": "outside_forward",
+      "point": [
+        0.24,
+        0,
+        0
+      ],
+      "headApprox": 0.09,
+      "noseApprox": 0.060158815900009335,
+      "union": 0.060158815900009335,
+      "quantizedMicrounits": 60159
+    },
+    {
+      "id": "above_head",
+      "point": [
+        0.03,
+        0,
+        0.13
+      ],
+      "headApprox": 0.020000000000000007,
+      "noseApprox": 0.1604988754108155,
+      "union": 0.020000000000000007,
+      "quantizedMicrounits": 20000
+    },
+    {
+      "id": "behind_head",
+      "point": [
+        -0.12,
+        0,
+        0
+      ],
+      "headApprox": 0.029999999999999995,
+      "noseApprox": 0.26004310753910415,
+      "union": 0.029999999999999995,
+      "quantizedMicrounits": 30000
+    },
+    {
+      "id": "left_eye_center",
+      "point": [
+        0.06,
+        -0.05,
+        0.02
+      ],
+      "headApprox": -0.0069879805371433346,
+      "noseApprox": 0.08953835428435997,
+      "union": -0.0069879805371433346,
+      "quantizedMicrounits": -6988
+    },
+    {
+      "id": "mouth_center",
+      "point": [
+        0.14,
+        0,
+        -0.035
+      ],
+      "headApprox": -0.003525961925664557,
+      "noseApprox": 0.026287386763192876,
+      "union": -0.003525961925664557,
+      "quantizedMicrounits": -3526
+    }
+  ],
+  "nonClaims": [
+    "not an exact ellipsoid Euclidean distance",
+    "not a mesh-reconstruction error metric",
+    "not a human or anatomical face-quality evaluation"
+  ]
+}
