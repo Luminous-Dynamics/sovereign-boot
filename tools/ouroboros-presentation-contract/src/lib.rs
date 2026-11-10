@@ -1486,7 +1486,6 @@ mod tests {
             EvidenceLevel::CompositorFeedback,
             Some(10),
         );
-        first.presentation_clock_id = None;
         first.presentation.as_mut().unwrap().clock_id = 1;
         guard.observe(&first).unwrap();
 
@@ -1497,7 +1496,6 @@ mod tests {
             EvidenceLevel::CompositorFeedback,
             Some(20),
         );
-        changed_clock.presentation_clock_id = None;
         changed_clock.presentation.as_mut().unwrap().clock_id = 2;
         assert_eq!(
             guard.observe(&changed_clock),
