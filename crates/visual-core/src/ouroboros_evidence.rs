@@ -14,6 +14,7 @@ use crate::{
         OuroborosCheckpointError, OuroborosCheckpointReceipt, OuroborosLandmarkError,
         OuroborosLandmarkReceipt, OuroborosLandmarks,
     },
+    ouroboros_face::{OuroborosFaceMesh, OuroborosFaceMeshConfig, OuroborosFaceMeshError, OuroborosFaceMeshReceipt},
     ouroboros_mesh::{
         OuroborosMesh, OuroborosMeshBudget, OuroborosMeshConfig, OuroborosMeshError,
         OuroborosMeshPlan, OuroborosMeshReceipt, OuroborosQualityTier,
@@ -22,8 +23,8 @@ use crate::{
     ouroboros_trace::{OuroborosTrace, ReplayReceipt, TraceError},
 };
 
-const EVIDENCE_MAGIC: [u8; 8] = *b"OUROEVB2";
-const EVIDENCE_VERSION: u16 = 2;
+const EVIDENCE_MAGIC: [u8; 8] = *b"OUROEVB3";
+const EVIDENCE_VERSION: u16 = 3;
 
 /// Failure while assembling a canonical visual-evidence bundle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,6 +34,7 @@ pub enum OuroborosEvidenceError {
     Render(OuroborosRenderError),
     Checkpoint(OuroborosCheckpointError),
     Landmarks(OuroborosLandmarkError),
+    Face(OuroborosFaceMeshError),
     InvalidPlan,
     SizeOverflow,
 }
@@ -49,6 +51,7 @@ impl fmt::Display for OuroborosEvidenceError {
             Self::Landmarks(error) => {
                 write!(f, "Ouroboros evidence landmarks failed validation: {error}")
             }
+            Self::Face(error) => write!(f, "Ouroboros evidence face mesh failed: {error}"),
             Self::InvalidPlan => write!(f, "Ouroboros evidence mesh plan is inconsistent"),
             Self::SizeOverflow => write!(f, "Ouroboros evidence size arithmetic overflowed"),
         }
@@ -87,6 +90,12 @@ impl From<OuroborosLandmarkError> for OuroborosEvidenceError {
     }
 }
 
+impl From<OuroborosFaceMeshError> for OuroborosEvidenceError {
+    fn from(value: OuroborosFaceMeshError) -> Self {
+        Self::Face(value)
+    }
+}
+
 /// One machine-readable root over all deterministic CPU evidence artifacts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OuroborosEvidenceReceipt {
@@ -95,6 +104,7 @@ pub struct OuroborosEvidenceReceipt {
     pub replay: ReplayReceipt,
     pub checkpoint: OuroborosCheckpointReceipt,
     pub landmarks: OuroborosLandmarkReceipt,
+    pub face: OuroborosFaceMeshReceipt,
     pub mesh: OuroborosMeshReceipt,
     pub image: ReferenceImageReceipt,
     pub host_budget: OuroborosMeshBudget,
@@ -118,6 +128,7 @@ pub struct OuroborosEvidenceArtifact {
     pub trace_bytes: Vec<u8>,
     pub checkpoint_bytes: Vec<u8>,
     pub landmarks: OuroborosLandmarks,
+    pub face_mesh: OuroborosFaceMesh,
     pub mesh: OuroborosMesh,
     pub pixels: Vec<u8>,
     pub bundle_bytes: Vec<u8>,
@@ -144,6 +155,12 @@ pub fn capture_ouroboros_evidence(
     let landmarks = replay.scene.landmarks();
     landmarks.validate(&replay.scene)?;
     let landmark_receipt = landmarks.receipt();
+    let (face_mesh, face_receipt) = OuroborosFaceMesh::build(
+        &replay.scene,
+        landmarks,
+        OuroborosFaceMeshConfig::default(),
+    )?;
+    face_mesh.validate(&replay.scene)?;
     if checkpoint_bytes.len() > u16::MAX as usize {
         return Err(OuroborosEvidenceError::SizeOverflow);
     }
@@ -176,6 +193,7 @@ pub fn capture_ouroboros_evidence(
         replay.receipt,
         checkpoint_receipt,
         landmark_receipt,
+        face_receipt,
         mesh_receipt,
         image_receipt,
         plan,
@@ -186,6 +204,7 @@ pub fn capture_ouroboros_evidence(
         replay: replay.receipt,
         checkpoint: checkpoint_receipt,
         landmarks: landmark_receipt,
+        face: face_receipt,
         mesh: mesh_receipt,
         image: image_receipt,
         host_budget: plan.budget,
@@ -202,6 +221,7 @@ pub fn capture_ouroboros_evidence(
         trace_bytes,
         checkpoint_bytes,
         landmarks,
+        face_mesh,
         mesh,
         pixels,
         bundle_bytes,
@@ -238,6 +258,7 @@ fn encode_bundle(
     replay: ReplayReceipt,
     checkpoint: OuroborosCheckpointReceipt,
     landmarks: OuroborosLandmarkReceipt,
+    face: OuroborosFaceMeshReceipt,
     mesh: OuroborosMeshReceipt,
     image: ReferenceImageReceipt,
     plan: OuroborosMeshPlan,
@@ -262,6 +283,13 @@ fn encode_bundle(
     bytes.extend_from_slice(&landmarks.scene_contract_version.to_le_bytes());
     bytes.extend_from_slice(&landmarks.byte_length.to_le_bytes());
     bytes.extend_from_slice(&landmarks.digest);
+
+    bytes.extend_from_slice(&face.schema_version.to_le_bytes());
+    bytes.extend_from_slice(&face.scene_contract_version.to_le_bytes());
+    bytes.extend_from_slice(&face.landmark_digest);
+    bytes.extend_from_slice(&face.vertex_count.to_le_bytes());
+    bytes.extend_from_slice(&face.index_count.to_le_bytes());
+    bytes.extend_from_slice(&face.digest);
 
     bytes.extend_from_slice(&mesh.scene_contract_version.to_le_bytes());
     bytes.extend_from_slice(&mesh.vertex_count.to_le_bytes());
@@ -360,6 +388,8 @@ mod tests {
             first.receipt.landmarks.digest,
             *blake3::hash(&first.landmarks.canonical_bytes()).as_bytes()
         );
+        assert_eq!(first.receipt.face, first.face_mesh.receipt().unwrap());
+        assert_eq!(first.receipt.face.landmark_digest, first.receipt.landmarks.digest);
         assert_eq!(first.receipt.mesh.vertex_count, plan.vertex_count);
         assert_eq!(first.receipt.mesh.index_count, plan.index_count);
         assert_eq!(first.receipt.host_budget, plan.budget);
@@ -369,7 +399,7 @@ mod tests {
             first.receipt.image.pixel_digest,
             *blake3::hash(&first.pixels).as_bytes()
         );
-        assert_eq!(first.bundle_bytes.len(), 289);
+        assert_eq!(first.bundle_bytes.len(), 365);
         assert_eq!(
             first.checkpoint_bytes.len(),
             first.receipt.checkpoint.byte_length as usize
@@ -402,6 +432,7 @@ mod tests {
             posed.receipt.landmarks.digest
         );
         assert_eq!(baseline.receipt.mesh, posed.receipt.mesh);
+        assert_ne!(baseline.receipt.face.digest, posed.receipt.face.digest);
         assert_ne!(
             baseline.receipt.image.pixel_digest,
             posed.receipt.image.pixel_digest
