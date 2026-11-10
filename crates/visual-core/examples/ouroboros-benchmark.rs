@@ -219,25 +219,39 @@ fn run_benchmarks(options: Options) {
     let replayed_scene = trace.replay().expect("benchmark trace must replay").scene;
     let plan = make_plan(&replayed_scene);
     let base_scene = make_scene();
-    let mut animated_scene = make_scene();
-    animated_scene.transition_to(OuroborosForm::Digital);
+    let mut step_scene = make_scene();
+    step_scene.transition_to(OuroborosForm::Digital);
+    let mut retarget_scene = make_scene();
+    let mut retarget_steps = 0_u32;
 
     let mut measurements = Vec::new();
 
     measurements.push(measure("loop_control", options, || 1));
 
     measurements.push(measure("scene_advance_60hz", options, || {
-        animated_scene
+        step_scene
             .advance(1.0 / 60.0)
             .expect("60 Hz step is valid");
-        animated_scene.transition_to(
-            if animated_scene.frame().target_form == OuroborosForm::Digital {
-                OuroborosForm::Humanity
-            } else {
+        u64::from(step_scene.frame().transition_progress.to_bits())
+    }));
+
+    // A separate adversarial/interaction workload retargets once per second
+    // while the scene continues to step at 60 Hz. This prevents transition
+    // command cost from being conflated with the ordinary frame-step cost.
+    measurements.push(measure("scene_retarget_1hz_at_60fps", options, || {
+        if retarget_steps.is_multiple_of(60) {
+            let target = if retarget_scene.frame().target_form == OuroborosForm::Nature {
                 OuroborosForm::Digital
-            },
-        );
-        u64::from(animated_scene.frame().transition_progress.to_bits())
+            } else {
+                OuroborosForm::Nature
+            };
+            retarget_scene.transition_to(target);
+        }
+        retarget_scene
+            .advance(1.0 / 60.0)
+            .expect("60 Hz retarget stress step is valid");
+        retarget_steps = retarget_steps.wrapping_add(1);
+        u64::from(retarget_scene.frame().transition_progress.to_bits())
     }));
 
     measurements.push(measure("semantic_landmarks", options, || {
@@ -318,6 +332,12 @@ fn run_benchmarks(options: Options) {
     };
     let source_rev = env::var("BENCH_SOURCE_REV").unwrap_or_else(|_| "not-provided".into());
     let cpu_model = env::var("BENCH_CPU_MODEL").unwrap_or_else(|_| "not-provided".into());
+    let cpu_governor =
+        env::var("BENCH_CPU_GOVERNOR").unwrap_or_else(|_| "not-provided".into());
+    let power_profile = env::var("BENCH_POWER_PROFILE").unwrap_or_else(|_| "not-provided".into());
+    let kernel = env::var("BENCH_KERNEL").unwrap_or_else(|_| "not-provided".into());
+    let memory_mib = env::var("BENCH_RAM_MIB").unwrap_or_else(|_| "not-provided".into());
+    let toolchain = env::var("BENCH_RUST_TOOLCHAIN").unwrap_or_else(|_| "not-provided".into());
     let parallelism = std::thread::available_parallelism()
         .map(|value| value.get())
         .unwrap_or(0);
@@ -326,7 +346,9 @@ fn run_benchmarks(options: Options) {
         concat!(
             "{{\"type\":\"metadata\",\"schema\":\"luminous-ouroboros-cpu-benchmark-v1\",",
             "\"source_rev\":\"{}\",\"profile\":\"{}\",\"os\":\"{}\",",
-            "\"arch\":\"{}\",\"cpu_model\":\"{}\",\"logical_cpus\":{},",
+            "\"arch\":\"{}\",\"cpu_model\":\"{}\",\"cpu_governor\":\"{}\",",
+            "\"power_profile\":\"{}\",\"kernel\":\"{}\",\"ram_mib\":\"{}\",",
+            "\"rust_toolchain\":\"{}\",\"logical_cpus\":{},",
             "\"scene_contract_version\":{},\"trace_bytes\":{},",
             "\"mesh_tier\":\"{:?}\",\"mesh_vertices\":{},\"mesh_indices\":{},",
             "\"render_dimensions\":\"320x320\",\"evidence_dimensions\":\"128x128\"}}"
@@ -336,6 +358,11 @@ fn run_benchmarks(options: Options) {
         env::consts::OS,
         env::consts::ARCH,
         json_escape(&cpu_model),
+        json_escape(&cpu_governor),
+        json_escape(&power_profile),
+        json_escape(&kernel),
+        json_escape(&memory_mib),
+        json_escape(&toolchain),
         parallelism,
         sovereign_visual_core::contract::SCENE_CONTRACT_VERSION,
         trace_bytes.len(),
