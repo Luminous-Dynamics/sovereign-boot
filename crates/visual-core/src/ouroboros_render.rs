@@ -91,11 +91,22 @@ pub fn render_reference_rgba(
     fill(&mut pixels, BACKGROUND);
 
     let frame = scene.frame();
+    let landmarks = scene.landmarks();
     let weights = frame.form_weights;
     let palette = mixed_palette(weights);
     let center = [width as f32 * 0.5, height as f32 * 0.5];
     let scale = width.min(height) as f32 * 0.84;
     let config = scene.config();
+    let project = |point: [f32; 3]| {
+        [
+            center[0] + point[0] * scale,
+            center[1] + point[1] * scale,
+        ]
+    };
+    let anchor = project(landmarks.head_anchor);
+    let forward = normalized([landmarks.forward[0], landmarks.forward[1]]);
+    let lateral = normalized([landmarks.lateral[0], landmarks.lateral[1]]);
+    let head_radius = config.major_radius * scale * 0.22;
 
     // A subtle ambient halo is visible in every form. Enlightenment strengthens
     // it but never replaces the shared ring identity.
@@ -201,17 +212,15 @@ pub fn render_reference_rgba(
     // Humanity: warm cheek/temple accents on the same persistent head shape.
     let humanity_strength = weights.humanity.clamp(0.0, 1.0);
     if humanity_strength > 0.02 {
-        let head = frame.head_anchor;
-        let forward = face_forward(frame.head_pose.yaw_radians, frame.head_pose.pitch_radians);
-        let lateral = [-forward[1], forward[0]];
-        let anchor = [center[0] + head[0] * scale, center[1] + head[1] * scale];
         let cheek_color = HUMANITY.with_opacity((70.0 + 155.0 * humanity_strength) / 255.0);
         for side in [-1.0_f32, 1.0] {
             let cheek = [
-                anchor[0] + forward[0] * 5.0 + lateral[0] * side * 5.0,
-                anchor[1] + forward[1] * 5.0 + lateral[1] * side * 5.0,
+                anchor[0] + forward[0] * head_radius * 0.55
+                    + lateral[0] * side * head_radius * 0.55,
+                anchor[1] + forward[1] * head_radius * 0.55
+                    + lateral[1] * side * head_radius * 0.55,
             ];
-            draw_disc(&mut pixels, width, height, cheek, 1.45, cheek_color);
+            draw_disc(&mut pixels, width, height, cheek, head_radius * 0.16, cheek_color);
         }
     }
 
@@ -236,44 +245,46 @@ pub fn render_reference_rgba(
         }
     }
 
-    // Persistent face/head: the anchor remains invariant, while the eyes and
-    // facial orientation respond to bounded host gaze input.
-    let anchor = [
-        center[0] + frame.head_anchor[0] * scale,
-        center[1] + frame.head_anchor[1] * scale,
-    ];
-    let forward = face_forward(frame.head_pose.yaw_radians, frame.head_pose.pitch_radians);
-    let lateral = [-forward[1], forward[0]];
+    // Persistent face: every attachment is projected from the versioned
+    // semantic landmark contract. No backend-specific eye/nose/mouth offsets
+    // or duplicate yaw/pitch transform are allowed.
     let head_color = Rgba::lerp(palette, HUMANITY, 0.28);
-    draw_disc(&mut pixels, width, height, anchor, 9.0, head_color);
+    draw_disc(&mut pixels, width, height, anchor, head_radius, head_color);
     draw_circle(
         &mut pixels,
         width,
         height,
         anchor,
-        9.0,
+        head_radius,
         48,
         ENLIGHTENMENT.with_opacity(0.55),
         1.0,
     );
 
-    for side in [-1.0_f32, 1.0] {
-        let eye = [
-            anchor[0] + forward[0] * 2.0 + lateral[0] * side * 3.1,
-            anchor[1] + forward[1] * 2.0 + lateral[1] * side * 3.1,
+    let eye_radius = head_radius * 0.16;
+    let pupil_radius = eye_radius * 0.38;
+    for eye in [landmarks.left_eye, landmarks.right_eye] {
+        let eye = project(eye);
+        draw_disc(&mut pixels, width, height, eye, eye_radius, DARK_INK);
+        let pupil = [
+            eye[0] + forward[0] * head_radius * 0.08,
+            eye[1] + forward[1] * head_radius * 0.08,
         ];
-        draw_disc(&mut pixels, width, height, eye, 1.45, DARK_INK);
-        let pupil = [eye[0] + forward[0] * 0.75, eye[1] + forward[1] * 0.75];
-        draw_disc(&mut pixels, width, height, pupil, 0.55, STARLIGHT);
+        draw_disc(&mut pixels, width, height, pupil, pupil_radius, STARLIGHT);
     }
 
+    let nose = project(landmarks.nose_tip);
+    draw_disc(&mut pixels, width, height, nose, head_radius * 0.10, DARK_INK);
+
+    let mouth = project(landmarks.mouth_center);
+    let mouth_half_width = head_radius * 0.42;
     let mouth_a = [
-        anchor[0] + forward[0] * 4.1 - lateral[0] * 2.0,
-        anchor[1] + forward[1] * 4.1 - lateral[1] * 2.0,
+        mouth[0] - lateral[0] * mouth_half_width,
+        mouth[1] - lateral[1] * mouth_half_width,
     ];
     let mouth_b = [
-        anchor[0] + forward[0] * 4.6 + lateral[0] * 2.0,
-        anchor[1] + forward[1] * 4.6 + lateral[1] * 2.0,
+        mouth[0] + lateral[0] * mouth_half_width,
+        mouth[1] + lateral[1] * mouth_half_width,
     ];
     draw_line(
         &mut pixels,
@@ -282,7 +293,7 @@ pub fn render_reference_rgba(
         mouth_a,
         mouth_b,
         DARK_INK.with_opacity(0.8),
-        0.9,
+        head_radius * 0.10,
     );
 
     Ok(pixels)
@@ -310,14 +321,6 @@ fn fill(buffer: &mut [u8], color: Rgba) {
     for pixel in buffer.chunks_exact_mut(4) {
         pixel.copy_from_slice(&[color.0, color.1, color.2, 255]);
     }
-}
-
-fn face_forward(yaw: f32, pitch: f32) -> [f32; 2] {
-    let pitch_scale = pitch.cos();
-    normalized([
-        yaw.cos() * pitch_scale,
-        yaw.sin() * pitch_scale + pitch.sin(),
-    ])
 }
 
 fn normalized(vector: [f32; 2]) -> [f32; 2] {
