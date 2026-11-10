@@ -1,0 +1,11 @@
+[package]
+name = "ouroboros-pareto-frontier"
+version = "0.1.0"
+edition = "2024"
+description = "Explainable uncertainty-aware Pareto frontier oracle for Ouroboros"
+license = "AGPL-3.0-or-later"
+
+[lib]
+path = "src/lib.rs"
+
+[workspace]
