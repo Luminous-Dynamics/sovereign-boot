@@ -507,6 +507,57 @@ impl SampledGrid {
         Ok(out)
     }
 
+    /// Diagnostic little-endian f32 grid for external mesh extractors.
+    ///
+    /// Values are reconstructed from the canonical signed-microunit samples;
+    /// this is a dequantized interchange view, not a second higher-precision
+    /// field evaluation. Pair it with the canonical OUROGRD1 receipt.
+    pub fn diagnostic_f32_bytes(&self) -> Result<Vec<u8>, SdfError> {
+        self.validate()?;
+        let limits = self.spec.validate()?;
+        let mut out = Vec::new();
+        out.try_reserve_exact(limits.canonical_bytes as usize)
+            .map_err(|_| SdfError::AllocationFailed)?;
+        out.extend_from_slice(b"OUROF32D");
+        put_u16(&mut out, GRID_SCHEMA_VERSION);
+        let fixture = FIXTURE_ID.as_bytes();
+        put_u16(
+            &mut out,
+            u16::try_from(fixture.len()).map_err(|_| SdfError::SizeOverflow)?,
+        );
+        out.extend_from_slice(fixture);
+        let field_descriptor = self.field.canonical_descriptor()?;
+        if field_descriptor.len() as u64 != FIELD_DESCRIPTOR_BYTES {
+            return Err(SdfError::FieldDescriptorSizeMismatch);
+        }
+        put_u32(
+            &mut out,
+            u32::try_from(field_descriptor.len()).map_err(|_| SdfError::SizeOverflow)?,
+        );
+        out.extend_from_slice(&field_descriptor);
+        put_u32(&mut out, self.spec.dimensions[0]);
+        put_u32(&mut out, self.spec.dimensions[1]);
+        put_u32(&mut out, self.spec.dimensions[2]);
+        for value in self.spec.minimum.into_iter().chain(self.spec.maximum) {
+            put_i64(&mut out, coordinate_to_microunits(value)?);
+        }
+        put_i64(&mut out, DISTANCE_QUANTIZATION);
+        put_u64(&mut out, limits.sample_count);
+        for sample in &self.quantized_samples {
+            let value = *sample as f32 / DISTANCE_QUANTIZATION as f32;
+            if !value.is_finite() {
+                return Err(SdfError::NonFiniteResult);
+            }
+            out.extend_from_slice(&value.to_le_bytes());
+        }
+        if out.len() as u64 > self.spec.max_canonical_bytes
+            || out.len() as u64 > MAX_CANONICAL_BYTES
+        {
+            return Err(SdfError::ByteBudgetExceeded);
+        }
+        Ok(out)
+    }
+
     pub fn canonical_len(&self) -> Result<u64, SdfError> {
         self.validate()?;
         Ok(self.spec.validate()?.canonical_bytes)
@@ -879,6 +930,37 @@ mod tests {
                 "reference probe mismatch at {point:?}"
             );
         }
+    }
+
+    #[test]
+    fn diagnostic_f32_view_is_metadata_bound_and_dequantizes_canonical_samples() {
+        let grid = small_grid();
+        let field = FaceSkinField::source_fixture(UnionMode::PolynomialSmooth {
+            width: 0.004,
+        })
+        .unwrap();
+        let sampled = grid.sample(field).unwrap();
+        let canonical = sampled.canonical_bytes().unwrap();
+        let diagnostic = sampled.diagnostic_f32_bytes().unwrap();
+        assert!(canonical.starts_with(b"OUROGRD1"));
+        assert!(diagnostic.starts_with(b"OUROF32D"));
+        assert_eq!(canonical.len(), diagnostic.len());
+
+        let first_sample_offset = canonical_header_len() as usize;
+        let first_i32 = i32::from_le_bytes(
+            canonical[first_sample_offset..first_sample_offset + 4]
+                .try_into()
+                .unwrap(),
+        );
+        let first_f32 = f32::from_le_bytes(
+            diagnostic[first_sample_offset..first_sample_offset + 4]
+                .try_into()
+                .unwrap(),
+        );
+        assert_eq!(
+            first_f32,
+            first_i32 as f32 / DISTANCE_QUANTIZATION as f32
+        );
     }
 
     #[test]
