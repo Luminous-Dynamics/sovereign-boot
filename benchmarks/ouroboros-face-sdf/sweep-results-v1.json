@@ -1,0 +1,672 @@
+{
+  "schemaVersion": 1,
+  "status": "exploratory-python-reference-not-qualified",
+  "fixtureId": "ouroboros-face-semantic-sdf-v1",
+  "sourceCommit": "d5a7f877d71757db49e63ad1b1582a661f6e4ef2",
+  "environment": {
+    "hostArchitecture": "x86_64",
+    "platform": "Linux 6.18.57 virtualized",
+    "cpuModel": "Intel Xeon Platinum 8573C",
+    "logicalCpuCount": 3,
+    "python": "3.13.5",
+    "numpy": "2.3.5",
+    "scikitImage": "0.26.0",
+    "trimesh": "4.11.1",
+    "trialsPerCase": 3
+  },
+  "field": {
+    "estimator": "IQ-style approximate ellipsoid distance",
+    "exactEuclideanSdf": false,
+    "composition": "head-shell and nose using sharp-min or polynomial smooth-min",
+    "bounds": [
+      [
+        -0.18,
+        -0.14,
+        -0.16
+      ],
+      [
+        0.25,
+        0.14,
+        0.16
+      ]
+    ],
+    "smoothWidths": [
+      0,
+      0.002,
+      0.004,
+      0.006,
+      0.01
+    ],
+    "gridDimensions": [
+      64,
+      96,
+      128
+    ],
+    "gridOrder": "i + nx * (j + ny * k)",
+    "signConvention": "negative-inside-positive-outside"
+  },
+  "faceBudget": {
+    "maxVertices": 50000,
+    "maxIndices": 300000,
+    "maxGeometryBytes": 2500000,
+    "vertexBytes": 36,
+    "indexBytes": 4,
+    "indexCount": "3 * triangle count"
+  },
+  "cases": [
+    {
+      "grid": 64,
+      "smoothWidth": 0,
+      "vertices": 5790,
+      "triangles": 11576,
+      "indices": 34728,
+      "topology": {
+        "watertight": true,
+        "windingConsistent": true,
+        "connectedComponents": 1,
+        "eulerCharacteristic": 2
+      },
+      "fieldResidual": {
+        "p95": 0.00003423736308559211,
+        "maximum": 0.001177909982909825
+      },
+      "extractionTimeMs": {
+        "trials": [
+          22.157049000043116,
+          13.37769700012359,
+          10.290474000157701
+        ],
+        "median": 13.37769700012359,
+        "p95WithinThreeTrials": 21.279113800051164
+      },
+      "estimatedFaceBuffers": {
+        "vertexBytes": 208440,
+        "indexBytes": 138912,
+        "totalBytes": 347352
+      },
+      "budgets": {
+        "vertexLimit": 50000,
+        "indexLimit": 300000,
+        "byteLimit": 2500000,
+        "withinVertexLimit": true,
+        "withinIndexLimit": true,
+        "withinByteLimit": true,
+        "withinAll": true
+      }
+    },
+    {
+      "grid": 64,
+      "smoothWidth": 0.002,
+      "vertices": 5790,
+      "triangles": 11576,
+      "indices": 34728,
+      "topology": {
+        "watertight": true,
+        "windingConsistent": true,
+        "connectedComponents": 1,
+        "eulerCharacteristic": 2
+      },
+      "fieldResidual": {
+        "p95": 0.00003459037065720572,
+        "maximum": 0.001177909982909825
+      },
+      "extractionTimeMs": {
+        "trials": [
+          8.4683379998296,
+          8.489283000017167,
+          8.928165000043009
+        ],
+        "median": 8.489283000017167,
+        "p95WithinThreeTrials": 8.884276800040425
+      },
+      "estimatedFaceBuffers": {
+        "vertexBytes": 208440,
+        "indexBytes": 138912,
+        "totalBytes": 347352
+      },
+      "budgets": {
+        "vertexLimit": 50000,
+        "indexLimit": 300000,
+        "byteLimit": 2500000,
+        "withinVertexLimit": true,
+        "withinIndexLimit": true,
+        "withinByteLimit": true,
+        "withinAll": true
+      }
+    },
+    {
+      "grid": 64,
+      "smoothWidth": 0.004,
+      "vertices": 5786,
+      "triangles": 11568,
+      "indices": 34704,
+      "topology": {
+        "watertight": true,
+        "windingConsistent": true,
+        "connectedComponents": 1,
+        "eulerCharacteristic": 2
+      },
+      "fieldResidual": {
+        "p95": 0.0000343260170148999,
+        "maximum": 0.0009574912583321293
+      },
+      "extractionTimeMs": {
+        "trials": [
+          6.730824999976903,
+          12.588115999960792,
+          7.448758999998972
+        ],
+        "median": 7.448758999998972,
+        "p95WithinThreeTrials": 12.07418029996461
+      },
+      "estimatedFaceBuffers": {
+        "vertexBytes": 208296,
+        "indexBytes": 138816,
+        "totalBytes": 347112
+      },
+      "budgets": {
+        "vertexLimit": 50000,
+        "indexLimit": 300000,
+        "byteLimit": 2500000,
+        "withinVertexLimit": true,
+        "withinIndexLimit": true,
+        "withinByteLimit": true,
+        "withinAll": true
+      }
+    },
+    {
+      "grid": 64,
+      "smoothWidth": 0.006,
+      "vertices": 5788,
+      "triangles": 11572,
+      "indices": 34716,
+      "topology": {
+        "watertight": true,
+        "windingConsistent": true,
+        "connectedComponents": 1,
+        "eulerCharacteristic": 2
+      },
+      "fieldResidual": {
+        "p95": 0.00003479189403896895,
+        "maximum": 0.0006453746975701953
+      },
+      "extractionTimeMs": {
+        "trials": [
+          7.431185000086771,
+          6.313900000122885,
+          7.245010000133334
+        ],
+        "median": 7.245010000133334,
+        "p95WithinThreeTrials": 7.412567500091427
+      },
+      "estimatedFaceBuffers": {
+        "vertexBytes": 208368,
+        "indexBytes": 138864,
+        "totalBytes": 347232
+      },
+      "budgets": {
+        "vertexLimit": 50000,
+        "indexLimit": 300000,
+        "byteLimit": 2500000,
+        "withinVertexLimit": true,
+        "withinIndexLimit": true,
+        "withinByteLimit": true,
+        "withinAll": true
+      }
+    },
+    {
+      "grid": 64,
+      "smoothWidth": 0.01,
+      "vertices": 5786,
+      "triangles": 11568,
+      "indices": 34704,
+      "topology": {
+        "watertight": true,
+        "windingConsistent": true,
+        "connectedComponents": 1,
+        "eulerCharacteristic": 2
+      },
+      "fieldResidual": {
+        "p95": 0.00003591002829717098,
+        "maximum": 0.0003976265513771539
+      },
+      "extractionTimeMs": {
+        "trials": [
+          6.7332460000670835,
+          7.869239999990896,
+          6.507761999955619
+        ],
+        "median": 6.7332460000670835,
+        "p95WithinThreeTrials": 7.7556405999985145
+      },
+      "estimatedFaceBuffers": {
+        "vertexBytes": 208296,
+        "indexBytes": 138816,
+        "totalBytes": 347112
+      },
+      "budgets": {
+        "vertexLimit": 50000,
+        "indexLimit": 300000,
+        "byteLimit": 2500000,
+        "withinVertexLimit": true,
+        "withinIndexLimit": true,
+        "withinByteLimit": true,
+        "withinAll": true
+      }
+    },
+    {
+      "grid": 96,
+      "smoothWidth": 0,
+      "vertices": 13268,
+      "triangles": 26532,
+      "indices": 79596,
+      "topology": {
+        "watertight": true,
+        "windingConsistent": true,
+        "connectedComponents": 1,
+        "eulerCharacteristic": 2
+      },
+      "fieldResidual": {
+        "p95": 0.000015094490495597943,
+        "maximum": 0.0014240702986730153
+      },
+      "extractionTimeMs": {
+        "trials": [
+          24.586773999999423,
+          18.149213000015152,
+          19.663503999936438
+        ],
+        "median": 19.663503999936438,
+        "p95WithinThreeTrials": 24.094446999993124
+      },
+      "estimatedFaceBuffers": {
+        "vertexBytes": 477648,
+        "indexBytes": 318384,
+        "totalBytes": 796032
+      },
+      "budgets": {
+        "vertexLimit": 50000,
+        "indexLimit": 300000,
+        "byteLimit": 2500000,
+        "withinVertexLimit": true,
+        "withinIndexLimit": true,
+        "withinByteLimit": true,
+        "withinAll": true
+      }
+    },
+    {
+      "grid": 96,
+      "smoothWidth": 0.002,
+      "vertices": 13268,
+      "triangles": 26532,
+      "indices": 79596,
+      "topology": {
+        "watertight": true,
+        "windingConsistent": true,
+        "connectedComponents": 1,
+        "eulerCharacteristic": 2
+      },
+      "fieldResidual": {
+        "p95": 0.000015111576855252186,
+        "maximum": 0.0009500860818235933
+      },
+      "extractionTimeMs": {
+        "trials": [
+          19.624131999989913,
+          18.73535200002152,
+          20.887904000119306
+        ],
+        "median": 19.624131999989913,
+        "p95WithinThreeTrials": 20.761526800106367
+      },
+      "estimatedFaceBuffers": {
+        "vertexBytes": 477648,
+        "indexBytes": 318384,
+        "totalBytes": 796032
+      },
+      "budgets": {
+        "vertexLimit": 50000,
+        "indexLimit": 300000,
+        "byteLimit": 2500000,
+        "withinVertexLimit": true,
+        "withinIndexLimit": true,
+        "withinByteLimit": true,
+        "withinAll": true
+      }
+    },
+    {
+      "grid": 96,
+      "smoothWidth": 0.004,
+      "vertices": 13264,
+      "triangles": 26524,
+      "indices": 79572,
+      "topology": {
+        "watertight": true,
+        "windingConsistent": true,
+        "connectedComponents": 1,
+        "eulerCharacteristic": 2
+      },
+      "fieldResidual": {
+        "p95": 0.000015162225709920028,
+        "maximum": 0.0005913089925687095
+      },
+      "extractionTimeMs": {
+        "trials": [
+          17.63831499988555,
+          19.85080300005393,
+          29.419469000004028
+        ],
+        "median": 19.85080300005393,
+        "p95WithinThreeTrials": 28.46260240000902
+      },
+      "estimatedFaceBuffers": {
+        "vertexBytes": 477504,
+        "indexBytes": 318288,
+        "totalBytes": 795792
+      },
+      "budgets": {
+        "vertexLimit": 50000,
+        "indexLimit": 300000,
+        "byteLimit": 2500000,
+        "withinVertexLimit": true,
+        "withinIndexLimit": true,
+        "withinByteLimit": true,
+        "withinAll": true
+      }
+    },
+    {
+      "grid": 96,
+      "smoothWidth": 0.006,
+      "vertices": 13258,
+      "triangles": 26512,
+      "indices": 79536,
+      "topology": {
+        "watertight": true,
+        "windingConsistent": true,
+        "connectedComponents": 1,
+        "eulerCharacteristic": 2
+      },
+      "fieldResidual": {
+        "p95": 0.000015111835486813417,
+        "maximum": 0.00038626640269788656
+      },
+      "extractionTimeMs": {
+        "trials": [
+          20.252766000112388,
+          19.485004999978628,
+          18.016963000036412
+        ],
+        "median": 19.485004999978628,
+        "p95WithinThreeTrials": 20.17598990009901
+      },
+      "estimatedFaceBuffers": {
+        "vertexBytes": 477288,
+        "indexBytes": 318144,
+        "totalBytes": 795432
+      },
+      "budgets": {
+        "vertexLimit": 50000,
+        "indexLimit": 300000,
+        "byteLimit": 2500000,
+        "withinVertexLimit": true,
+        "withinIndexLimit": true,
+        "withinByteLimit": true,
+        "withinAll": true
+      }
+    },
+    {
+      "grid": 96,
+      "smoothWidth": 0.01,
+      "vertices": 13240,
+      "triangles": 26476,
+      "indices": 79428,
+      "topology": {
+        "watertight": true,
+        "windingConsistent": true,
+        "connectedComponents": 1,
+        "eulerCharacteristic": 2
+      },
+      "fieldResidual": {
+        "p95": 0.000015236437094013818,
+        "maximum": 0.00022604297739663365
+      },
+      "extractionTimeMs": {
+        "trials": [
+          19.46317099987027,
+          17.444306000015786,
+          18.204025000159163
+        ],
+        "median": 18.204025000159163,
+        "p95WithinThreeTrials": 19.33725639989916
+      },
+      "estimatedFaceBuffers": {
+        "vertexBytes": 476640,
+        "indexBytes": 317712,
+        "totalBytes": 794352
+      },
+      "budgets": {
+        "vertexLimit": 50000,
+        "indexLimit": 300000,
+        "byteLimit": 2500000,
+        "withinVertexLimit": true,
+        "withinIndexLimit": true,
+        "withinByteLimit": true,
+        "withinAll": true
+      }
+    },
+    {
+      "grid": 128,
+      "smoothWidth": 0,
+      "vertices": 23752,
+      "triangles": 47500,
+      "indices": 142500,
+      "topology": {
+        "watertight": true,
+        "windingConsistent": true,
+        "connectedComponents": 1,
+        "eulerCharacteristic": 2
+      },
+      "fieldResidual": {
+        "p95": 0.000008534353347509213,
+        "maximum": 0.0008912686400803437
+      },
+      "extractionTimeMs": {
+        "trials": [
+          45.002089000035994,
+          40.888386000005994,
+          39.82268499999009
+        ],
+        "median": 40.888386000005994,
+        "p95WithinThreeTrials": 44.590718700032994
+      },
+      "estimatedFaceBuffers": {
+        "vertexBytes": 855072,
+        "indexBytes": 570000,
+        "totalBytes": 1425072
+      },
+      "budgets": {
+        "vertexLimit": 50000,
+        "indexLimit": 300000,
+        "byteLimit": 2500000,
+        "withinVertexLimit": true,
+        "withinIndexLimit": true,
+        "withinByteLimit": true,
+        "withinAll": true
+      }
+    },
+    {
+      "grid": 128,
+      "smoothWidth": 0.002,
+      "vertices": 23748,
+      "triangles": 47492,
+      "indices": 142476,
+      "topology": {
+        "watertight": true,
+        "windingConsistent": true,
+        "connectedComponents": 1,
+        "eulerCharacteristic": 2
+      },
+      "fieldResidual": {
+        "p95": 0.000008619037229870123,
+        "maximum": 0.0006105909178779318
+      },
+      "extractionTimeMs": {
+        "trials": [
+          43.87276800002837,
+          40.899878000118406,
+          38.071947999924305
+        ],
+        "median": 40.899878000118406,
+        "p95WithinThreeTrials": 43.575479000037376
+      },
+      "estimatedFaceBuffers": {
+        "vertexBytes": 854928,
+        "indexBytes": 569904,
+        "totalBytes": 1424832
+      },
+      "budgets": {
+        "vertexLimit": 50000,
+        "indexLimit": 300000,
+        "byteLimit": 2500000,
+        "withinVertexLimit": true,
+        "withinIndexLimit": true,
+        "withinByteLimit": true,
+        "withinAll": true
+      }
+    },
+    {
+      "grid": 128,
+      "smoothWidth": 0.004,
+      "vertices": 23728,
+      "triangles": 47452,
+      "indices": 142356,
+      "topology": {
+        "watertight": true,
+        "windingConsistent": true,
+        "connectedComponents": 1,
+        "eulerCharacteristic": 2
+      },
+      "fieldResidual": {
+        "p95": 0.000008612796820315598,
+        "maximum": 0.0003025921268819399
+      },
+      "extractionTimeMs": {
+        "trials": [
+          38.8477960000273,
+          36.92631500007337,
+          43.97565399995074
+        ],
+        "median": 38.8477960000273,
+        "p95WithinThreeTrials": 43.46286819995839
+      },
+      "estimatedFaceBuffers": {
+        "vertexBytes": 854208,
+        "indexBytes": 569424,
+        "totalBytes": 1423632
+      },
+      "budgets": {
+        "vertexLimit": 50000,
+        "indexLimit": 300000,
+        "byteLimit": 2500000,
+        "withinVertexLimit": true,
+        "withinIndexLimit": true,
+        "withinByteLimit": true,
+        "withinAll": true
+      }
+    },
+    {
+      "grid": 128,
+      "smoothWidth": 0.006,
+      "vertices": 23720,
+      "triangles": 47436,
+      "indices": 142308,
+      "topology": {
+        "watertight": true,
+        "windingConsistent": true,
+        "connectedComponents": 1,
+        "eulerCharacteristic": 2
+      },
+      "fieldResidual": {
+        "p95": 0.000008701730008913713,
+        "maximum": 0.00021343397018612958
+      },
+      "extractionTimeMs": {
+        "trials": [
+          46.513537999999244,
+          42.51578299999892,
+          45.63196899994182
+        ],
+        "median": 45.63196899994182,
+        "p95WithinThreeTrials": 46.4253810999935
+      },
+      "estimatedFaceBuffers": {
+        "vertexBytes": 853920,
+        "indexBytes": 569232,
+        "totalBytes": 1423152
+      },
+      "budgets": {
+        "vertexLimit": 50000,
+        "indexLimit": 300000,
+        "byteLimit": 2500000,
+        "withinVertexLimit": true,
+        "withinIndexLimit": true,
+        "withinByteLimit": true,
+        "withinAll": true
+      }
+    },
+    {
+      "grid": 128,
+      "smoothWidth": 0.01,
+      "vertices": 23694,
+      "triangles": 47384,
+      "indices": 142152,
+      "topology": {
+        "watertight": true,
+        "windingConsistent": true,
+        "connectedComponents": 1,
+        "eulerCharacteristic": 2
+      },
+      "fieldResidual": {
+        "p95": 0.000008828432015656736,
+        "maximum": 0.00013592479348818726
+      },
+      "extractionTimeMs": {
+        "trials": [
+          37.86562300001606,
+          54.26437399999963,
+          37.264865999986796
+        ],
+        "median": 37.86562300001606,
+        "p95WithinThreeTrials": 52.62449800002287
+      },
+      "estimatedFaceBuffers": {
+        "vertexBytes": 852984,
+        "indexBytes": 568608,
+        "totalBytes": 1421592
+      },
+      "budgets": {
+        "vertexLimit": 50000,
+        "indexLimit": 300000,
+        "byteLimit": 2500000,
+        "withinVertexLimit": true,
+        "withinIndexLimit": true,
+        "withinByteLimit": true,
+        "withinAll": true
+      }
+    }
+  ],
+  "definitions": {
+    "fieldResidual": "Absolute approximate field value at extracted vertices evaluated against the same approximate composition; not Hausdorff distance to exact geometry.",
+    "geometryBytes": "36 * vertex count + 4 * index count; index count is 3 * triangle count.",
+    "extractionTiming": "Python scikit-image Lewiner marching-cubes extraction only. Excludes field sampling, mesh validation and canonical Rust serialization. Three trials only; p95WithinThreeTrials is descriptive, not a robust tail statistic."
+  },
+  "limitations": [
+    "Approximate ellipsoid distance estimator, not exact Euclidean SDF.",
+    "Trimesh topology diagnostics only; self-intersections and independent manifold checks not tested.",
+    "No anatomy or blinded perceptual review.",
+    "Python reference timing on a virtualized host; not Rust/GPU timing.",
+    "Three extraction trials per case are insufficient for robust tail estimates.",
+    "This is marching cubes, not SIGGRAPH 2026 discrete-SDF dual contouring.",
+    "No comparative industry run performed."
+  ]
+}
