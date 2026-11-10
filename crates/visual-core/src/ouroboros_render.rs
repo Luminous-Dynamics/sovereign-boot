@@ -533,6 +533,36 @@ mod tests {
     }
 
     #[test]
+    fn reference_face_features_are_drawn_at_canonical_landmark_projections() {
+        let scene = scene(OuroborosForm::Nature);
+        let landmarks = scene.landmarks();
+        let width = 160_u32;
+        let height = 160_u32;
+        let pixels = render_reference_rgba(&scene, width, height).unwrap();
+        let scale = width.min(height) as f32 * 0.84;
+        let project = |point: [f32; 3]| {
+            [
+                width as f32 * 0.5 + point[0] * scale,
+                height as f32 * 0.5 + point[1] * scale,
+            ]
+        };
+        let has_dark_ink_at = |point: [f32; 3]| {
+            let screen = project(point);
+            let x = screen[0].round() as u32;
+            let y = screen[1].round() as u32;
+            let index = ((y * width + x) * 4) as usize;
+            pixels[index] == DARK_INK.0
+                && pixels[index + 1] == DARK_INK.1
+                && pixels[index + 2] == DARK_INK.2
+                && pixels[index + 3] == 255
+        };
+
+        assert!(has_dark_ink_at(landmarks.left_eye));
+        assert!(has_dark_ink_at(landmarks.right_eye));
+        assert!(has_dark_ink_at(landmarks.nose_tip));
+    }
+
+    #[test]
     fn face_pose_changes_reference_pixels_but_not_head_anchor() {
         let mut scene = scene(OuroborosForm::Humanity);
         let centered = render_reference_rgba(&scene, 160, 160).unwrap();
