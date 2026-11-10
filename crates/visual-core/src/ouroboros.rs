@@ -418,6 +418,38 @@ pub struct OuroborosLandmarks {
     pub chin: [f32; 3],
 }
 
+/// Validation errors for public, renderer-consumed semantic landmarks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OuroborosLandmarkError {
+    UnsupportedSchemaVersion,
+    UnsupportedSceneContractVersion,
+    NonFiniteCoordinate,
+    HeadRootMismatch,
+    InvalidBasis,
+    PoseMismatch,
+    LandmarkOutOfBounds,
+    AsymmetricEyes,
+}
+
+impl fmt::Display for OuroborosLandmarkError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::UnsupportedSchemaVersion => write!(f, "unsupported Ouroboros landmark schema"),
+            Self::UnsupportedSceneContractVersion => {
+                write!(f, "unsupported Ouroboros landmark scene contract")
+            }
+            Self::NonFiniteCoordinate => write!(f, "Ouroboros landmark contains a non-finite coordinate"),
+            Self::HeadRootMismatch => write!(f, "Ouroboros landmark head root differs from the scene root"),
+            Self::InvalidBasis => write!(f, "Ouroboros landmark basis is not orthonormal and right-handed"),
+            Self::PoseMismatch => write!(f, "Ouroboros landmark basis does not match the scene head pose"),
+            Self::LandmarkOutOfBounds => write!(f, "Ouroboros facial attachment lies outside the head envelope"),
+            Self::AsymmetricEyes => write!(f, "Ouroboros eye attachments are not symmetric around the face basis"),
+        }
+    }
+}
+
+impl Error for OuroborosLandmarkError {}
+
 /// Content address for one canonical semantic landmark set.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OuroborosLandmarkReceipt {
@@ -428,6 +460,89 @@ pub struct OuroborosLandmarkReceipt {
 }
 
 impl OuroborosLandmarks {
+    /// Validate this public landmark value against the authoritative scene.
+    ///
+    /// This checks schema identity, finite coordinates, exact root identity,
+    /// an orthonormal right-handed basis matching the scene's bounded pose,
+    /// facial-envelope bounds and bilateral eye symmetry. Consumers should
+    /// validate before using caller-supplied or deserialized landmark values.
+    pub fn validate(self, scene: &OuroborosScene) -> Result<(), OuroborosLandmarkError> {
+        if self.schema_version != OUROBOROS_LANDMARK_SCHEMA_VERSION {
+            return Err(OuroborosLandmarkError::UnsupportedSchemaVersion);
+        }
+        if self.scene_contract_version != contract::SCENE_CONTRACT_VERSION {
+            return Err(OuroborosLandmarkError::UnsupportedSceneContractVersion);
+        }
+
+        let points = [
+            self.head_anchor,
+            self.forward,
+            self.lateral,
+            self.up,
+            self.left_eye,
+            self.right_eye,
+            self.nose_tip,
+            self.mouth_center,
+            self.crown,
+            self.chin,
+        ];
+        if points.into_iter().flatten().any(|value| !value.is_finite()) {
+            return Err(OuroborosLandmarkError::NonFiniteCoordinate);
+        }
+
+        let expected_root = scene.frame().head_anchor;
+        if self.head_anchor != expected_root {
+            return Err(OuroborosLandmarkError::HeadRootMismatch);
+        }
+
+        let tolerance = 2.0e-5;
+        let dot = dot3;
+        let unit = |axis: [f32; 3]| (dot(axis, axis) - 1.0).abs() <= tolerance;
+        if !unit(self.forward)
+            || !unit(self.lateral)
+            || !unit(self.up)
+            || dot(self.forward, self.lateral).abs() > tolerance
+            || dot(self.forward, self.up).abs() > tolerance
+            || dot(self.lateral, self.up).abs() > tolerance
+            || distance3(cross3(self.forward, self.lateral), self.up) > tolerance
+        {
+            return Err(OuroborosLandmarkError::InvalidBasis);
+        }
+
+        let pose = scene.head_pose();
+        let expected_forward = normalize3([
+            pose.yaw_radians.cos() * pose.pitch_radians.cos(),
+            pose.yaw_radians.sin() * pose.pitch_radians.cos(),
+            pose.pitch_radians.sin(),
+        ]);
+        let expected_lateral = normalize3(cross3([0.0, 0.0, 1.0], expected_forward));
+        let expected_up = normalize3(cross3(expected_forward, expected_lateral));
+        if distance3(self.forward, expected_forward) > tolerance
+            || distance3(self.lateral, expected_lateral) > tolerance
+            || distance3(self.up, expected_up) > tolerance
+        {
+            return Err(OuroborosLandmarkError::PoseMismatch);
+        }
+
+        let radius = scene.config.major_radius;
+        let envelope = radius * 0.2001;
+        for point in points.into_iter().skip(4) {
+            if distance3(point, self.head_anchor) > envelope {
+                return Err(OuroborosLandmarkError::LandmarkOutOfBounds);
+            }
+        }
+
+        let eye_delta = sub3(self.left_eye, self.right_eye);
+        if dot(eye_delta, self.forward).abs() > radius * 1.0e-4
+            || dot(eye_delta, self.up).abs() > radius * 1.0e-4
+            || (dot(eye_delta, self.lateral) + radius * 0.10).abs() > radius * 1.0e-4
+        {
+            return Err(OuroborosLandmarkError::AsymmetricEyes);
+        }
+
+        Ok(())
+    }
+
     /// Canonical little-endian representation; point order is part of schema v1.
     pub fn canonical_bytes(self) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(136);
@@ -1479,6 +1594,19 @@ impl<'a> CheckpointCursor<'a> {
     }
 }
 
+fn dot3(left: [f32; 3], right: [f32; 3]) -> f32 {
+    left[0] * right[0] + left[1] * right[1] + left[2] * right[2]
+}
+
+fn sub3(left: [f32; 3], right: [f32; 3]) -> [f32; 3] {
+    [left[0] - right[0], left[1] - right[1], left[2] - right[2]]
+}
+
+fn distance3(left: [f32; 3], right: [f32; 3]) -> f32 {
+    let delta = sub3(left, right);
+    dot3(delta, delta).sqrt()
+}
+
 fn add3(left: [f32; 3], right: [f32; 3]) -> [f32; 3] {
     [left[0] + right[0], left[1] + right[1], left[2] + right[2]]
 }
@@ -2084,6 +2212,64 @@ mod tests {
             assert!((dot(eye_delta, landmarks.up)).abs() < 1.0e-5);
             assert!((dot(eye_delta, landmarks.lateral) + radius * 0.10).abs() < 1.0e-5);
         }
+    }
+
+    #[test]
+    fn semantic_landmark_validation_rejects_tampered_public_values() {
+        let scene = scene(OuroborosForm::Humanity);
+        let valid = scene.landmarks();
+        assert_eq!(valid.validate(&scene), Ok(()));
+
+        let mut invalid = valid;
+        invalid.schema_version += 1;
+        assert_eq!(
+            invalid.validate(&scene),
+            Err(OuroborosLandmarkError::UnsupportedSchemaVersion)
+        );
+
+        let mut invalid = valid;
+        invalid.head_anchor[0] += 0.01;
+        assert_eq!(
+            invalid.validate(&scene),
+            Err(OuroborosLandmarkError::HeadRootMismatch)
+        );
+
+        let mut invalid = valid;
+        invalid.forward[2] = f32::NAN;
+        assert_eq!(
+            invalid.validate(&scene),
+            Err(OuroborosLandmarkError::NonFiniteCoordinate)
+        );
+
+        let mut invalid = valid;
+        invalid.lateral = invalid.forward;
+        assert_eq!(
+            invalid.validate(&scene),
+            Err(OuroborosLandmarkError::InvalidBasis)
+        );
+
+        let mut invalid = valid;
+        invalid.left_eye = add3(invalid.left_eye, scale3(invalid.lateral, scene.config().major_radius * 0.04));
+        assert_eq!(
+            invalid.validate(&scene),
+            Err(OuroborosLandmarkError::AsymmetricEyes)
+        );
+
+        let mut invalid = valid;
+        invalid.nose_tip[0] += 1.0;
+        assert_eq!(
+            invalid.validate(&scene),
+            Err(OuroborosLandmarkError::LandmarkOutOfBounds)
+        );
+
+        let mut invalid = valid;
+        invalid.forward = [0.0, 1.0, 0.0];
+        invalid.lateral = [-1.0, 0.0, 0.0];
+        invalid.up = [0.0, 0.0, 1.0];
+        assert_eq!(
+            invalid.validate(&scene),
+            Err(OuroborosLandmarkError::PoseMismatch)
+        );
     }
 
     #[test]
