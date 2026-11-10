@@ -50,7 +50,7 @@ impl Measurement {
         }
     }
 
-    fn report(&mut self, warmup: usize, iterations: usize) {
+    fn as_json(&mut self, warmup: usize, iterations: usize) -> String {
         self.samples_ns.sort_unstable();
         let percentile = |p: f64| -> u64 {
             let index = ((p * self.samples_ns.len() as f64).ceil() as usize)
@@ -65,29 +65,23 @@ impl Measurement {
         let p99 = percentile(0.99);
         let min = *self.samples_ns.first().unwrap_or(&0);
         let max = *self.samples_ns.last().unwrap_or(&0);
-        let throughput = if mean > 0.0 { 1_000_000_000.0 / mean } else { 0.0 };
+        let throughput = if mean > 0.0 {
+            1_000_000_000.0 / mean
+        } else {
+            0.0
+        };
 
-        println!(
+        format!(
             concat!(
-                "    {{\"name\":\"{}\",\"warmup\":{},\"iterations\":{},",
+                "{{\"type\":\"measurement\",\"name\":\"{}\",",
+                "\"warmup\":{},\"iterations\":{},",
                 "\"min_ns\":{},\"mean_ns\":{:.2},\"p50_ns\":{},",
                 "\"p95_ns\":{},\"p99_ns\":{},\"max_ns\":{},",
                 "\"throughput_ops_s\":{:.2},\"sink\":{}}}"
             ),
-            self.name,
-            warmup,
-            iterations,
-            min,
-            mean,
-            p50,
-            p95,
-            p99,
-            max,
-            throughput,
-            self.sink
-        );
-    }
-}
+            self.name, warmup, iterations, min, mean, p50, p95, p99, max, throughput, self.sink
+        )
+    }}
 
 fn parse_options() -> Options {
     let mut options = Options {
@@ -155,6 +149,22 @@ where
 
 fn duration_ns(duration: Duration) -> u64 {
     u64::try_from(duration.as_nanos()).unwrap_or(u64::MAX)
+}
+
+fn json_escape(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for character in value.chars() {
+        match character {
+            '\\' => escaped.push_str("\\\\"),
+            '"' => escaped.push_str("\\\""),
+            '\n' => escaped.push_str("\\n"),
+            '\r' => escaped.push_str("\\r"),
+            '\t' => escaped.push_str("\\t"),
+            value if value.is_control() => escaped.push('?'),
+            value => escaped.push(value),
+        }
+    }
+    escaped
 }
 
 fn make_scene() -> OuroborosScene {
@@ -296,19 +306,18 @@ fn run_benchmarks(options: Options) {
 
     println!(
         concat!(
-            "{{\"schema\":\"luminous-ouroboros-cpu-benchmark-v1\",",
+            "{{\"type\":\"metadata\",\"schema\":\"luminous-ouroboros-cpu-benchmark-v1\",",
             "\"source_rev\":\"{}\",\"profile\":\"{}\",\"os\":\"{}\",",
             "\"arch\":\"{}\",\"cpu_model\":\"{}\",\"logical_cpus\":{},",
             "\"scene_contract_version\":{},\"trace_bytes\":{},",
             "\"mesh_tier\":\"{:?}\",\"mesh_vertices\":{},\"mesh_indices\":{},",
-            "\"render_dimensions\":\"320x320\",\"evidence_dimensions\":\"128x128\",",
-            "\"benchmarks\":["
+            "\"render_dimensions\":\"320x320\",\"evidence_dimensions\":\"128x128\"}}"
         ),
-        source_rev,
+        json_escape(&source_rev),
         profile,
         env::consts::OS,
         env::consts::ARCH,
-        cpu_model,
+        json_escape(&cpu_model),
         parallelism,
         sovereign_visual_core::contract::SCENE_CONTRACT_VERSION,
         trace_bytes.len(),
@@ -316,22 +325,9 @@ fn run_benchmarks(options: Options) {
         plan.vertex_count,
         plan.index_count
     );
-    for (index, measurement) in measurements.iter_mut().enumerate() {
-        if index > 0 {
-            print!(",");
-        }
-        print!(
-            "{}",
-            measurement.name
-        );
-        // The actual objects are emitted below from the same measurement;
-        // this branch exists only to keep the array delimiter stable.
-    }
-    println!("]");
     for measurement in &mut measurements {
-        measurement.report(options.warmup, options.iterations);
+        println!("{}", measurement.as_json(options.warmup, options.iterations));
     }
-    println!("}}");
 }
 
 fn main() {
