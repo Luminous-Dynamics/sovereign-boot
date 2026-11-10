@@ -556,6 +556,8 @@ impl SampledGrid {
         put_u32(&mut out, self.spec.dimensions[0]);
         put_u32(&mut out, self.spec.dimensions[1]);
         put_u32(&mut out, self.spec.dimensions[2]);
+        // Coordinate axes: forward, lateral, up. Layout: first-axis-fastest.
+        out.extend_from_slice(&[1, 2, 3, 1]);
         for value in self.spec.minimum.into_iter().chain(self.spec.maximum) {
             put_i64(&mut out, coordinate_to_microunits(value)?);
         }
@@ -611,7 +613,7 @@ impl Error for SdfError {}
 
 fn canonical_header_len() -> u64 {
     // Magic + schema + fixture length/bytes + descriptor length/bytes +
-    // dimensions + six fixed-point bounds + quantization + sample count.
+    // dimensions + axis/layout IDs + six fixed-point bounds + quantization + sample count.
     8 + 2
         + 2
         + FIXTURE_ID.len() as u64
