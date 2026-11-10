@@ -466,6 +466,16 @@ impl RepresentationCatalog {
         {
             return Err(CatalogError::UnknownCapabilityOrSemantic);
         }
+        let effective_visual_features = if required_role == RepresentationRole::VisualAppearance {
+            self.required_visual_features | required_visual_features
+        } else {
+            required_visual_features
+        };
+        let effective_anchors = if required_role == RepresentationRole::SemanticRig {
+            self.required_anchors | required_anchors
+        } else {
+            required_anchors
+        };
         Ok(self
             .representations
             .iter()
@@ -473,20 +483,9 @@ impl RepresentationCatalog {
                 entry.role == required_role
                     && entry.required_capabilities & !host.capability_mask == 0
                     && entry.required_extensions & !host.extension_mask == 0
-                    && entry.semantic_feature_mask
-                        & (self.required_visual_features | required_visual_features)
-                        == (self.required_visual_features | required_visual_features)
-                    && entry.anchor_mask
-                        & (if required_role == RepresentationRole::SemanticRig {
-                            self.required_anchors | required_anchors
-                        } else {
-                            required_anchors
-                        })
-                        == (if required_role == RepresentationRole::SemanticRig {
-                            self.required_anchors | required_anchors
-                        } else {
-                            required_anchors
-                        })
+                    && entry.semantic_feature_mask & effective_visual_features
+                        == effective_visual_features
+                    && entry.anchor_mask & effective_anchors == effective_anchors
                     && (!(require_exact_anchors
                         || required_role == RepresentationRole::SemanticRig)
                         || entry.anchor_fidelity == AnchorFidelity::Exact)
@@ -971,6 +970,37 @@ mod tests {
             )
             .unwrap();
         assert_eq!(result.len(), 3);
+    }
+
+    #[test]
+    fn semantic_rig_compatibility_is_not_filtered_by_visual_feature_mask() {
+        let visual = record(
+            1,
+            RepresentationFormat::GltfMesh,
+            RepresentationRole::VisualAppearance,
+        );
+        let mut rig = record(
+            2,
+            RepresentationFormat::LandmarkSidecar,
+            RepresentationRole::SemanticRig,
+        );
+        rig.semantic_feature_mask = 0;
+        let value = catalog(vec![visual, rig]);
+        let host = HostRepresentationCapabilities {
+            capability_mask: CAP_CPU | CAP_GLTF_2,
+            extension_mask: EXT_OURO_LANDMARK_SIDECAR,
+        };
+        let result = value
+            .compatible_entries(
+                host,
+                RepresentationRole::SemanticRig,
+                0,
+                0,
+                true,
+            )
+            .unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].representation_id, [2; 16]);
     }
 
     #[test]
