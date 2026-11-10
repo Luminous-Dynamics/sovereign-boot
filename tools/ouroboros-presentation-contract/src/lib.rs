@@ -314,7 +314,8 @@ impl QualityCandidate {
 pub struct CapabilitySnapshot {
     pub schema_version: u16,
     pub revision: u64,
-    /// Sorted by ascending preference_rank; one rank per candidate.
+    /// Host array order is not semantic. Candidate IDs and preference ranks
+    /// must be unique; canonical bytes sort by stable candidate_id.
     pub candidates: Vec<QualityCandidate>,
 }
 
@@ -558,7 +559,7 @@ pub enum CandidateDisposition {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum DominanceReason {
-    StrictlyBetterConservativeBounds = 1,
+    StrictlyBetterObjectiveVector = 1,
     EquivalentVectorStableIdTieBreak = 2,
 }
 
@@ -877,7 +878,7 @@ fn dominates(
     }
     let strict = cost_pairs.iter().any(|(a_upper, b_lower)| a_upper < b_lower)
         || feature_lower > feature_upper_b;
-    strict.then_some(DominanceReason::StrictlyBetterConservativeBounds)
+    strict.then_some(DominanceReason::StrictlyBetterObjectiveVector)
 }
 
 pub fn negotiate_pareto(
@@ -1637,6 +1638,9 @@ pub enum ContractError {
     InvalidCapabilities,
     InvalidDecision,
     DecisionMismatch,
+    InvalidParetoPolicy,
+    InvalidParetoDecision,
+    ParetoDecisionMismatch,
     InvalidFrameReceipt,
     UnsupportedPresentationClaim,
     FrameNotPresented,
@@ -1742,6 +1746,62 @@ mod tests {
             schema_version: CAPABILITY_SCHEMA_VERSION,
             revision: 7,
             candidates,
+        }
+    }
+
+    fn pareto_policy(dominance_mode: DominanceMode) -> ParetoPolicy {
+        ParetoPolicy {
+            schema_version: PARETO_POLICY_SCHEMA_VERSION,
+            policy_version: 1,
+            dominance_mode,
+        }
+    }
+
+    fn zero_uncertainty() -> QualityUncertainty {
+        QualityUncertainty {
+            vertices: 0,
+            indices: 0,
+            geometry_bytes: 0,
+            frame_time_ns: 0,
+            cpu_time_ns: 0,
+            gpu_time_ns: 0,
+            cpu_memory_bytes: 0,
+            gpu_memory_bytes: 0,
+            feature_diameter_millipixels: 0,
+            silhouette_error_microunits: 0,
+        }
+    }
+
+    fn quality_candidate(
+        id: u16,
+        rank: u16,
+        vertices: u32,
+        indices: u32,
+        geometry_bytes: u32,
+        frame_time_ns: u64,
+        cpu_time_ns: u64,
+        gpu_time_ns: u64,
+        cpu_memory_bytes: u64,
+        gpu_memory_bytes: u64,
+        feature_diameter: u32,
+        silhouette_error: u32,
+    ) -> QualityCandidate {
+        QualityCandidate {
+            candidate_id: id,
+            preference_rank: rank,
+            target_format_id: 1,
+            estimated_vertices: vertices,
+            estimated_indices: indices,
+            estimated_geometry_bytes: geometry_bytes,
+            estimated_frame_time_ns: frame_time_ns,
+            estimated_cpu_time_ns: cpu_time_ns,
+            estimated_gpu_time_ns: gpu_time_ns,
+            estimated_cpu_memory_bytes: cpu_memory_bytes,
+            estimated_gpu_memory_bytes: gpu_memory_bytes,
+            feature_diameter_millipixels: feature_diameter,
+            silhouette_error_microunits: silhouette_error,
+            animated: true,
+            uncertainty: None,
         }
     }
 
@@ -1944,6 +2004,234 @@ mod tests {
         let expanded = negotiate(&request(1_000_000, false), &caps, 1).unwrap();
         assert_eq!(tight.selected_candidate().unwrap().preference_rank, 1);
         assert_eq!(expanded.selected_candidate().unwrap().preference_rank, 0);
+    }
+
+    #[test]
+    fn pareto_tradeoff_keeps_resource_and_perceptual_extremes_on_frontier() {
+        let resource_efficient = quality_candidate(
+            1, 0, 4_000, 12_000, 400_000, 6_000_000, 1_500_000, 3_000_000,
+            250_000, 400_000, 1_500, 15_000,
+        );
+        let perceptually_rich = quality_candidate(
+            2, 1, 6_500, 20_000, 650_000, 10_000_000, 3_000_000, 6_000_000,
+            400_000, 700_000, 2_700, 5_000,
+        );
+        let decision = negotiate_pareto(
+            &request(1_000_000, false),
+            &capabilities(vec![resource_efficient, perceptually_rich]),
+            &pareto_policy(DominanceMode::PointEstimate),
+        )
+        .unwrap();
+        assert_eq!(decision.frontier_candidate_ids(), &[1, 2]);
+        assert_eq!(decision.selected_candidate_id(), Some(1));
+        assert!(decision.is_feasible());
+    }
+
+    #[test]
+    fn pareto_strictly_dominating_candidate_removes_weaker_candidate() {
+        let better = quality_candidate(
+            1, 1, 4_000, 12_000, 400_000, 6_000_000, 1_500_000, 3_000_000,
+            250_000, 350_000, 2_800, 4_000,
+        );
+        let weaker = quality_candidate(
+            2, 0, 6_000, 18_000, 600_000, 10_000_000, 3_000_000, 6_000_000,
+            400_000, 650_000, 1_500, 20_000,
+        );
+        let decision = negotiate_pareto(
+            &request(1_000_000, false),
+            &capabilities(vec![weaker, better]),
+            &pareto_policy(DominanceMode::PointEstimate),
+        )
+        .unwrap();
+        assert_eq!(decision.frontier_candidate_ids(), &[1]);
+        assert_eq!(decision.selected_candidate_id(), Some(1));
+        let dominated = decision.evaluations().iter().find(|e| e.candidate_id == 2).unwrap();
+        assert_eq!(dominated.disposition, CandidateDisposition::Dominated);
+        assert_eq!(dominated.dominated_by_candidate_id, Some(1));
+        assert_eq!(dominated.dominance_reason, Some(DominanceReason::StrictlyBetterObjectiveVector));
+    }
+
+    #[test]
+    fn pareto_hard_constraints_filter_before_dominance() {
+        let feasible = quality_candidate(
+            1, 0, 5_000, 15_000, 500_000, 8_000_000, 2_000_000, 5_000_000,
+            300_000, 400_000, 1_500, 15_000,
+        );
+        let over_budget_but_pretty = quality_candidate(
+            2, 1, 12_000, 36_000, 1_200_000, 12_000_000, 3_000_000, 6_000_000,
+            400_000, 700_000, 4_000, 1_000,
+        );
+        let decision = negotiate_pareto(
+            &request(1_000_000, false),
+            &capabilities(vec![feasible, over_budget_but_pretty]),
+            &pareto_policy(DominanceMode::PointEstimate),
+        )
+        .unwrap();
+        assert_eq!(decision.frontier_candidate_ids(), &[1]);
+        let rejected = decision.evaluations().iter().find(|e| e.candidate_id == 2).unwrap();
+        assert_eq!(rejected.disposition, CandidateDisposition::Infeasible);
+        assert_ne!(rejected.hard_rejection_flags & REJECT_VERTICES, 0);
+        assert_ne!(rejected.hard_rejection_flags & REJECT_INDICES, 0);
+        assert_ne!(rejected.hard_rejection_flags & REJECT_GEOMETRY_BYTES, 0);
+    }
+
+    #[test]
+    fn capability_snapshot_and_pareto_decision_are_permutation_invariant() {
+        let a = quality_candidate(
+            1, 1, 4_000, 12_000, 400_000, 6_000_000, 1_500_000, 3_000_000,
+            250_000, 350_000, 2_000, 10_000,
+        );
+        let b = quality_candidate(
+            2, 0, 6_000, 18_000, 600_000, 10_000_000, 3_000_000, 6_000_000,
+            400_000, 650_000, 1_500, 20_000,
+        );
+        let first = capabilities(vec![a, b]);
+        let reversed = capabilities(vec![b, a]);
+        assert_eq!(first.canonical_bytes().unwrap(), reversed.canonical_bytes().unwrap());
+        let request = request(1_000_000, false);
+        let policy = pareto_policy(DominanceMode::PointEstimate);
+        let one = negotiate_pareto(&request, &first, &policy).unwrap();
+        let two = negotiate_pareto(&request, &reversed, &policy).unwrap();
+        assert_eq!(one.canonical_bytes().unwrap(), two.canonical_bytes().unwrap());
+        assert_eq!(
+            negotiate(&request, &first, 1).unwrap().canonical_bytes().unwrap(),
+            negotiate(&request, &reversed, 1).unwrap().canonical_bytes().unwrap()
+        );
+    }
+
+    #[test]
+    fn identical_metric_vectors_use_stable_candidate_id_not_host_rank() {
+        let lower_id = quality_candidate(
+            1, 1, 5_000, 15_000, 500_000, 8_000_000, 2_000_000, 5_000_000,
+            300_000, 400_000, 2_000, 10_000,
+        );
+        let mut higher_id = lower_id;
+        higher_id.candidate_id = 2;
+        higher_id.preference_rank = 0;
+        let decision = negotiate_pareto(
+            &request(1_000_000, false),
+            &capabilities(vec![higher_id, lower_id]),
+            &pareto_policy(DominanceMode::PointEstimate),
+        )
+        .unwrap();
+        assert_eq!(decision.frontier_candidate_ids(), &[1]);
+        assert_eq!(decision.selected_candidate_id(), Some(1));
+        let duplicate = decision.evaluations().iter().find(|e| e.candidate_id == 2).unwrap();
+        assert_eq!(duplicate.dominance_reason, Some(DominanceReason::EquivalentVectorStableIdTieBreak));
+    }
+
+    #[test]
+    fn conservative_interval_policy_does_not_treat_unknown_uncertainty_as_zero() {
+        let mut known = quality_candidate(
+            1, 0, 5_000, 15_000, 500_000, 8_000_000, 2_000_000, 5_000_000,
+            300_000, 400_000, 2_000, 10_000,
+        );
+        known.uncertainty = Some(zero_uncertainty());
+        let unknown_but_nominally_better = quality_candidate(
+            2, 1, 1_000, 3_000, 100_000, 2_000_000, 500_000, 1_000_000,
+            100_000, 100_000, 3_000, 1_000,
+        );
+        let decision = negotiate_pareto(
+            &request(1_000_000, false),
+            &capabilities(vec![known, unknown_but_nominally_better]),
+            &pareto_policy(DominanceMode::ConservativeIntervals),
+        )
+        .unwrap();
+        assert_eq!(decision.frontier_candidate_ids(), &[1]);
+        let unknown = decision.evaluations().iter().find(|e| e.candidate_id == 2).unwrap();
+        assert_eq!(unknown.disposition, CandidateDisposition::Indeterminate);
+        assert!(unknown.uncertainty_unknown);
+        assert_eq!(decision.selected_candidate_id(), Some(1));
+    }
+
+    #[test]
+    fn conservative_intervals_require_separated_bounds_to_dominate() {
+        let mut a = quality_candidate(
+            1, 0, 4_000, 12_000, 400_000, 6_000_000, 1_500_000, 3_000_000,
+            250_000, 350_000, 2_500, 5_000,
+        );
+        let mut b = quality_candidate(
+            2, 1, 4_100, 12_100, 401_000, 6_100_000, 1_600_000, 3_100_000,
+            251_000, 351_000, 2_450, 5_100,
+        );
+        let wide = QualityUncertainty {
+            vertices: 200, indices: 500, geometry_bytes: 20_000, frame_time_ns: 200_000,
+            cpu_time_ns: 100_000, gpu_time_ns: 100_000, cpu_memory_bytes: 20_000,
+            gpu_memory_bytes: 20_000, feature_diameter_millipixels: 100,
+            silhouette_error_microunits: 100,
+        };
+        a.uncertainty = Some(wide);
+        b.uncertainty = Some(wide);
+        let decision = negotiate_pareto(
+            &request(1_000_000, false),
+            &capabilities(vec![a, b]),
+            &pareto_policy(DominanceMode::ConservativeIntervals),
+        )
+        .unwrap();
+        assert_eq!(decision.frontier_candidate_ids(), &[1, 2]);
+    }
+
+    #[test]
+    fn conservative_policy_returns_indeterminate_when_all_bounds_are_unknown() {
+        let decision = negotiate_pareto(
+            &request(1_000_000, false),
+            &capabilities(vec![candidate(1, 0, 500_000, true, 2_000, 5_000)]),
+            &pareto_policy(DominanceMode::ConservativeIntervals),
+        )
+        .unwrap();
+        assert!(!decision.is_feasible());
+        assert_eq!(
+            decision.infeasible_reason(),
+            Some(ParetoInfeasibleReason::NoCandidateHasRequiredUncertainty)
+        );
+    }
+
+    #[test]
+    fn relaxed_hard_budget_preserves_feasible_set_even_when_frontier_changes() {
+        let a = quality_candidate(
+            1, 0, 5_000, 15_000, 500_000, 8_000_000, 2_000_000, 5_000_000,
+            300_000, 400_000, 1_500, 15_000,
+        );
+        let mut b = quality_candidate(
+            2, 1, 6_000, 18_000, 600_000, 10_000_000, 3_000_000, 6_000_000,
+            400_000, 600_000, 3_000, 5_000,
+        );
+        let caps = capabilities(vec![a, b]);
+        let tight = negotiate_pareto(
+            &request(500_000, false),
+            &caps,
+            &pareto_policy(DominanceMode::PointEstimate),
+        )
+        .unwrap();
+        assert_eq!(tight.frontier_candidate_ids(), &[1]);
+        b.estimated_gpu_memory_bytes = 600_000;
+        let expanded = negotiate_pareto(
+            &request(700_000, false),
+            &capabilities(vec![a, b]),
+            &pareto_policy(DominanceMode::PointEstimate),
+        )
+        .unwrap();
+        let old_candidate = expanded.evaluations().iter().find(|e| e.candidate_id == 1).unwrap();
+        assert_ne!(old_candidate.disposition, CandidateDisposition::Infeasible);
+        assert_eq!(expanded.frontier_candidate_ids(), &[1, 2]);
+    }
+
+    #[test]
+    fn pareto_decision_verifier_recomputes_frontier_and_rejects_mutation() {
+        let request = request(1_000_000, false);
+        let caps = capabilities(vec![
+            quality_candidate(1, 0, 4_000, 12_000, 400_000, 6_000_000, 1_500_000, 3_000_000, 250_000, 350_000, 2_000, 10_000),
+            quality_candidate(2, 1, 6_000, 18_000, 600_000, 10_000_000, 3_000_000, 6_000_000, 400_000, 650_000, 1_500, 20_000),
+        ]);
+        let policy = pareto_policy(DominanceMode::PointEstimate);
+        let decision = negotiate_pareto(&request, &caps, &policy).unwrap();
+        assert_eq!(verify_pareto_decision(&request, &caps, &policy, &decision), Ok(()));
+        let mut forged = decision.clone();
+        forged.selected_candidate_id = Some(2);
+        assert_eq!(
+            verify_pareto_decision(&request, &caps, &policy, &forged),
+            Err(ContractError::ParetoDecisionMismatch)
+        );
     }
 
     #[test]
