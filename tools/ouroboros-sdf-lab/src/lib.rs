@@ -813,6 +813,34 @@ mod tests {
     }
 
     #[test]
+    fn source_grounded_python_probe_values_match_fixed_point_contract() {
+        let field = FaceSkinField::source_fixture(UnionMode::PolynomialSmooth {
+            width: 0.004,
+        })
+        .unwrap();
+        let probes: [([f64; 3], i32); 10] = [
+            ([0.03, 0.0, 0.0], -60_000),
+            ([0.16, 0.0, 0.005], -14_000),
+            ([0.18, 0.0, 0.005], 0),
+            ([0.16, 0.014, 0.005], 0),
+            ([0.12, 0.0, 0.0], -30_000),
+            ([0.24, 0.0, 0.0], 60_159),
+            ([0.03, 0.0, 0.13], 20_000),
+            ([-0.12, 0.0, 0.0], 30_000),
+            ([0.06, -0.05, 0.02], -6_988),
+            ([0.14, 0.0, -0.035], -3_526),
+        ];
+        for (point, expected_microunits) in probes {
+            let actual = quantize_distance(field.evaluate(point).unwrap()).unwrap();
+            assert_eq!(
+                actual,
+                expected_microunits,
+                "reference probe mismatch at {point:?}"
+            );
+        }
+    }
+
+    #[test]
     fn canonical_grid_metadata_binds_union_mode_and_bounds() {
         let grid = small_grid();
         let sharp = grid
