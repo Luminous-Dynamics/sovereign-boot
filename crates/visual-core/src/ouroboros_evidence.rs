@@ -11,8 +11,8 @@ use std::{error::Error, fmt};
 use crate::{
     contract::SCENE_CONTRACT_VERSION,
     ouroboros::{
-        OuroborosCheckpointError, OuroborosCheckpointReceipt, OuroborosLandmarkReceipt,
-        OuroborosLandmarks,
+        OuroborosCheckpointError, OuroborosCheckpointReceipt, OuroborosLandmarkError,
+        OuroborosLandmarkReceipt, OuroborosLandmarks,
     },
     ouroboros_mesh::{
         OuroborosMesh, OuroborosMeshBudget, OuroborosMeshConfig, OuroborosMeshError,
@@ -32,6 +32,7 @@ pub enum OuroborosEvidenceError {
     Mesh(OuroborosMeshError),
     Render(OuroborosRenderError),
     Checkpoint(OuroborosCheckpointError),
+    Landmarks(OuroborosLandmarkError),
     InvalidPlan,
     SizeOverflow,
 }
@@ -44,6 +45,9 @@ impl fmt::Display for OuroborosEvidenceError {
             Self::Render(error) => write!(f, "Ouroboros evidence image failed: {error}"),
             Self::Checkpoint(error) => {
                 write!(f, "Ouroboros evidence checkpoint failed: {error}")
+            }
+            Self::Landmarks(error) => {
+                write!(f, "Ouroboros evidence landmarks failed validation: {error}")
             }
             Self::InvalidPlan => write!(f, "Ouroboros evidence mesh plan is inconsistent"),
             Self::SizeOverflow => write!(f, "Ouroboros evidence size arithmetic overflowed"),
@@ -74,6 +78,12 @@ impl From<OuroborosRenderError> for OuroborosEvidenceError {
 impl From<OuroborosCheckpointError> for OuroborosEvidenceError {
     fn from(value: OuroborosCheckpointError) -> Self {
         Self::Checkpoint(value)
+    }
+}
+
+impl From<OuroborosLandmarkError> for OuroborosEvidenceError {
+    fn from(value: OuroborosLandmarkError) -> Self {
+        Self::Landmarks(value)
     }
 }
 
@@ -132,6 +142,7 @@ pub fn capture_ouroboros_evidence(
 
     let (checkpoint_bytes, checkpoint_receipt) = replay.scene.encode_checkpoint()?;
     let landmarks = replay.scene.landmarks();
+    landmarks.validate(&replay.scene)?;
     let landmark_receipt = landmarks.receipt();
     if checkpoint_bytes.len() > u16::MAX as usize {
         return Err(OuroborosEvidenceError::SizeOverflow);
