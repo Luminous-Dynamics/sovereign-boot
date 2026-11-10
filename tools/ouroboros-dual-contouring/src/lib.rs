@@ -270,14 +270,6 @@ impl DualContourMesh {
     }
 
     pub fn to_semantic_triangle_mesh(&self) -> Result<SemanticTriangleMesh, ExtractError> {
-        let mut vertices = Vec::new();
-        vertices
-            .try_reserve_exact(self.vertices.len())
-            .map_err(|_| ExtractError::AllocationFailed)?;
-        for vertex in &self.vertices {
-            vertices.push(vertex.position_nanounits.map(|value| value as f64 / POSITION_QUANTIZATION));
-        }
-        let vertex_feature_masks = self.vertices.iter().map(|vertex| vertex.feature_mask).collect();
         semantic_triangle_mesh(&self.vertices, &self.triangles)
     }
 }
@@ -541,8 +533,8 @@ pub fn extract(
                 let vertex_id =
                     u32::try_from(vertices.len()).map_err(|_| ExtractError::SizeOverflow)?;
                 vertices.push(DualContourVertex {
-                    position_nanounits: position.map(quantize_position)?,
-                    normal_nanounits: normal.map(quantize_normal)?,
+                    position_nanounits: quantize_position3(position)?,
+                    normal_nanounits: quantize_normal3(normal)?,
                     feature_mask: SKIN_FEATURE_MASK,
                 });
                 let cell_index = cell_linear_index(cell_dims, x, y, z)?;
@@ -994,6 +986,22 @@ fn residual_quantile(values: &[f64], percentile: usize) -> Result<u64, ExtractEr
     }
     let index = (values.len() - 1) * percentile / 100;
     residual_to_nanounits(values[index])
+}
+
+fn quantize_position3(value: [f64; 3]) -> Result<[i64; 3], ExtractError> {
+    Ok([
+        quantize_position(value[0])?,
+        quantize_position(value[1])?,
+        quantize_position(value[2])?,
+    ])
+}
+
+fn quantize_normal3(value: [f64; 3]) -> Result<[i32; 3], ExtractError> {
+    Ok([
+        quantize_normal(value[0])?,
+        quantize_normal(value[1])?,
+        quantize_normal(value[2])?,
+    ])
 }
 
 fn quantize_position(value: f64) -> Result<i64, ExtractError> {
