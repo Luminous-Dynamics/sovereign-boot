@@ -36,7 +36,7 @@ Zero masks/region IDs and unsupported bits/regions are rejected. Indices and vec
 | Check | Meaning |
 |---|---|
 | Buffer validity | Finite positions, valid indices, non-repeated face indices, shape and size constraints |
-| Topology manifold | Every edge has incidence 1 or 2 and every used vertex link is one cycle (interior) or one path (boundary) |
+| Topology manifold | Every edge has incidence 1 or 2 and every used vertex link is one cycle of at least three distinct neighbors (interior) or one connected path of at least two (boundary) |
 | Closed surface | Topology-manifold plus zero boundary edges |
 | Orientation | Two incident faces use every shared edge in opposite directions |
 | Computed zero-area | The floating-point cross product evaluates to zero; not an exact-predicate proof |
@@ -44,7 +44,7 @@ Zero masks/region IDs and unsupported bits/regions are rejected. Indices and vec
 | Semantic provenance | Nonzero, supported vertex feature masks and face-region IDs; no orphan vertices |
 | Self intersections | **NotEvaluated** in this Rust-only first phase |
 
-The report also includes boundary-component count, components that are not simple closed loops, semantic region-transition edge count, edge-incidence classes, boundary loops/open chains, semantic region-transition edges, coincident-position groups, orphan vertices, connected face components, and per-component Euler characteristic.
+The report also includes boundary-component count, components that are not simple closed loops, semantic region-transition edge count, edge-incidence classes, coincident-position groups, orphan vertices, connected face components, and per-component Euler characteristic.
 
 Euler characteristic is descriptive, not a universal correctness target. A sphere-like component has `χ=2`; handles and other topologies have different values.
 
@@ -73,9 +73,11 @@ The receipt builder recomputes the audit against the supplied mesh and limits an
 
 ## Adversarial unit fixtures
 
-The 16 authored tests cover:
+The 20 authored tests cover:
 - closed tetrahedron;
+- two coincident closed tetrahedra that remain self-intersection NotEvaluated;
 - open disk and boundary loop;
+- pinched boundary graph that is not a simple boundary loop;
 - two disconnected components;
 - pinched vertex with disconnected link cycles;
 - three faces on one edge;
@@ -88,7 +90,7 @@ The 16 authored tests cover:
 - semantic region-transition edges;
 - receipt determinism, tolerance binding and mutation rejection.
 
-These tests are authored, not executed. No passing Rust test/CI claim is made.
+These 20 tests are authored, not executed. No passing Rust test/CI claim is made.
 
 ## Self-intersection: separate future qualification
 
