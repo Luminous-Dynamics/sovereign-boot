@@ -83,9 +83,13 @@ impl Default for DualContourConfig {
 impl DualContourConfig {
     pub fn validate(self) -> Result<(), ExtractError> {
         if self.max_vertices == 0
+            || self.max_vertices > 50_000
             || self.max_quads == 0
+            || self.max_quads > 62_500
             || self.max_geometry_bytes == 0
+            || self.max_geometry_bytes > DEFAULT_MAX_GEOMETRY_BYTES
             || self.max_working_bytes == 0
+            || self.max_working_bytes > DEFAULT_MAX_WORKING_BYTES
         {
             return Err(ExtractError::InvalidConfig);
         }
@@ -267,14 +271,7 @@ impl DualContourMesh {
             vertices.push(vertex.position_nanounits.map(|value| value as f64 / POSITION_QUANTIZATION));
         }
         let vertex_feature_masks = self.vertices.iter().map(|vertex| vertex.feature_mask).collect();
-        let faces = self.triangles.clone();
-        let face_region_ids = vec![SKIN_FACE_REGION_ID; faces.len()];
-        Ok(SemanticTriangleMesh {
-            vertices,
-            vertex_feature_masks,
-            faces,
-            face_region_ids,
-        })
+        semantic_triangle_mesh(&self.vertices, &self.triangles)
     }
 }
 
@@ -361,12 +358,20 @@ pub fn extract(
     let residual_bytes = u64::from(config.max_vertices)
         .checked_mul(8)
         .ok_or(ExtractError::SizeOverflow)?;
+    let audit_workspace = u64::from(config.max_quads)
+        .checked_mul(2 * 3 * 144)
+        .and_then(|value| {
+            value.checked_add(u64::from(config.max_vertices).checked_mul(64)?)
+        })
+        .ok_or(ExtractError::SizeOverflow)?;
     let working_payload = grid_limits
-        .canonical_bytes
-        .checked_add(cell_map_bytes)
+        .sample_bytes
+        .checked_add(grid_limits.canonical_bytes)
+        .and_then(|value| value.checked_add(cell_map_bytes))
         .and_then(|value| value.checked_add(max_vertex_bytes))
         .and_then(|value| value.checked_add(max_topology_bytes))
         .and_then(|value| value.checked_add(residual_bytes))
+        .and_then(|value| value.checked_add(audit_workspace))
         .ok_or(ExtractError::SizeOverflow)?;
     if working_payload > config.max_working_bytes {
         return Err(ExtractError::WorkingBudgetExceeded);
@@ -1149,21 +1154,20 @@ mod tests {
 
     #[test]
     fn zero_regularization_singular_qef_uses_centroid_fallback() {
-        let mut sampled = source_grid([24, 24, 24]);
-        let dims = sampled.spec.dimensions;
-        // A planar synthetic field is represented as negative-inside on one side.
-        for z in 0..dims[2] {
-            for y in 0..dims[1] {
-                for x in 0..dims[0] {
-                    let index = linear_index(dims, x, y, z).unwrap();
-                    sampled.quantized_samples[index] = if x < dims[0] / 2 { -1000 } else { 1000 };
-                }
-            }
-        }
-        let mut config = DualContourConfig::default();
-        config.qef_regularization_nanounits = 0;
-        let result = extract(&sampled, config);
-        assert_eq!(result, Err(ExtractError::SurfaceTouchesGridBoundary));
+        let samples = [
+            HermiteSample {
+                point: [0.0, 0.25, 0.5],
+                normal: [1.0, 0.0, 0.0],
+            },
+            HermiteSample {
+                point: [0.0, 0.75, 0.5],
+                normal: [1.0, 0.0, 0.0],
+            },
+        ];
+        let centroid = hermite_centroid(&samples);
+        let (position, fallback) = solve_qef(&samples, centroid, 0.0);
+        assert!(fallback);
+        assert_eq!(position, centroid);
     }
 
     #[test]
