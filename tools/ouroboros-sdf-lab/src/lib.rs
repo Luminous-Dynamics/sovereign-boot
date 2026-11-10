@@ -20,6 +20,7 @@ pub const FIELD_ID: &str = "iq-ellipsoid-approx-poly-smooth-min-v1";
 
 const GRID_MAGIC: [u8; 8] = *b"OUROGRD1";
 const FIELD_MAGIC: [u8; 8] = *b"OUROFLD1";
+const FIELD_DESCRIPTOR_BYTES: u64 = 119;
 const COORDINATE_QUANTIZATION: f64 = 1_000_000.0;
 const DISTANCE_EPSILON: f64 = 1.0e-15;
 
@@ -209,9 +210,7 @@ impl FaceSkinField {
         let mut out = Vec::with_capacity(8 + 2 + 2 + 2 + 2 + 2 + 6 * 8);
         out.extend_from_slice(&FIELD_MAGIC);
         put_u16(&mut out, FIELD_SCHEMA_VERSION);
-        put_u16(&mut out, self.head.region_id as u16);
         self.head.canonical_fields(&mut out)?;
-        put_u16(&mut out, self.nose.region_id as u16);
         self.nose.canonical_fields(&mut out)?;
         self.mode.canonical_fields(&mut out)?;
         Ok(out)
@@ -359,9 +358,9 @@ impl GridSpec {
         let j = (index / nx) % ny;
         let k = index / (nx * ny);
         Ok([
-            grid_coordinate(self.minimum[0], self.maximum[0], i, nx),
-            grid_coordinate(self.minimum[1], self.maximum[1], j, ny),
-            grid_coordinate(self.minimum[2], self.maximum[2], k, self.dimensions[2] as usize),
+            grid_coordinate(self.minimum[0], self.maximum[0], i, nx)?,
+            grid_coordinate(self.minimum[1], self.maximum[1], j, ny)?,
+            grid_coordinate(self.minimum[2], self.maximum[2], k, self.dimensions[2] as usize)?,
         ])
     }
 
@@ -463,14 +462,7 @@ impl SampledGrid {
 
     pub fn canonical_len(&self) -> Result<u64, SdfError> {
         self.validate()?;
-        let header = canonical_header_len()
-            .checked_add(FIXTURE_ID.len() as u64)
-            .and_then(|value| value.checked_add(self.field.canonical_descriptor().ok()?.len() as u64))
-            .ok_or(SdfError::SizeOverflow)?;
-        header
-            .checked_add((self.quantized_samples.len() as u64).checked_mul(4).ok_or(SdfError::SizeOverflow)?)
-            .ok_or(SdfError::SizeOverflow)
-            .map_err(|_| SdfError::SizeOverflow)
+        Ok(self.spec.validate()?.canonical_bytes)
     }
 }
 
@@ -499,15 +491,28 @@ impl fmt::Display for SdfError {
 impl Error for SdfError {}
 
 fn canonical_header_len() -> u64 {
-    // Magic + schema + fixture length + descriptor length + dimensions +
-    // six bounds + distance quantization + sample count, plus fixture bytes.
-    8 + 2 + 2 + FIXTURE_ID.len() as u64 + 4 + 8 + 6 * 8 + 8 + 8
+    // Magic + schema + fixture length/bytes + descriptor length/bytes +
+    // dimensions + six fixed-point bounds + quantization + sample count.
+    8 + 2
+        + 2
+        + FIXTURE_ID.len() as u64
+        + 4
+        + FIELD_DESCRIPTOR_BYTES
+        + 3 * 4
+        + 6 * 8
+        + 8
+        + 8
 }
 
-fn grid_coordinate(minimum: f64, maximum: f64, index: usize, count: usize) -> f64 {
-    let min = coordinate_to_microunits(minimum).unwrap_or(0) as f64 / COORDINATE_QUANTIZATION;
-    let max = coordinate_to_microunits(maximum).unwrap_or(0) as f64 / COORDINATE_QUANTIZATION;
-    min + (max - min) * index as f64 / (count - 1) as f64
+fn grid_coordinate(
+    minimum: f64,
+    maximum: f64,
+    index: usize,
+    count: usize,
+) -> Result<f64, SdfError> {
+    let min = coordinate_to_microunits(minimum)? as f64 / COORDINATE_QUANTIZATION;
+    let max = coordinate_to_microunits(maximum)? as f64 / COORDINATE_QUANTIZATION;
+    Ok(min + (max - min) * index as f64 / (count - 1) as f64)
 }
 
 fn coordinate_to_microunits(value: f64) -> Result<i64, SdfError> {
@@ -517,7 +522,7 @@ fn coordinate_to_microunits(value: f64) -> Result<i64, SdfError> {
     let scaled = value * COORDINATE_QUANTIZATION;
     if !scaled.is_finite()
         || scaled < i64::MIN as f64
-        || scaled > i64::MAX as f64
+        || scaled >= 9_223_372_036_854_775_808.0
     {
         return Err(SdfError::QuantizationOverflow);
     }
