@@ -35,6 +35,9 @@ jobs:
       - name: Standalone contract
         run: bash tests/standalone-contract.sh
 
+      - name: Check benchmark driver shell syntax
+        run: bash -n scripts/benchmark-ouroboros-linux.sh
+
       - name: Format
         run: cargo +1.96.0 fmt --all -- --check
 
