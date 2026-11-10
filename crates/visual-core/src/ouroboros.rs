@@ -1823,6 +1823,43 @@ mod tests {
     }
 
     #[test]
+    fn outward_velocity_is_projected_only_at_exact_weight_boundaries() {
+        let weights = FormWeights {
+            nature: 0.0,
+            humanity: 1.0,
+            digital: 0.25,
+            enlightenment: 0.75,
+        };
+        let velocity = FormWeights {
+            nature: -0.4,
+            humanity: 0.3,
+            digital: -0.2,
+            enlightenment: 0.1,
+        };
+        assert_eq!(
+            project_outward_boundary_velocity(weights, velocity),
+            FormWeights {
+                nature: 0.0,
+                humanity: 0.0,
+                digital: -0.2,
+                enlightenment: 0.1,
+            }
+        );
+
+        let interior = FormWeights {
+            nature: 1.0e-7,
+            humanity: 1.0 - 1.0e-7,
+            digital: 0.25,
+            enlightenment: 0.75,
+        };
+        assert_eq!(
+            project_outward_boundary_velocity(interior, velocity),
+            velocity,
+            "interior retargets preserve their derivative exactly"
+        );
+    }
+
+    #[test]
     fn retargeting_preserves_each_form_channel_velocity() {
         for initial in OuroborosForm::ALL {
             for target in OuroborosForm::ALL {
