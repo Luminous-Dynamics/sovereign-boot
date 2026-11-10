@@ -91,13 +91,13 @@ Absent evidence remains unknown. It is not filled with zero or replaced with an 
 
 ## Current authored conformance tests
 
-The crate contains 19 unit tests covering:
+The crate contains 20 unit tests covering:
 - one identity across mesh, splat, SDF, rig and raster representations;
 - payload/revision change without entity identity change;
 - canonical ordering and duplicate rejection;
 - landmark/frame binding;
 - Gaussian splat role and extension/capability requirements;
-- format/role constraints;
+- format/role constraints and specialized base-runtime requirements;
 - hard capability and semantic filtering;
 - exact-anchor policy and separate rig requirements;
 - explicit non-equivalent point-cloud fallback;
