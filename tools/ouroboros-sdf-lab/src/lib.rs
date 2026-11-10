@@ -196,11 +196,15 @@ impl FaceSkinField {
     /// Approximate negative-inside, zero-on-surface, positive-outside field.
     pub fn evaluate(self, point: [f64; 3]) -> Result<f64, SdfError> {
         self.validate()?;
+        self.evaluate_validated(point)
+    }
+
+    fn evaluate_validated(self, point: [f64; 3]) -> Result<f64, SdfError> {
         if !point.into_iter().all(f64::is_finite) {
             return Err(SdfError::NonFiniteInput);
         }
-        let head = ellipsoid_distance_approx(point, self.head)?;
-        let nose = ellipsoid_distance_approx(point, self.nose)?;
+        let head = ellipsoid_distance_approx_validated(point, self.head)?;
+        let nose = ellipsoid_distance_approx_validated(point, self.nose)?;
         let value = match self.mode {
             UnionMode::Sharp => head.min(nose),
             UnionMode::PolynomialSmooth { width } => {
@@ -234,6 +238,13 @@ pub fn ellipsoid_distance_approx(
     ellipsoid: EllipsoidRegion,
 ) -> Result<f64, SdfError> {
     ellipsoid.validate()?;
+    ellipsoid_distance_approx_validated(point, ellipsoid)
+}
+
+fn ellipsoid_distance_approx_validated(
+    point: [f64; 3],
+    ellipsoid: EllipsoidRegion,
+) -> Result<f64, SdfError> {
     if !point.into_iter().all(f64::is_finite) {
         return Err(SdfError::NonFiniteInput);
     }
@@ -395,7 +406,7 @@ impl GridSpec {
             .map_err(|_| SdfError::AllocationFailed)?;
         for linear_index in 0..limits.count {
             let point = self.point_at_linear_index_validated(linear_index, limits.count)?;
-            let value = field.evaluate(point)?;
+            let value = field.evaluate_validated(point)?;
             samples.push(quantize_distance(value)?);
         }
         Ok(SampledGrid {
