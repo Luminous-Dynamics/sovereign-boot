@@ -161,6 +161,16 @@ let
       mv -f "$tmp" "$target"
     }
 
+    copy_atomic() {
+      local source="$1"
+      local target="$2"
+      local tmp
+      tmp="$(mktemp "$target.tmp.XXXXXX")"
+      chmod 0600 "$tmp"
+      cat "$source" >"$tmp"
+      mv -f "$tmp" "$target"
+    }
+
     if [[ ! -f "$request" ]]; then
       echo "sovereign-boot: no physical canary request; skipping"
       exit 0
