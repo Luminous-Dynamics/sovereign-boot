@@ -833,7 +833,24 @@ impl OuroborosScene {
                 if weights.is_finite_and_bounded()
                     && progress.is_finite()
                     && (0.0..=1.0).contains(&progress)
-                    && velocity.is_finite_and_limited(MAX_FORM_VELOCITY) => {}
+                    && velocity.is_finite_and_limited(MAX_FORM_VELOCITY) =>
+            {
+                if progress < 1.0 {
+                    let resumable_velocity =
+                        project_outward_boundary_velocity(weights, velocity);
+                    let remaining = self.config.transition_seconds * (1.0 - progress);
+                    if try_bounded_transition_durations(
+                        weights,
+                        self.target_form.weights(),
+                        resumable_velocity,
+                        remaining,
+                    )
+                    .is_none()
+                    {
+                        return Err(OuroborosCheckpointError::InvalidState);
+                    }
+                }
+            }
             (OuroborosMotionMode::Reduced, _, _, _) => {
                 return Err(OuroborosCheckpointError::InvalidState);
             }
@@ -1278,6 +1295,24 @@ fn bounded_transition_durations(
     start_velocity: FormWeights,
     preferred: f32,
 ) -> [f32; 4] {
+    try_bounded_transition_durations(start, target, start_velocity, preferred)
+        .expect("validated internal morph kinematics must admit a bounded Hermite segment")
+}
+
+/// Return None when no representable positive f32 duration can keep every
+/// Hermite channel inside [0, 1]. This is used at trust boundaries such as
+/// checkpoint restore; an impossible frozen velocity must be rejected rather
+/// than accepted and allowed to overshoot after resume.
+fn try_bounded_transition_durations(
+    start: FormWeights,
+    target: FormWeights,
+    start_velocity: FormWeights,
+    preferred: f32,
+) -> Option<[f32; 4]> {
+    if !preferred.is_finite() || preferred <= 0.0 {
+        return None;
+    }
+
     let starts = [
         start.nature,
         start.humanity,
@@ -1298,25 +1333,35 @@ fn bounded_transition_durations(
     ];
     let mut durations = [preferred.max(1.0e-6); 4];
     for index in 0..4 {
-        for _ in 0..32 {
+        let mut bounded = false;
+        for _ in 0..160 {
             if cubic_channel_is_bounded(
                 starts[index],
                 targets[index],
                 velocities[index],
                 durations[index],
             ) {
+                bounded = true;
                 break;
             }
-            durations[index] *= 0.5;
+            let next = durations[index] * 0.5;
+            if next == 0.0 || next == durations[index] {
+                return None;
+            }
+            durations[index] = next;
         }
-        debug_assert!(cubic_channel_is_bounded(
-            starts[index],
-            targets[index],
-            velocities[index],
-            durations[index]
-        ));
+        if !bounded
+            && !cubic_channel_is_bounded(
+                starts[index],
+                targets[index],
+                velocities[index],
+                durations[index],
+            )
+        {
+            return None;
+        }
     }
-    durations
+    Some(durations)
 }
 
 fn max_transition_duration(durations: [f32; 4]) -> f32 {
@@ -1836,6 +1881,27 @@ mod tests {
                 Err(OuroborosCheckpointError::Truncated)
             ));
         }
+    }
+
+    #[test]
+    fn reduced_checkpoint_rejects_frozen_velocity_that_cannot_be_resumed_safely() {
+        let mut invalid = scene(OuroborosForm::Nature);
+        invalid.transition_to(OuroborosForm::Digital);
+        advance_for(&mut invalid, 1.0);
+        invalid.set_motion_mode(OuroborosMotionMode::Reduced);
+
+        let mut weights = invalid.frozen_weights.unwrap();
+        weights.nature = f32::from_bits(1);
+        invalid.frozen_weights = Some(weights);
+
+        let mut velocity = invalid.frozen_velocity.unwrap();
+        velocity.nature = -MAX_FORM_VELOCITY;
+        invalid.frozen_velocity = Some(velocity);
+
+        assert_eq!(
+            invalid.encode_checkpoint(),
+            Err(OuroborosCheckpointError::InvalidState)
+        );
     }
 
     #[test]
