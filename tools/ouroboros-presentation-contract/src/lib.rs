@@ -839,6 +839,12 @@ impl PresentationFeedbackLedger {
     ) -> Result<FeedbackRecordResult, ContractError> {
         self.validate_session(session_id)?;
         observation.validate()?;
+        if frame_sequence <= self.retired_through_sequence {
+            return Err(ContractError::RetiredFrameCommit);
+        }
+        if !self.entries.contains_key(&frame_sequence) {
+            return Err(ContractError::UnknownFrameCommit);
+        }
         match self.expected_clock_id {
             Some(clock_id) if clock_id != observation.clock_id => {
                 return Err(ContractError::PresentationClockMismatch);
@@ -1827,6 +1833,28 @@ mod tests {
         assert_eq!(
             ledger.register_commit(ledger_session(), 1),
             Err(ContractError::NonMonotonicFrameSequence)
+        );
+    }
+
+    #[test]
+    fn unregistered_presented_feedback_cannot_poison_session_clock() {
+        let mut ledger = PresentationFeedbackLedger::new(ledger_session(), None, 8).unwrap();
+        assert_eq!(
+            ledger.record_presented(
+                ledger_session(),
+                99,
+                test_presentation_observation(99, 10)
+            ),
+            Err(ContractError::UnknownFrameCommit)
+        );
+        ledger.register_commit(ledger_session(), 1).unwrap();
+        assert_eq!(
+            ledger.record_presented(
+                ledger_session(),
+                1,
+                test_presentation_observation(1, 20)
+            ),
+            Ok(FeedbackRecordResult::Recorded)
         );
     }
 
