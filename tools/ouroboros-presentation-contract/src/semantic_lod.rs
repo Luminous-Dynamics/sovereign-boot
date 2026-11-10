@@ -239,6 +239,8 @@ pub struct SemanticLodDecision {
     semantic_candidate_bytes: Vec<u8>,
     selected_candidate_id: Option<u16>,
     weighted_distortion_milliunits: Option<u64>,
+    /// Nondominated candidate IDs in the capability snapshot's canonical order.
+    pareto_candidate_ids: Vec<u16>,
     infeasible_reason: Option<SemanticLodInfeasibleReason>,
 }
 
@@ -249,6 +251,10 @@ impl SemanticLodDecision {
 
     pub fn weighted_distortion_milliunits(&self) -> Option<u64> {
         self.weighted_distortion_milliunits
+    }
+
+    pub fn pareto_candidate_ids(&self) -> &[u16] {
+        &self.pareto_candidate_ids
     }
 
     pub fn infeasible_reason(&self) -> Option<SemanticLodInfeasibleReason> {
@@ -268,6 +274,8 @@ impl SemanticLodDecision {
             || (self.selected_candidate_id.is_some()
                 != self.weighted_distortion_milliunits.is_some())
             || (self.selected_candidate_id.is_some() == self.infeasible_reason.is_some())
+            || (self.is_feasible() && self.pareto_candidate_ids.is_empty())
+            || (!self.is_feasible() && !self.pareto_candidate_ids.is_empty())
         {
             return Err(SemanticLodError::InvalidDecision);
         }
@@ -311,6 +319,14 @@ impl SemanticLodDecision {
             }
             None => out.push(0),
         }
+        put_u16(
+            &mut out,
+            u16::try_from(self.pareto_candidate_ids.len())
+                .map_err(|_| SemanticLodError::SizeOverflow)?,
+        );
+        for candidate_id in &self.pareto_candidate_ids {
+            put_u16(&mut out, *candidate_id);
+        }
         match self.infeasible_reason {
             Some(reason) => {
                 out.push(1);
@@ -320,6 +336,34 @@ impl SemanticLodDecision {
         }
         Ok(out)
     }
+}
+
+/// Pareto objective vector. All values are minimized; projected feature
+/// preservation is represented by semantic distortion and global silhouette
+/// error, while projected feature diameter is inverted to a minimization cost.
+fn candidate_objective(
+    candidate: &QualityCandidate,
+    distortion: u64,
+) -> [u64; 11] {
+    [
+        distortion,
+        u64::from(candidate.estimated_vertices),
+        u64::from(candidate.estimated_indices),
+        u64::from(candidate.estimated_geometry_bytes),
+        candidate.estimated_frame_time_ns,
+        candidate.estimated_cpu_time_ns,
+        candidate.estimated_gpu_time_ns,
+        candidate.estimated_cpu_memory_bytes,
+        candidate.estimated_gpu_memory_bytes,
+        u64::from(candidate.silhouette_error_microunits),
+        u64::from(u32::MAX - candidate.feature_diameter_millipixels),
+    ]
+}
+
+fn objective_dominates(left: &[u64; 11], right: &[u64; 11]) -> bool {
+    let no_worse = left.iter().zip(right).all(|(a, b)| a <= b);
+    let strictly_better = left.iter().zip(right).any(|(a, b)| a < b);
+    no_worse && strictly_better
 }
 
 /// Select the minimum semantic distortion among resource-feasible candidates.
@@ -342,7 +386,7 @@ pub fn negotiate_semantic_lod(
         .map_err(SemanticLodError::ResourceContract)?;
 
     let mut resource_feasible_count = 0usize;
-    let mut best: Option<(u64, u16, u16)> = None;
+    let mut feasible = Vec::new();
     for (resource, semantic) in capabilities
         .candidates
         .iter()
@@ -358,14 +402,33 @@ pub fn negotiate_semantic_lod(
         if distortion > profile.max_weighted_distortion_milliunits {
             continue;
         }
-        let key = (distortion, resource.preference_rank, resource.candidate_id);
-        if best.is_none_or(|old| key < old) {
-            best = Some(key);
+        feasible.push((
+            resource,
+            distortion,
+            candidate_objective(resource, distortion),
+        ));
+    }
+
+    // A candidate is on the frontier when no other feasible candidate is at
+    // least as good in every declared objective and strictly better in one.
+    let mut pareto_candidate_ids = Vec::new();
+    let mut selected: Option<(u64, u16, u16)> = None;
+    for (index, (candidate, distortion, objective)) in feasible.iter().enumerate() {
+        let dominated = feasible.iter().enumerate().any(|(other_index, other)| {
+            index != other_index && objective_dominates(&other.2, objective)
+        });
+        if dominated {
+            continue;
+        }
+        pareto_candidate_ids.push(candidate.candidate_id);
+        let key = (*distortion, candidate.preference_rank, candidate.candidate_id);
+        if selected.is_none_or(|old| key < old) {
+            selected = Some(key);
         }
     }
 
     let (selected_candidate_id, weighted_distortion_milliunits, infeasible_reason) =
-        match best {
+        match selected {
             Some((distortion, _, candidate_id)) => (Some(candidate_id), Some(distortion), None),
             None if resource_feasible_count == 0 => (
                 None,
@@ -387,6 +450,7 @@ pub fn negotiate_semantic_lod(
         semantic_candidate_bytes,
         selected_candidate_id,
         weighted_distortion_milliunits,
+        pareto_candidate_ids,
         infeasible_reason,
     })
 }
@@ -659,6 +723,92 @@ mod tests {
         assert_eq!(
             invalid.validate(),
             Err(SemanticLodError::InvalidFeatureConstraint)
+        );
+    }
+
+    #[test]
+    fn pareto_frontier_preserves_quality_resource_tradeoffs() {
+        let caps = CapabilitySnapshot {
+            schema_version: super::super::CAPABILITY_SCHEMA_VERSION,
+            revision: 4,
+            candidates: vec![
+                QualityCandidate {
+                    candidate_id: 10,
+                    preference_rank: 0,
+                    estimated_geometry_bytes: 800_000,
+                    estimated_vertices: 8_000,
+                    estimated_indices: 24_000,
+                    estimated_frame_time_ns: 9_000_000,
+                    estimated_cpu_time_ns: 3_000_000,
+                    estimated_gpu_time_ns: 6_000_000,
+                    estimated_cpu_memory_bytes: 400_000,
+                    estimated_gpu_memory_bytes: 700_000,
+                    ..resource_candidate(10, 0, 800_000)
+                },
+                QualityCandidate {
+                    candidate_id: 11,
+                    preference_rank: 1,
+                    estimated_geometry_bytes: 300_000,
+                    estimated_vertices: 3_000,
+                    estimated_indices: 9_000,
+                    estimated_frame_time_ns: 4_000_000,
+                    estimated_cpu_time_ns: 1_000_000,
+                    estimated_gpu_time_ns: 2_000_000,
+                    estimated_cpu_memory_bytes: 200_000,
+                    estimated_gpu_memory_bytes: 300_000,
+                    ..resource_candidate(11, 1, 300_000)
+                },
+                QualityCandidate {
+                    candidate_id: 12,
+                    preference_rank: 2,
+                    estimated_geometry_bytes: 900_000,
+                    estimated_vertices: 9_000,
+                    estimated_indices: 27_000,
+                    estimated_frame_time_ns: 10_000_000,
+                    estimated_cpu_time_ns: 3_500_000,
+                    estimated_gpu_time_ns: 7_000_000,
+                    estimated_cpu_memory_bytes: 450_000,
+                    estimated_gpu_memory_bytes: 800_000,
+                    ..resource_candidate(12, 2, 900_000)
+                },
+            ],
+        };
+        let high_fidelity = candidate(10, 1_000, true);
+        let efficient = candidate(11, 2_500, false);
+        let dominated = candidate(12, 4_000, true);
+        let semantic = SemanticLodCandidateSet {
+            candidates: vec![high_fidelity, efficient, dominated],
+        };
+        let decision = negotiate_semantic_lod(
+            &quality_request(1_000_000),
+            &caps,
+            &profile(),
+            &semantic,
+        )
+        .unwrap();
+        assert_eq!(decision.pareto_candidate_ids(), &[10, 11]);
+        assert_eq!(decision.selected_candidate_id(), Some(10));
+    }
+
+    #[test]
+    fn pareto_frontier_is_bound_into_canonical_decision_bytes() {
+        let request = quality_request(1_000_000);
+        let caps = capabilities();
+        let semantic_profile = profile();
+        let semantic_candidates = candidates();
+        let decision = negotiate_semantic_lod(
+            &request,
+            &caps,
+            &semantic_profile,
+            &semantic_candidates,
+        )
+        .unwrap();
+        assert!(!decision.canonical_bytes().unwrap().is_empty());
+        let mut tampered = decision;
+        tampered.pareto_candidate_ids.clear();
+        assert_eq!(
+            tampered.canonical_bytes(),
+            Err(SemanticLodError::InvalidDecision)
         );
     }
 
