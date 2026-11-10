@@ -44,7 +44,7 @@ Target format and animation mode are categorical compatibility boundaries: candi
 3. Hard-budget rejection before Pareto comparison.
 4. Missing uncertainty as Indeterminate, not zero.
 5. Overlapping uncertainty intervals that remain incomparable.
-6. Epsilon-grid equivalence and stable-ID tie-breaking.
+6. Epsilon-grid equivalence and stable-ID tie-breaking, with distinct coverage that feature diameter is maximized rather than minimized.
 7. A larger candidate universe that contracts the frontier by adding a feasible dominator.
 
 Expected dispositions, frontier IDs, selected IDs, dominator explanations and hard rejection reasons are included per fixture.
