@@ -1,0 +1,19 @@
+[package]
+name = "ouroboros-dual-contouring"
+version = "0.1.0"
+edition = "2024"
+description = "Bounded fixed-grid classical dual-contouring research extractor for Ouroboros"
+license = "AGPL-3.0-or-later"
+
+[dependencies]
+ouroboros-sdf-lab = { path = "../ouroboros-sdf-lab" }
+ouroboros-mesh-audit = { path = "../ouroboros-mesh-audit" }
+
+[lib]
+path = "src/lib.rs"
+
+[[example]]
+name = "extract-face-skin"
+path = "examples/extract-face-skin.rs"
+
+[workspace]
