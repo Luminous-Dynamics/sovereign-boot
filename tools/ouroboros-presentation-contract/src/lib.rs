@@ -262,12 +262,17 @@ impl CapabilitySnapshot {
         if self.revision == 0 || self.candidates.len() > MAX_CANDIDATES {
             return Err(ContractError::InvalidCapabilities);
         }
-        for candidate in &self.candidates {
+        for (index, candidate) in self.candidates.iter().enumerate() {
             candidate.validate()?;
+            if self.candidates[..index]
+                .iter()
+                .any(|previous| previous.candidate_id == candidate.candidate_id)
+            {
+                return Err(ContractError::InvalidCapabilities);
+            }
         }
         if self.candidates.windows(2).any(|pair| {
             pair[0].preference_rank >= pair[1].preference_rank
-                || pair[0].candidate_id == pair[1].candidate_id
         }) {
             return Err(ContractError::NonCanonicalOrdering);
         }
@@ -534,6 +539,7 @@ impl FrameReceipt {
 pub struct FrameSequenceGuard {
     expected_generation: u64,
     last_sequence: u64,
+    session_id: Option<[u8; 16]>,
 }
 
 impl FrameSequenceGuard {
@@ -544,6 +550,7 @@ impl FrameSequenceGuard {
         Ok(Self {
             expected_generation,
             last_sequence: 0,
+            session_id: None,
         })
     }
 
@@ -552,9 +559,15 @@ impl FrameSequenceGuard {
         if receipt.buffer_generation != self.expected_generation {
             return Err(ContractError::StaleBufferGeneration);
         }
+        if let Some(session_id) = self.session_id {
+            if session_id != receipt.session_id {
+                return Err(ContractError::SessionMismatch);
+            }
+        }
         if receipt.frame_sequence <= self.last_sequence {
             return Err(ContractError::NonMonotonicFrameSequence);
         }
+        self.session_id = Some(receipt.session_id);
         self.last_sequence = receipt.frame_sequence;
         Ok(())
     }
@@ -585,6 +598,7 @@ pub enum ContractError {
     FrameNotPresented,
     StaleBufferGeneration,
     NonMonotonicFrameSequence,
+    SessionMismatch,
 }
 
 impl fmt::Display for ContractError {
@@ -839,6 +853,18 @@ mod tests {
         assert_eq!(
             guard.observe(&first),
             Err(ContractError::NonMonotonicFrameSequence)
+        );
+        let mut foreign_session = receipt(
+            2,
+            4,
+            PresentationStatus::Submitted,
+            EvidenceLevel::HostObserved,
+            None,
+        );
+        foreign_session.session_id = [9; 16];
+        assert_eq!(
+            guard.observe(&foreign_session),
+            Err(ContractError::SessionMismatch)
         );
         let stale = receipt(
             2,
