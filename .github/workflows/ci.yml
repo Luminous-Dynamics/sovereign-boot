@@ -35,8 +35,13 @@ jobs:
       - name: Standalone contract
         run: bash tests/standalone-contract.sh
 
-      - name: Check benchmark driver shell syntax
-        run: bash -n scripts/benchmark-ouroboros-linux.sh
+      - name: Check benchmark driver and aggregation smoke syntax
+        run: |
+          bash -n scripts/benchmark-ouroboros-linux.sh
+          bash -n tests/benchmark-aggregate-smoke.sh
+
+      - name: Verify independent-trial percentile aggregation
+        run: bash tests/benchmark-aggregate-smoke.sh
 
       - name: Format
         run: cargo +1.96.0 fmt --all -- --check
