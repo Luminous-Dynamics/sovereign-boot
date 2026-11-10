@@ -378,15 +378,12 @@ mod tests {
             .unwrap();
         for _ in 0..20 {
             turned
-                .push(OuroborosEvent::Advance {
-                    dt_seconds: 0.1,
-                })
+                .push(OuroborosEvent::Advance { dt_seconds: 0.1 })
                 .unwrap();
         }
 
         let selected_plan = plan();
-        let baseline =
-            capture_ouroboros_evidence(&base, selected_plan, 160, 160).unwrap();
+        let baseline = capture_ouroboros_evidence(&base, selected_plan, 160, 160).unwrap();
         let posed = capture_ouroboros_evidence(&turned, selected_plan, 160, 160).unwrap();
 
         assert_ne!(
@@ -394,7 +391,10 @@ mod tests {
             posed.receipt.landmarks.digest
         );
         assert_eq!(baseline.receipt.mesh, posed.receipt.mesh);
-        assert_ne!(baseline.receipt.image.pixel_digest, posed.receipt.image.pixel_digest);
+        assert_ne!(
+            baseline.receipt.image.pixel_digest,
+            posed.receipt.image.pixel_digest
+        );
         assert_ne!(baseline.receipt.bundle_digest, posed.receipt.bundle_digest);
     }
 
