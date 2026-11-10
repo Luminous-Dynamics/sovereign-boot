@@ -527,7 +527,7 @@ fn validate_canonical_sphere_indices(
             base + 1 + longitude_index as u32,
             base + 2 + longitude_index as u32,
         ];
-        if indices.get(offset..offset + 3) != Some(&expected) {
+        if indices.get(offset..offset + 3) != Some(expected.as_slice()) {
             return Err(OuroborosFaceMeshError::InvalidGeneratedGeometry);
         }
         offset += 3;
@@ -542,7 +542,7 @@ fn validate_canonical_sphere_indices(
             // latitude then longitude is an inward parameter-space
             // ordering; reverse each quad triangle for outward face winding.
             let expected = [a, c, b, c, d, b];
-            if indices.get(offset..offset + 6) != Some(&expected) {
+            if indices.get(offset..offset + 6) != Some(expected.as_slice()) {
                 return Err(OuroborosFaceMeshError::InvalidGeneratedGeometry);
             }
             offset += 6;
