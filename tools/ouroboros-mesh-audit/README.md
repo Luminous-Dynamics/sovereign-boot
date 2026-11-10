@@ -39,12 +39,12 @@ Zero masks/region IDs and unsupported bits/regions are rejected. Indices and vec
 | Topology manifold | Every edge has incidence 1 or 2 and every used vertex link is one cycle (interior) or one path (boundary) |
 | Closed surface | Topology-manifold plus zero boundary edges |
 | Orientation | Two incident faces use every shared edge in opposite directions |
-| Exact degeneracy | Zero squared triangle cross-product magnitude |
-| Near degeneracy | Nonzero squared cross-product magnitude at or below the declared threshold |
+| Computed zero-area | The floating-point cross product evaluates to zero; not an exact-predicate proof |
+| Near degeneracy | Finite, nonzero squared cross-product magnitude at or below the declared threshold |
 | Semantic provenance | Nonzero, supported vertex feature masks and face-region IDs; no orphan vertices |
 | Self intersections | **NotEvaluated** in this Rust-only first phase |
 
-The report also includes boundary-component count, components that are not simple closed loops, semantic region-transition edge count, edge-incidence classes, coincident-position groups, orphan vertices, connected face components, and per-component Euler characteristic.
+The report also includes boundary-component count, components that are not simple closed loops, semantic region-transition edge count, edge-incidence classes, boundary loops/open chains, semantic region-transition edges, coincident-position groups, orphan vertices, connected face components, and per-component Euler characteristic.
 
 Euler characteristic is descriptive, not a universal correctness target. A sphere-like component has `χ=2`; handles and other topologies have different values.
 
@@ -56,7 +56,7 @@ Euler characteristic is descriptive, not a universal correctness target. A spher
 - Per-vertex link graphs are checked for connectedness and the correct cycle/path degree pattern. This detects a pinched vertex even when every edge individually has incidence two.
 - Face components are connected by shared edges and summarized with V/E/F counts and `V-E+F`.
 - Coincident positions normalize signed zero before comparing exact f64 bit patterns. Near-coincident positions are not claimed.
-- Exact zero-area and thresholded near-degenerate faces are reported separately.
+- Computed zero-cross-product and thresholded near-degenerate faces are reported separately. Cross-product overflow/non-finite geometry is rejected. This is a floating-point diagnostic, not an exact geometric predicate.
 - No input is silently repaired.
 
 The estimated working payload is checked before edge maps, vertex-link adjacency, DSU and component sets are allocated. It deliberately does not claim an exact process-memory ceiling.
@@ -69,7 +69,7 @@ The estimated working payload is checked before edge maps, vertex-link adjacency
 - edge, boundary, manifold, orientation, degeneracy, provenance and component metrics;
 - resource estimates and all audit limits, including the exact near-degenerate threshold bits.
 
-The receipt builder recomputes the audit against the supplied mesh and limits and rejects a mutated report. It returns bytes, not a hash or signature; digest/signature and build provenance remain external.
+The receipt builder recomputes the audit against the supplied mesh and limits and rejects a mutated report. It serializes the tolerance threshold and all resource limits, so a report made under one policy cannot be reinterpreted as another. It returns bytes, not a hash or signature; digest/signature and build provenance remain external.
 
 ## Adversarial unit fixtures
 
@@ -80,7 +80,7 @@ The 16 authored tests cover:
 - pinched vertex with disconnected link cycles;
 - three faces on one edge;
 - inconsistent shared-edge winding;
-- exact-zero and near-degenerate triangles;
+- computed-zero-area and near-degenerate triangles;
 - coincident positions and orphan vertices;
 - invalid feature masks/region IDs;
 - bad indices, repeated indices and NaN;
