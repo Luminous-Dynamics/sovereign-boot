@@ -1,0 +1,15 @@
+[package]
+name = "ouroboros-sdf-lab"
+version = "0.1.0"
+edition = "2024"
+description = "Bounded deterministic semantic SDF sampling research oracle for Ouroboros"
+license = "AGPL-3.0-or-later"
+
+[lib]
+path = "src/lib.rs"
+
+[[example]]
+name = "sample-face-skin"
+path = "examples/sample-face-skin.rs"
+
+[workspace]
