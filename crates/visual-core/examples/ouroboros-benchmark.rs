@@ -81,7 +81,8 @@ impl Measurement {
             ),
             self.name, warmup, iterations, min, mean, p50, p95, p99, max, throughput, self.sink
         )
-    }}
+    }
+}
 
 fn parse_options() -> Options {
     let mut options = Options {
