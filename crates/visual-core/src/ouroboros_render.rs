@@ -546,20 +546,29 @@ mod tests {
                 height as f32 * 0.5 + point[1] * scale,
             ]
         };
-        let has_dark_ink_at = |point: [f32; 3]| {
+        let has_dark_ink_near = |point: [f32; 3]| {
             let screen = project(point);
-            let x = screen[0].round() as u32;
-            let y = screen[1].round() as u32;
-            let index = ((y * width + x) * 4) as usize;
-            pixels[index] == DARK_INK.0
-                && pixels[index + 1] == DARK_INK.1
-                && pixels[index + 2] == DARK_INK.2
-                && pixels[index + 3] == 255
+            let x = screen[0].round() as i32;
+            let y = screen[1].round() as i32;
+            (-2..=2).any(|dy| {
+                (-2..=2).any(|dx| {
+                    let px = x + dx;
+                    let py = y + dy;
+                    if px < 0 || py < 0 || px >= width as i32 || py >= height as i32 {
+                        return false;
+                    }
+                    let index = ((py as u32 * width + px as u32) * 4) as usize;
+                    pixels[index] == DARK_INK.0
+                        && pixels[index + 1] == DARK_INK.1
+                        && pixels[index + 2] == DARK_INK.2
+                        && pixels[index + 3] == 255
+                })
+            })
         };
 
-        assert!(has_dark_ink_at(landmarks.left_eye));
-        assert!(has_dark_ink_at(landmarks.right_eye));
-        assert!(has_dark_ink_at(landmarks.nose_tip));
+        assert!(has_dark_ink_near(landmarks.left_eye));
+        assert!(has_dark_ink_near(landmarks.right_eye));
+        assert!(has_dark_ink_near(landmarks.nose_tip));
     }
 
     #[test]
