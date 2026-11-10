@@ -184,6 +184,10 @@ Wayland's presentation-time protocol already distinguishes a content update that
 
 Reference: [Wayland presentation-time protocol](https://wayland.app/protocols/presentation-time).
 
+The standalone oracle's experimental `OUROFRM2` receipt preserves the v2 `presented` payload (clock ID, split timestamp, refresh interval, split refresh sequence, optional output identity and source flags). It also records the connection's optional clock ID directly on every frame receipt—including Submitted, Discarded and Unknown outcomes when the host already knows it. When a Presented observation exists, its clock ID must equal the receipt-level session clock ID. This makes clock-domain provenance survive offline replay even when a frame has no presentation timestamp. The Wayland adapter is restricted to exactly `CompositorFeedback`; compositor `hw_clock`, `hw_completion` and `zero_copy` flags cannot promote evidence to `HardwareObserved` or `ExternalInstrument`.
+
+`OUROFRM2` is a new experimental schema in the isolated oracle only. It does not mutate `OUROEVB4`, `OUROCKP1`, `OUROLND1` or `OUROFAC1`.
+
 For Vulkan, query supported presentation timing/synchronization extensions and report absence explicitly. `VK_KHR_present_wait` and related mechanisms do not provide identical guarantees to every display timing extension; no universal GPU timestamp or present-completion feature should be assumed.
 
 References: [Vulkan Window System Integration](https://docs.vulkan.org/spec/latest/chapters/VK_KHR_surface/wsi.html), [VK_EXT_present_timing proposal](https://docs.vulkan.org/features/latest/features/proposals/VK_EXT_present_timing.html), [WebGPU timestamp-query and device timeline](https://www.w3.org/TR/webgpu/).
