@@ -202,12 +202,15 @@ BENCH_POWER_PROFILE="AC balanced / AC performance / battery" \
 BENCH_KERNEL="$(uname -r)" \
 BENCH_RAM_MIB="installed RAM in MiB" \
 BENCH_RUST_TOOLCHAIN="$(rustc +1.96.0 -V)" \
+BENCH_GPU_MODEL="exact GPU model or not-applicable" \
+BENCH_GPU_DRIVER="exact driver version or not-applicable" \
+BENCH_COMPOSITOR="exact compositor/version or not-applicable" \
 cargo +1.96.0 run --release --locked -p sovereign-visual-core \
   --example ouroboros-benchmark -- --iterations 250 --warmup 20 \
   > ouroboros-benchmark.jsonl
 ```
 
-It emits newline-delimited JSON using schema `luminous-ouroboros-cpu-benchmark-v2`: one metadata row followed by one row per operation. Current measurements include loop-control overhead, **ordinary 60 Hz C1 stepping**, a separate **1 Hz retarget-under-60 Hz stepping** workload, semantic landmark generation, checkpoint encode/decode, trace decode/replay, LOD planning, mesh build+validation, 320×320 CPU capture and 128×128 sealed evidence capture. This separation prevents retarget-command cost from being mislabeled as ordinary per-frame cost. Each measurement reports min/mean/p50/p95/p99/max nanoseconds and operations per second. The metadata row records schema, source revision, debug/release profile, OS, architecture, CPU model, CPU governor, power profile, kernel, RAM, Rust toolchain, logical CPU count, scene-contract version, trace length and mesh plan.
+It emits newline-delimited JSON using schema `luminous-ouroboros-cpu-benchmark-v2`: one metadata row followed by one row per operation. Current measurements include loop-control overhead, **ordinary 60 Hz C1 stepping**, a separate **1 Hz retarget-under-60 Hz stepping** workload, semantic landmark generation, checkpoint encode/decode, trace decode/replay, LOD planning, mesh build+validation, 320×320 CPU capture and 128×128 sealed evidence capture. This separation prevents retarget-command cost from being mislabeled as ordinary per-frame cost. Each measurement reports min/mean/p50/p95/p99/max nanoseconds and operations per second. The metadata row records schema, source revision, debug/release profile, OS, architecture, CPU model, CPU governor, power profile, kernel, RAM, Rust toolchain, optional GPU/driver/compositor identifiers, logical CPU count, scene-contract version, trace length and mesh plan.
 
 The harness is CPU-only. It does **not** measure Vulkan/WGPU submission, GPU memory, compositor-presented frame pacing, power or lock-screen behavior. Those measurements require the later native adapter and a separately identified device/compositor. A benchmark JSONL file is not a pass/fail qualification by itself; preserve raw output with the exact source/build/host tuple and compare confidence intervals over repeated runs. No performance numbers are claimed until the harness has actually run on a named host.
 
