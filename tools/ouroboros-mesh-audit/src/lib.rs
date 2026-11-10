@@ -17,6 +17,9 @@ pub const MAX_VERTICES: usize = 100_000;
 pub const MAX_FACES: usize = 200_000;
 pub const MAX_INPUT_BYTES: u64 = 32 * 1024 * 1024;
 pub const MAX_WORKING_BYTES: u64 = 96 * 1024 * 1024;
+pub const MAX_RECEIPT_BYTES: u64 = 64 * 1024 * 1024;
+const VALID_FEATURE_MASK: u32 = 0x1f;
+
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AuditLimits {
@@ -103,6 +106,10 @@ pub struct MeshAuditReport {
     pub components: Vec<ComponentSummary>,
     pub estimated_input_bytes: u64,
     pub estimated_working_bytes: u64,
+    pub limits: AuditLimits,
+    pub boundary_component_count: u32,
+    pub non_loop_boundary_component_count: u32,
+    pub semantic_transition_edge_count: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -188,8 +195,11 @@ pub fn audit_mesh(
         vertex_link_edges[ic].push((a, b));
     }
 
-    let edge_stats = classify_edges(&edges, vertex_count);
+    let edge_stats = classify_edges(&edges);
     let boundary_degree = boundary_degrees(&edges, vertex_count);
+    let (boundary_component_count, non_loop_boundary_component_count) =
+        boundary_components(&edges, vertex_count);
+    let semantic_transition_edge_count = semantic_transition_edges(&edges, &mesh.face_region_ids);
     let (non_manifold_vertex_count, disconnected_vertex_link_count) =
         validate_vertex_links(&vertex_link_edges, &boundary_degree);
 
@@ -241,6 +251,10 @@ pub fn audit_mesh(
         components,
         estimated_input_bytes,
         estimated_working_bytes,
+        limits,
+        boundary_component_count,
+        non_loop_boundary_component_count,
+        semantic_transition_edge_count,
     })
 }
 
@@ -304,10 +318,18 @@ fn validate_input_before_workspace(
     if mesh.vertices.iter().any(|point| !point.iter().all(|v| v.is_finite())) {
         return Err(AuditError::NonFiniteVertex);
     }
-    if mesh.vertex_feature_masks.iter().any(|mask| *mask == 0) {
+    if mesh
+        .vertex_feature_masks
+        .iter()
+        .any(|mask| *mask == 0 || *mask & !VALID_FEATURE_MASK != 0)
+    {
         return Err(AuditError::InvalidVertexFeatureMask);
     }
-    if mesh.face_region_ids.iter().any(|region| *region == 0) {
+    if mesh
+        .face_region_ids
+        .iter()
+        .any(|region| *region == 0 || *region > 5)
+    {
         return Err(AuditError::InvalidFaceRegion);
     }
 
@@ -334,17 +356,13 @@ fn add_edge(
     edges.entry(key).or_default().push(EdgeUse { face, forward });
 }
 
-fn classify_edges(
-    edges: &BTreeMap<(u32, u32), Vec<EdgeUse>>,
-    vertex_count: usize,
-) -> EdgeStats {
+fn classify_edges(edges: &BTreeMap<(u32, u32), Vec<EdgeUse>>) -> EdgeStats {
     let mut stats = EdgeStats {
         boundary: 0,
         manifold: 0,
         non_manifold: 0,
         inconsistent: 0,
     };
-    let _ = vertex_count;
     for uses in edges.values() {
         match uses.len() {
             1 => stats.boundary += 1,
@@ -372,6 +390,63 @@ fn boundary_degrees(
         }
     }
     degree
+}
+
+fn boundary_components(
+    edges: &BTreeMap<(u32, u32), Vec<EdgeUse>>,
+    vertex_count: usize,
+) -> (u32, u32) {
+    let mut adjacency: Vec<Vec<u32>> = vec![Vec::new(); vertex_count];
+    for ((a, b), uses) in edges {
+        if uses.len() == 1 {
+            adjacency[*a as usize].push(*b);
+            adjacency[*b as usize].push(*a);
+        }
+    }
+    let mut visited = vec![false; vertex_count];
+    let mut components = 0_u32;
+    let mut non_loops = 0_u32;
+    for start in 0..vertex_count {
+        if visited[start] || adjacency[start].is_empty() {
+            continue;
+        }
+        components += 1;
+        let mut queue = VecDeque::new();
+        queue.push_back(start as u32);
+        visited[start] = true;
+        let mut vertices_in_component = 0_u32;
+        let mut all_degree_two = true;
+        while let Some(current) = queue.pop_front() {
+            vertices_in_component += 1;
+            let neighbours = &adjacency[current as usize];
+            if neighbours.len() != 2 {
+                all_degree_two = false;
+            }
+            for neighbour in neighbours {
+                if !visited[*neighbour as usize] {
+                    visited[*neighbour as usize] = true;
+                    queue.push_back(*neighbour);
+                }
+            }
+        }
+        if !all_degree_two || vertices_in_component < 3 {
+            non_loops += 1;
+        }
+    }
+    (components, non_loops)
+}
+
+fn semantic_transition_edges(
+    edges: &BTreeMap<(u32, u32), Vec<EdgeUse>>,
+    face_region_ids: &[u32],
+) -> u32 {
+    edges
+        .values()
+        .filter(|uses| {
+            uses.len() == 2
+                && face_region_ids[uses[0].face] != face_region_ids[uses[1].face]
+        })
+        .count() as u32
 }
 
 fn validate_vertex_links(
@@ -576,9 +651,19 @@ impl MeshAuditReport {
         {
             return Err(AuditError::SizeOverflow);
         }
-        let input_bytes = self.estimated_input_bytes as usize;
+        let input_bytes = self.estimated_input_bytes;
+        let component_bytes = (self.components.len() as u64)
+            .checked_mul(20)
+            .ok_or(AuditError::SizeOverflow)?;
+        let receipt_bytes = input_bytes
+            .checked_add(8 + 2 + 8 + 8 + 4 + 4 + 4 + 4 + 4 + 14 * 4 + 2 * 8 + 4)
+            .and_then(|value| value.checked_add(component_bytes))
+            .ok_or(AuditError::SizeOverflow)?;
+        if receipt_bytes > MAX_RECEIPT_BYTES {
+            return Err(AuditError::WorkingBudgetExceeded);
+        }
         let mut out = Vec::new();
-        out.try_reserve_exact(input_bytes.saturating_add(256))
+        out.try_reserve_exact(receipt_bytes as usize)
             .map_err(|_| AuditError::WorkingBudgetExceeded)?;
         out.extend_from_slice(&AUDIT_MAGIC);
         put_u16(&mut out, AUDIT_SCHEMA_VERSION);
@@ -629,6 +714,14 @@ impl MeshAuditReport {
         }
         put_u64(&mut out, self.estimated_input_bytes);
         put_u64(&mut out, self.estimated_working_bytes);
+        put_u64(&mut out, self.limits.max_vertices as u64);
+        put_u64(&mut out, self.limits.max_faces as u64);
+        put_u64(&mut out, self.limits.max_input_bytes);
+        put_u64(&mut out, self.limits.max_working_bytes);
+        put_u64(&mut out, self.limits.near_degenerate_cross_squared_epsilon.to_bits());
+        put_u32(&mut out, self.boundary_component_count);
+        put_u32(&mut out, self.non_loop_boundary_component_count);
+        put_u32(&mut out, self.semantic_transition_edge_count);
         put_u32(
             &mut out,
             u32::try_from(self.components.len()).map_err(|_| AuditError::SizeOverflow)?,
@@ -700,6 +793,13 @@ mod tests {
         assert_eq!(report.checks.self_intersections, CheckStatus::NotEvaluated);
         assert_eq!(report.components.len(), 1);
         assert_eq!(report.components[0].euler_characteristic, 2);
+    }
+
+    #[test]
+    fn open_disk_reports_one_closed_boundary_loop() {
+        let report = audit_mesh(&open_disk(), AuditLimits::default()).unwrap();
+        assert_eq!(report.boundary_component_count, 1);
+        assert_eq!(report.non_loop_boundary_component_count, 0);
     }
 
     #[test]
@@ -803,6 +903,22 @@ mod tests {
         assert_eq!(report.coincident_extra_vertex_count, 1);
         assert_eq!(report.orphan_vertex_count, 1);
         assert_eq!(report.checks.semantic_provenance, CheckStatus::Fail);
+    }
+
+    #[test]
+    fn unknown_feature_bits_and_region_ids_reject() {
+        let mut mesh = open_disk();
+        mesh.vertex_feature_masks[0] = 1 << 9;
+        assert_eq!(
+            audit_mesh(&mesh, AuditLimits::default()),
+            Err(AuditError::InvalidVertexFeatureMask)
+        );
+        let mut mesh = open_disk();
+        mesh.face_region_ids[0] = 9;
+        assert_eq!(
+            audit_mesh(&mesh, AuditLimits::default()),
+            Err(AuditError::InvalidFaceRegion)
+        );
     }
 
     #[test]
