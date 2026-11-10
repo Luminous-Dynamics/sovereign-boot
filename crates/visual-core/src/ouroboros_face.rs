@@ -466,7 +466,9 @@ fn append_ellipsoid(
             let b = a + row as u32;
             let c = a + 1;
             let d = b + 1;
-            indices.extend_from_slice(&[a, b, c, b, d, c]);
+            // Reverse latitude/longitude parameter order so normals
+            // and triangle winding both point outward.
+            indices.extend_from_slice(&[a, c, b, c, d, b]);
         }
     }
 
@@ -509,7 +511,9 @@ fn validate_canonical_sphere_indices(
             let b = a + row as u32;
             let c = a + 1;
             let d = b + 1;
-            let expected = [a, b, c, b, d, c];
+            // latitude then longitude is an inward parameter-space
+            // ordering; reverse each quad triangle for outward face winding.
+            let expected = [a, c, b, c, d, b];
             if indices.get(offset..offset + 6) != Some(&expected) {
                 return Err(OuroborosFaceMeshError::InvalidGeneratedGeometry);
             }
@@ -756,6 +760,15 @@ mod tests {
             OuroborosFaceMesh::build(&scene, landmarks, OuroborosFaceMeshConfig::default())
                 .unwrap();
         mesh.vertices[0].position[0] = f32::NAN;
+        assert_eq!(
+            mesh.validate(&scene),
+            Err(OuroborosFaceMeshError::InvalidGeneratedGeometry)
+        );
+
+        let (mut mesh, _) =
+            OuroborosFaceMesh::build(&scene, landmarks, OuroborosFaceMeshConfig::default())
+                .unwrap();
+        mesh.vertices[1].position[0] += 0.01;
         assert_eq!(
             mesh.validate(&scene),
             Err(OuroborosFaceMeshError::InvalidGeneratedGeometry)
