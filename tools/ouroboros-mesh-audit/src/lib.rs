@@ -110,6 +110,7 @@ pub struct MeshAuditReport {
     pub boundary_component_count: u32,
     pub non_loop_boundary_component_count: u32,
     pub semantic_transition_edge_count: u32,
+    pub semantic_face_vertex_mismatch_count: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -224,6 +225,7 @@ pub fn audit_mesh(
     let near_ok = near_degenerate == 0;
     let semantic_ok = mesh.vertex_feature_masks.iter().all(|mask| *mask != 0)
         && mesh.face_region_ids.iter().all(|region| *region != 0)
+        && semantic_face_vertex_mismatch_count == 0
         && orphan_vertex_count == 0;
 
     Ok(MeshAuditReport {
@@ -260,6 +262,7 @@ pub fn audit_mesh(
         boundary_component_count,
         non_loop_boundary_component_count,
         semantic_transition_edge_count,
+        semantic_face_vertex_mismatch_count,
     })
 }
 
@@ -453,6 +456,21 @@ fn semantic_transition_edges(
         })
         .count() as u32
 }
+
+fn count_face_vertex_region_mismatches(mesh: &SemanticTriangleMesh) -> u32 {
+    let mut mismatches = 0_u32;
+    for (face, region_id) in mesh.faces.iter().zip(&mesh.face_region_ids) {
+        let required_mask = 1_u32 << (*region_id - 1);
+        for vertex_index in face {
+            let mask = mesh.vertex_feature_masks[*vertex_index as usize];
+            if mask & required_mask == 0 {
+                mismatches += 1;
+            }
+        }
+    }
+    mismatches
+}
+
 
 fn validate_vertex_links(
     links: &[Vec<(u32, u32)>],
@@ -716,6 +734,7 @@ impl MeshAuditReport {
         ] {
             put_u32(&mut out, value);
         }
+        put_u32(&mut out, self.semantic_face_vertex_mismatch_count);
         put_u64(&mut out, self.estimated_input_bytes);
         put_u64(&mut out, self.estimated_working_bytes);
         put_u64(&mut out, self.limits.max_vertices as u64);
@@ -966,6 +985,15 @@ mod tests {
             audit_mesh(&mesh, AuditLimits::default()),
             Err(AuditError::InvalidFaceRegion)
         );
+    }
+
+    #[test]
+    fn face_region_must_be_present_in_each_vertex_feature_mask() {
+        let mut mesh = open_disk();
+        mesh.face_region_ids = vec![2, 1];
+        let report = audit_mesh(&mesh, AuditLimits::default()).unwrap();
+        assert_eq!(report.semantic_face_vertex_mismatch_count, 3);
+        assert_eq!(report.checks.semantic_provenance, CheckStatus::Fail);
     }
 
     #[test]
