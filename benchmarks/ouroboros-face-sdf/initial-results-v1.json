@@ -42,8 +42,12 @@
       "components": 1,
       "eulerCharacteristic": 2,
       "positiveVolume": true,
-      "estimatedProductionBufferBytes": 254568,
-      "withinCurrentVertexLimit": true
+      "estimatedProductionBufferBytes": 347112,
+      "withinCurrentVertexLimit": true,
+      "indexCount": 34704,
+      "withinCurrentIndexLimit": true,
+      "withinCurrentBufferByteLimit": true,
+      "withinAllCurrentFaceLimits": true
     },
     {
       "grid": [
@@ -60,8 +64,12 @@
       "components": 1,
       "eulerCharacteristic": 2,
       "positiveVolume": true,
-      "estimatedProductionBufferBytes": 583600,
-      "withinCurrentVertexLimit": true
+      "estimatedProductionBufferBytes": 795792,
+      "withinCurrentVertexLimit": true,
+      "indexCount": 79572,
+      "withinCurrentIndexLimit": true,
+      "withinCurrentBufferByteLimit": true,
+      "withinAllCurrentFaceLimits": true
     },
     {
       "grid": [
@@ -78,8 +86,12 @@
       "components": 1,
       "eulerCharacteristic": 2,
       "positiveVolume": true,
-      "estimatedProductionBufferBytes": 1044016,
-      "withinCurrentVertexLimit": true
+      "estimatedProductionBufferBytes": 1423632,
+      "withinCurrentVertexLimit": true,
+      "indexCount": 142356,
+      "withinCurrentIndexLimit": true,
+      "withinCurrentBufferByteLimit": true,
+      "withinAllCurrentFaceLimits": true
     },
     {
       "grid": [
@@ -96,8 +108,12 @@
       "components": 1,
       "eulerCharacteristic": 2,
       "positiveVolume": true,
-      "estimatedProductionBufferBytes": 2362344,
-      "withinCurrentVertexLimit": false
+      "estimatedProductionBufferBytes": 3221352,
+      "withinCurrentVertexLimit": false,
+      "indexCount": 322128,
+      "withinCurrentIndexLimit": false,
+      "withinCurrentBufferByteLimit": false,
+      "withinAllCurrentFaceLimits": false
     }
   ],
   "separatePrimitiveSurfaceVertexFractionsInsideHeadShellField": {
@@ -115,5 +131,13 @@
     "no named-host Rust timings",
     "not the SIGGRAPH 2026 discrete-SDF dual-contouring algorithm",
     "not production geometry or GPU evidence"
-  ]
+  ],
+  "productionFaceLimits": {
+    "maxVertices": 50000,
+    "maxIndices": 300000,
+    "maxGeometryBytes": 2500000,
+    "vertexBytes": 36,
+    "indexBytes": 4,
+    "indexCountDefinition": "triangleCount * 3"
+  }
 }
