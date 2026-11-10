@@ -86,6 +86,10 @@ let
     device="$(${pkgs.gnused}/bin/sed -n 's/^device=//p' "$inflight")"
     armed_at_unix_s="$(${pkgs.gnused}/bin/sed -n 's/^armed_at_unix_s=//p' "$inflight")"
     result_request_id=""
+    runner_output_first_line=""
+    if [[ -s "$canaryOutput" ]]; then
+      runner_output_first_line="$(${pkgs.coreutils}/bin/head -n 1 "$canaryOutput")"
+    fi
     if [[ -e "$result" ]]; then
       result_request_id="$(${pkgs.gnused}/bin/sed -n 's/^request_id=//p' "$result")"
     fi
@@ -112,8 +116,8 @@ let
       *) status="FAIL_SERVICE_ABORTED" ;;
     esac
 
-    printf 'status=%s\nboot_id=%s\nrequest_id=%s\narmed_at_unix_s=%s\ndevice=%s\nservice_result=%s\nexit_code=%s\nexit_status=%s\n' \
-      "$status" "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$armed_at_unix_s" "$device" "''${SERVICE_RESULT:-unknown}" "''${EXIT_CODE:-unknown}" "''${EXIT_STATUS:-unknown}" | write_atomic "$result"
+    printf 'status=%s\nboot_id=%s\nrequest_id=%s\narmed_at_unix_s=%s\ndevice=%s\nservice_result=%s\nexit_code=%s\nexit_status=%s\nrunner_output_first_line=%s\n' \
+      "$status" "$(< /proc/sys/kernel/random/boot_id)" "$request_id" "$armed_at_unix_s" "$device" "''${SERVICE_RESULT:-unknown}" "''${EXIT_CODE:-unknown}" "''${EXIT_STATUS:-unknown}" "$runner_output_first_line" | write_atomic "$result"
 
     if [[ "$request_id" =~ ^[0-9a-f]{32}$ ]]; then
       mkdir -p "$archive_dir"
@@ -132,7 +136,7 @@ let
     # This runs before the display manager with a deliberately strict systemd
     # sandbox. Never depend on the ambient manager PATH for shell utilities.
     export PATH="${lib.makeBinPath [ pkgs.coreutils pkgs.gnugrep pkgs.gnused ]}"
-    for utility in mktemp chmod cat mv rm mkdir; do
+    for utility in mktemp chmod cat mv rm mkdir head; do
       if ! command -v "$utility" >/dev/null 2>&1; then
         echo "sovereign-boot: required post-stop utility missing from runtime PATH: $utility" >&2
         exit 127
