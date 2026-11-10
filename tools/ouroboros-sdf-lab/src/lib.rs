@@ -507,6 +507,8 @@ impl SampledGrid {
         put_u32(&mut out, self.spec.dimensions[0]);
         put_u32(&mut out, self.spec.dimensions[1]);
         put_u32(&mut out, self.spec.dimensions[2]);
+        // Coordinate axes: forward, lateral, up. Layout: first-axis-fastest.
+        out.extend_from_slice(&[1, 2, 3, 1]);
         for value in self.spec.minimum.into_iter().chain(self.spec.maximum) {
             put_i64(&mut out, coordinate_to_microunits(value)?);
         }
@@ -616,6 +618,7 @@ fn canonical_header_len() -> u64 {
         + 4
         + FIELD_DESCRIPTOR_BYTES
         + 3 * 4
+        + 4
         + 6 * 8
         + 8
         + 8
@@ -963,6 +966,21 @@ mod tests {
                 "reference probe mismatch at {point:?}"
             );
         }
+    }
+
+    #[test]
+    fn canonical_and_diagnostic_headers_bind_axis_and_flattening_order() {
+        let sampled = small_grid()
+            .sample(FaceSkinField::source_fixture(UnionMode::Sharp).unwrap())
+            .unwrap();
+        let canonical = sampled.canonical_bytes().unwrap();
+        let diagnostic = sampled.diagnostic_f32_bytes().unwrap();
+        let fixture_end = 8 + 2 + 2 + FIXTURE_ID.len();
+        let descriptor_start = fixture_end + 4;
+        let dimensions_start = descriptor_start + FIELD_DESCRIPTOR_BYTES as usize;
+        let axis_start = dimensions_start + 12;
+        assert_eq!(&canonical[axis_start..axis_start + 4], &[1, 2, 3, 1]);
+        assert_eq!(&diagnostic[axis_start..axis_start + 4], &[1, 2, 3, 1]);
     }
 
     #[test]
