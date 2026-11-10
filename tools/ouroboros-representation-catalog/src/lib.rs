@@ -334,6 +334,25 @@ impl RepresentationCatalog {
             }
         }
 
+        if self.required_visual_features != 0
+            && !self.representations.iter().any(|entry| {
+                entry.role == RepresentationRole::VisualAppearance
+                    && entry.semantic_feature_mask & self.required_visual_features
+                        == self.required_visual_features
+            })
+        {
+            return Err(CatalogError::RequiredVisualFeaturesUnavailable);
+        }
+        if self.required_anchors != 0
+            && !self.representations.iter().any(|entry| {
+                entry.role == RepresentationRole::SemanticRig
+                    && entry.anchor_fidelity == AnchorFidelity::Exact
+                    && entry.anchor_mask & self.required_anchors == self.required_anchors
+            })
+        {
+            return Err(CatalogError::RequiredAnchorsUnavailable);
+        }
+
         for representation in &self.representations {
             if let Some(fallback) = representation.fallback {
                 let target = self
@@ -362,6 +381,27 @@ impl RepresentationCatalog {
                     }
                     FallbackEquivalence::NonEquivalent => {}
                 }
+            }
+        }
+
+        // Fallbacks form directed edges. Reject cycles at catalog validation,
+        // not only when a particular chain happens to be resolved.
+        for start in &self.representations {
+            let mut seen = Vec::new();
+            let mut current = start;
+            loop {
+                if seen.contains(&current.representation_id) {
+                    return Err(CatalogError::FallbackCycle);
+                }
+                seen.push(current.representation_id);
+                let Some(link) = current.fallback else {
+                    break;
+                };
+                current = self
+                    .representations
+                    .iter()
+                    .find(|entry| entry.representation_id == link.representation_id)
+                    .ok_or(CatalogError::UnknownFallback)?;
             }
         }
         Ok(())
@@ -433,10 +473,22 @@ impl RepresentationCatalog {
                 entry.role == required_role
                     && entry.required_capabilities & !host.capability_mask == 0
                     && entry.required_extensions & !host.extension_mask == 0
-                    && entry.semantic_feature_mask & required_visual_features
-                        == required_visual_features
-                    && entry.anchor_mask & required_anchors == required_anchors
-                    && (!require_exact_anchors
+                    && entry.semantic_feature_mask
+                        & (self.required_visual_features | required_visual_features)
+                        == (self.required_visual_features | required_visual_features)
+                    && entry.anchor_mask
+                        & (if required_role == RepresentationRole::SemanticRig {
+                            self.required_anchors | required_anchors
+                        } else {
+                            required_anchors
+                        })
+                        == (if required_role == RepresentationRole::SemanticRig {
+                            self.required_anchors | required_anchors
+                        } else {
+                            required_anchors
+                        })
+                    && (!(require_exact_anchors
+                        || required_role == RepresentationRole::SemanticRig)
                         || entry.anchor_fidelity == AnchorFidelity::Exact)
             })
             .collect())
@@ -485,18 +537,18 @@ impl RepresentationRecord {
             .and_then(|n| n.checked_add(8))
             .and_then(|n| n.checked_add(32 * 2))
             .and_then(|n| n.checked_add(8 * 2 + 1 + 8 * 2))
-            .and_then(|n| n.checked_add(1))
             .ok_or(CatalogError::SizeOverflow)?;
-        let fallback = if self.fallback.is_some() { 16 + 1 } else { 0 };
-        let measured = if self.measured_quality.is_some() {
-            1 + 32 * 3 + 4 * 2 + 8 * 2 + 4
+        // Both optional-presence markers are always serialized.
+        let optional_markers = 2_usize;
+        let fallback_payload = if self.fallback.is_some() { 16 + 1 } else { 0 };
+        let measured_payload = if self.measured_quality.is_some() {
+            32 * 3 + 4 * 2 + 8 * 2 + 4
         } else {
             0
         };
-        let optional_markers = 2_usize;
-        base.checked_add(fallback)
-            .and_then(|n| n.checked_add(measured))
-            .and_then(|n| n.checked_add(optional_markers))
+        base.checked_add(optional_markers)
+            .and_then(|n| n.checked_add(fallback_payload))
+            .and_then(|n| n.checked_add(measured_payload))
             .ok_or(CatalogError::SizeOverflow)
     }
 }
@@ -505,6 +557,8 @@ impl RepresentationRecord {
 pub enum CatalogError {
     UnsupportedSchema,
     InvalidCatalogIdentity,
+    RequiredVisualFeaturesUnavailable,
+    RequiredAnchorsUnavailable,
     InvalidRepresentationCount,
     InvalidRepresentation,
     UnknownCapabilityOrSemantic,
@@ -663,6 +717,127 @@ mod tests {
             first.canonical_bytes().unwrap(),
             second.canonical_bytes().unwrap()
         );
+    }
+
+    #[test]
+    fn catalog_requires_declared_identity_features_and_exact_anchor_sidecar() {
+        let visual = record(
+            1,
+            RepresentationFormat::GltfMesh,
+            RepresentationRole::VisualAppearance,
+        );
+        let missing_rig = catalog(vec![visual.clone()]);
+        assert_eq!(
+            missing_rig.validate(),
+            Err(CatalogError::RequiredAnchorsUnavailable)
+        );
+        let mut rig = record(
+            2,
+            RepresentationFormat::LandmarkSidecar,
+            RepresentationRole::SemanticRig,
+        );
+        rig.anchor_mask = ANCHOR_HEAD_ROOT;
+        let missing_anchor = catalog(vec![visual.clone(), rig.clone()]);
+        assert_eq!(
+            missing_anchor.validate(),
+            Err(CatalogError::RequiredAnchorsUnavailable)
+        );
+        rig.anchor_mask = ANCHOR_KNOWN_MASK;
+        let valid = catalog(vec![visual, rig]);
+        assert_eq!(valid.validate(), Ok(()));
+    }
+
+    #[test]
+    fn visual_compatibility_cannot_weaken_catalog_required_features() {
+        let mut visual = record(
+            1,
+            RepresentationFormat::GltfMesh,
+            RepresentationRole::VisualAppearance,
+        );
+        visual.semantic_feature_mask = FEATURE_HEAD_SILHOUETTE;
+        let rig = record(
+            2,
+            RepresentationFormat::LandmarkSidecar,
+            RepresentationRole::SemanticRig,
+        );
+        let value = catalog(vec![visual, rig]);
+        let host = HostRepresentationCapabilities {
+            capability_mask: CAP_GLTF_2,
+            extension_mask: 0,
+        };
+        assert_eq!(
+            value.compatible_entries(
+                host,
+                RepresentationRole::VisualAppearance,
+                0,
+                0,
+                false
+            ),
+            Ok(Vec::new())
+        );
+    }
+
+    #[test]
+    fn fallback_cycles_are_rejected_during_catalog_validation() {
+        let mut first = record(
+            1,
+            RepresentationFormat::GltfMesh,
+            RepresentationRole::VisualAppearance,
+        );
+        let mut second = record(
+            2,
+            RepresentationFormat::GltfMesh,
+            RepresentationRole::VisualAppearance,
+        );
+        first.fallback = Some(FallbackLink {
+            representation_id: [2; 16],
+            equivalence: FallbackEquivalence::ExactEquivalent,
+        });
+        second.fallback = Some(FallbackLink {
+            representation_id: [1; 16],
+            equivalence: FallbackEquivalence::ExactEquivalent,
+        });
+        assert_eq!(
+            catalog(vec![first, second]).validate(),
+            Err(CatalogError::FallbackCycle)
+        );
+    }
+
+    #[test]
+    fn canonical_record_length_matches_encoded_record_bytes() {
+        let record = record(
+            1,
+            RepresentationFormat::GltfMesh,
+            RepresentationRole::VisualAppearance,
+        );
+        let mut bytes = Vec::new();
+        record.canonical_fields(&mut bytes).unwrap();
+        assert_eq!(record.canonical_len().unwrap(), bytes.len());
+        let with_fallback = {
+            let mut value = record.clone();
+            value.fallback = Some(FallbackLink {
+                representation_id: [2; 16],
+                equivalence: FallbackEquivalence::ExactEquivalent,
+            });
+            value
+        };
+        let mut bytes = Vec::new();
+        with_fallback.canonical_fields(&mut bytes).unwrap();
+        assert_eq!(with_fallback.canonical_len().unwrap(), bytes.len());
+        let mut measured = record;
+        measured.measured_quality = Some(MeasuredQuality {
+            suite_digest: [5; 32],
+            host_profile_digest: [6; 32],
+            raw_result_digest: [7; 32],
+            silhouette_error_microunits: 1,
+            landmark_error_microunits: 2,
+            p95_build_time_ns: 3,
+            peak_memory_bytes: 4,
+            topology_flags: 5,
+        });
+        let mut bytes = Vec::new();
+        measured.canonical_fields(&mut bytes).unwrap();
+        assert_eq!(measured.canonical_len().unwrap(), bytes.len());
     }
 
     #[test]
