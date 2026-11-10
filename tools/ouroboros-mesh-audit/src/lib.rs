@@ -68,7 +68,7 @@ pub struct AuditChecks {
     pub topology_manifold: CheckStatus,
     pub closed_surface: CheckStatus,
     pub orientation_consistency: CheckStatus,
-    pub exact_degeneracy: CheckStatus,
+    pub computed_zero_area: CheckStatus,
     pub near_degeneracy: CheckStatus,
     pub semantic_provenance: CheckStatus,
     /// Not evaluated by this topology-only implementation.
@@ -96,7 +96,7 @@ pub struct MeshAuditReport {
     pub inconsistent_oriented_edge_count: u32,
     pub non_manifold_vertex_count: u32,
     pub disconnected_vertex_link_count: u32,
-    pub exact_degenerate_triangle_count: u32,
+    pub zero_cross_product_triangle_count: u32,
     pub near_degenerate_triangle_count: u32,
     pub coincident_position_group_count: u32,
     pub coincident_extra_vertex_count: u32,
@@ -122,6 +122,7 @@ pub enum AuditError {
     SizeOverflow,
     InvalidLimits,
     NonFiniteVertex,
+    NonFiniteGeometry,
     InvalidVertexFeatureMask,
     InvalidFaceRegion,
     FaceIndexOutOfBounds,
@@ -164,7 +165,7 @@ pub fn audit_mesh(
     let mut vertex_link_edges: Vec<Vec<(u32, u32)>> =
         (0..vertex_count).map(|_| Vec::new()).collect();
     let mut used_vertices = vec![false; vertex_count];
-    let mut exact_degenerate = 0_u32;
+    let mut zero_cross_product = 0_u32;
     let mut near_degenerate = 0_u32;
 
     for (face_index, face) in mesh.faces.iter().enumerate() {
@@ -181,8 +182,11 @@ pub fn audit_mesh(
         let pc = mesh.vertices[ic];
         let cross = cross(sub(pb, pa), sub(pc, pa));
         let cross_squared = dot(cross, cross);
+        if !cross_squared.is_finite() {
+            return Err(AuditError::NonFiniteGeometry);
+        }
         if cross_squared == 0.0 {
-            exact_degenerate = exact_degenerate.saturating_add(1);
+            zero_cross_product = zero_cross_product.saturating_add(1);
         } else if cross_squared <= limits.near_degenerate_cross_squared_epsilon {
             near_degenerate = near_degenerate.saturating_add(1);
         }
@@ -216,7 +220,7 @@ pub fn audit_mesh(
     let topology_ok = edge_stats.non_manifold == 0 && non_manifold_vertex_count == 0;
     let orientation_ok = edge_stats.non_manifold == 0 && edge_stats.inconsistent == 0;
     let closed_ok = topology_ok && edge_stats.boundary == 0;
-    let exact_ok = exact_degenerate == 0;
+    let exact_ok = zero_cross_product == 0;
     let near_ok = near_degenerate == 0;
     let semantic_ok = mesh.vertex_feature_masks.iter().all(|mask| *mask != 0)
         && mesh.face_region_ids.iter().all(|region| *region != 0)
@@ -228,7 +232,7 @@ pub fn audit_mesh(
             topology_manifold: status(topology_ok),
             closed_surface: status(closed_ok),
             orientation_consistency: status(orientation_ok),
-            exact_degeneracy: status(exact_ok),
+            computed_zero_area: status(exact_ok),
             near_degeneracy: status(near_ok),
             semantic_provenance: status(semantic_ok),
             self_intersections: CheckStatus::NotEvaluated,
@@ -242,7 +246,7 @@ pub fn audit_mesh(
         inconsistent_oriented_edge_count: edge_stats.inconsistent,
         non_manifold_vertex_count,
         disconnected_vertex_link_count,
-        exact_degenerate_triangle_count: exact_degenerate,
+        zero_cross_product_triangle_count: zero_cross_product,
         near_degenerate_triangle_count: near_degenerate,
         coincident_position_group_count,
         coincident_extra_vertex_count,
@@ -656,7 +660,7 @@ impl MeshAuditReport {
             .checked_mul(20)
             .ok_or(AuditError::SizeOverflow)?;
         let receipt_bytes = input_bytes
-            .checked_add(8 + 2 + 4 + 4 + 8 + 8 + 8 + 14 * 4 + 2 * 8 + 5 * 8 + 3 * 4 + 4)
+            .checked_add(8 + 2 + 4 + 4 + 8 + 14 * 4 + 7 * 8 + 3 * 4 + 4)
             .and_then(|value| value.checked_add(component_bytes))
             .ok_or(AuditError::SizeOverflow)?;
         if receipt_bytes > MAX_RECEIPT_BYTES {
@@ -686,7 +690,7 @@ impl MeshAuditReport {
             self.checks.topology_manifold,
             self.checks.closed_surface,
             self.checks.orientation_consistency,
-            self.checks.exact_degeneracy,
+            self.checks.computed_zero_area,
             self.checks.near_degeneracy,
             self.checks.semantic_provenance,
             self.checks.self_intersections,
@@ -702,7 +706,7 @@ impl MeshAuditReport {
             self.inconsistent_oriented_edge_count,
             self.non_manifold_vertex_count,
             self.disconnected_vertex_link_count,
-            self.exact_degenerate_triangle_count,
+            self.zero_cross_product_triangle_count,
             self.near_degenerate_triangle_count,
             self.coincident_position_group_count,
             self.coincident_extra_vertex_count,
@@ -887,9 +891,9 @@ mod tests {
             ..AuditLimits::default()
         };
         let report = audit_mesh(&mesh, limits).unwrap();
-        assert!(report.exact_degenerate_triangle_count >= 1);
+        assert!(report.zero_cross_product_triangle_count >= 1);
         assert!(report.near_degenerate_triangle_count >= 1);
-        assert_eq!(report.checks.exact_degeneracy, CheckStatus::Fail);
+        assert_eq!(report.checks.computed_zero_area, CheckStatus::Fail);
         assert_eq!(report.checks.near_degeneracy, CheckStatus::Fail);
     }
 
