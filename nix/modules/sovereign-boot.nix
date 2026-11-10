@@ -415,11 +415,7 @@ in
     ];
 
     systemd.services.sovereign-boot-physical-canary = {
-    # Emit the ordering edge directly into the generated unit so systemctl
-    # inspection and service-manager ordering agree even when module helpers
-    # rewrite the high-level before/after option set.
-    unitConfig.Before = "display-manager.service";
-      description = "Sovereign Boot one-shot physical DRM/KMS canary";
+    description = "Sovereign Boot one-shot physical DRM/KMS canary";
       wantedBy = [ "multi-user.target" ];
       before = [
         "display-manager.service"
