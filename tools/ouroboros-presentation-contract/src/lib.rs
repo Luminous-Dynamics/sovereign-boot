@@ -13,7 +13,7 @@ pub const ENTITY_SCHEMA_VERSION: u16 = 1;
 pub const QUALITY_SCHEMA_VERSION: u16 = 1;
 pub const CAPABILITY_SCHEMA_VERSION: u16 = 1;
 pub const DECISION_SCHEMA_VERSION: u16 = 1;
-pub const FRAME_RECEIPT_SCHEMA_VERSION: u16 = 1;
+pub const FRAME_RECEIPT_SCHEMA_VERSION: u16 = 2;
 
 const MAX_FEATURE_IDS: usize = 128;
 const MAX_REPRESENTATION_ROOTS: usize = 128;
@@ -465,6 +465,118 @@ pub enum EvidenceLevel {
     ExternalInstrument = 4,
 }
 
+/// Presentation protocol identifiers are explicit so adapters cannot silently
+/// reinterpret source-specific flags as universal evidence.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u16)]
+pub enum PresentationSource {
+    WaylandPresentationTimeV2 = 1,
+}
+
+pub const WAYLAND_PRESENTATION_VSYNC: u32 = 0x1;
+pub const WAYLAND_PRESENTATION_HW_CLOCK: u32 = 0x2;
+pub const WAYLAND_PRESENTATION_HW_COMPLETION: u32 = 0x4;
+pub const WAYLAND_PRESENTATION_ZERO_COPY: u32 = 0x8;
+const WAYLAND_PRESENTATION_KNOWN_FLAGS: u32 = 0x0f;
+
+/// Protocol-preserving presentation observation.
+///
+/// The optional output identity is a host-stable digest mapped from the
+/// Wayland sync_output object. It is optional because a client may not have
+/// bound the corresponding wl_output. Refresh interval and refresh sequence
+/// are kept even when zero: the protocol uses zero when prediction/retrace
+/// information is unavailable.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PresentationObservation {
+    pub source: PresentationSource,
+    pub clock_id: u32,
+    pub presentation_time_ns: u64,
+    pub refresh_interval_ns: u32,
+    pub refresh_sequence: u64,
+    pub output_identity_digest: Option<Digest>,
+    /// Source-protocol flags. For Wayland v2 these are vsync, hw_clock,
+    /// hw_completion and zero_copy. They remain compositor-reported claims.
+    pub source_flags: u32,
+}
+
+impl PresentationObservation {
+    pub fn validate(&self) -> Result<(), ContractError> {
+        if self.source_flags & !WAYLAND_PRESENTATION_KNOWN_FLAGS != 0
+            || self
+                .output_identity_digest
+                .is_some_and(|digest| digest.iter().all(|byte| *byte == 0))
+        {
+            return Err(ContractError::InvalidPresentationObservation);
+        }
+        Ok(())
+    }
+
+    pub fn canonical_bytes(&self) -> Result<Vec<u8>, ContractError> {
+        self.validate()?;
+        let mut out = Vec::with_capacity(2 + 4 + 8 + 4 + 8 + 1 + 32 + 4);
+        put_u16(&mut out, self.source as u16);
+        put_u32(&mut out, self.clock_id);
+        put_u64(&mut out, self.presentation_time_ns);
+        put_u32(&mut out, self.refresh_interval_ns);
+        put_u64(&mut out, self.refresh_sequence);
+        match self.output_identity_digest {
+            Some(digest) => {
+                out.push(1);
+                out.extend_from_slice(&digest);
+            }
+            None => out.push(0),
+        }
+        put_u32(&mut out, self.source_flags);
+        Ok(out)
+    }
+}
+
+/// Raw fields from wp_presentation_feedback.presented in Wayland
+/// presentation-time protocol v2. Split 32-bit values are retained until
+/// checked conversion so timestamp/sequence overflow cannot be hidden.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct WaylandPresentedEvent {
+    pub seconds_hi: u32,
+    pub seconds_lo: u32,
+    pub nanoseconds: u32,
+    pub refresh_interval_ns: u32,
+    pub sequence_hi: u32,
+    pub sequence_lo: u32,
+    pub flags: u32,
+}
+
+impl WaylandPresentedEvent {
+    pub fn into_observation(
+        self,
+        clock_id: u32,
+        output_identity_digest: Option<Digest>,
+    ) -> Result<PresentationObservation, ContractError> {
+        if self.nanoseconds >= 1_000_000_000
+            || self.flags & !WAYLAND_PRESENTATION_KNOWN_FLAGS != 0
+            || output_identity_digest
+                .is_some_and(|digest| digest.iter().all(|byte| *byte == 0))
+        {
+            return Err(ContractError::InvalidPresentationObservation);
+        }
+        let seconds = (u64::from(self.seconds_hi) << 32) | u64::from(self.seconds_lo);
+        let presentation_time_ns = seconds
+            .checked_mul(1_000_000_000)
+            .and_then(|base| base.checked_add(u64::from(self.nanoseconds)))
+            .ok_or(ContractError::PresentationTimestampOverflow)?;
+        let refresh_sequence =
+            (u64::from(self.sequence_hi) << 32) | u64::from(self.sequence_lo);
+        Ok(PresentationObservation {
+            source: PresentationSource::WaylandPresentationTimeV2,
+            clock_id,
+            presentation_time_ns,
+            refresh_interval_ns: self.refresh_interval_ns,
+            refresh_sequence,
+            output_identity_digest,
+            source_flags: self.flags,
+        })
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FrameReceipt {
     pub schema_version: u16,
@@ -481,10 +593,8 @@ pub struct FrameReceipt {
     pub height: u32,
     pub status: PresentationStatus,
     pub evidence_level: EvidenceLevel,
-    /// Monotonic timestamp in the declared presentation clock domain.
-    pub presentation_time_ns: Option<u64>,
-    /// POSIX/Wayland presentation clock identifier for the timestamp.
-    pub presentation_clock_id: Option<u32>,
+    /// Present only when the compositor supplied a Presented outcome.
+    pub presentation: Option<PresentationObservation>,
 }
 
 impl FrameReceipt {
@@ -506,41 +616,40 @@ impl FrameReceipt {
         match self.status {
             PresentationStatus::Rendered => {
                 if self.evidence_level > EvidenceLevel::HostObserved
-                    || self.presentation_time_ns.is_some()
-                    || self.presentation_clock_id.is_some()
+                    || self.presentation.is_some()
                 {
                     return Err(ContractError::UnsupportedPresentationClaim);
                 }
             }
             PresentationStatus::Submitted => {
                 if self.evidence_level < EvidenceLevel::HostObserved
-                    || self.presentation_time_ns.is_some()
-                    || self.presentation_clock_id.is_some()
+                    || self.presentation.is_some()
                 {
                     return Err(ContractError::UnsupportedPresentationClaim);
                 }
             }
             PresentationStatus::Presented => {
                 if self.evidence_level < EvidenceLevel::CompositorFeedback
-                    || self.presentation_time_ns.is_none()
-                    || self.presentation_clock_id.is_none()
+                    || self.presentation.is_none()
                 {
                     return Err(ContractError::UnsupportedPresentationClaim);
                 }
             }
             PresentationStatus::Discarded => {
                 if self.evidence_level < EvidenceLevel::CompositorFeedback
-                    || self.presentation_time_ns.is_some()
-                    || self.presentation_clock_id.is_some()
+                    || self.presentation.is_some()
                 {
                     return Err(ContractError::UnsupportedPresentationClaim);
                 }
             }
             PresentationStatus::Unknown => {
-                if self.presentation_time_ns.is_some() || self.presentation_clock_id.is_some() {
+                if self.presentation.is_some() {
                     return Err(ContractError::UnsupportedPresentationClaim);
                 }
             }
+        }
+        if let Some(presentation) = self.presentation {
+            presentation.validate()?;
         }
         Ok(())
     }
@@ -552,14 +661,15 @@ impl FrameReceipt {
         if self.status != PresentationStatus::Presented {
             return Err(ContractError::FrameNotPresented);
         }
-        self.presentation_time_ns
+        self.presentation
+            .map(|presentation| presentation.presentation_time_ns)
             .ok_or(ContractError::UnsupportedPresentationClaim)
     }
 
     pub fn canonical_bytes(&self) -> Result<Vec<u8>, ContractError> {
         self.validate()?;
-        let mut out = Vec::with_capacity(8 + 2 + 16 + 32 * 4 + 16 + 8 * 2 + 2 + 4 * 2 + 3 + 8 + 4);
-        out.extend_from_slice(b"OUROFRM1");
+        let mut out = Vec::with_capacity(8 + 2 + 16 + 32 * 4 + 16 + 8 * 2 + 2 + 4 * 2 + 1 + 61);
+        out.extend_from_slice(b"OUROFRM2");
         put_u16(&mut out, self.schema_version);
         out.extend_from_slice(&self.entity_id.0);
         out.extend_from_slice(&self.entity_revision_root);
@@ -574,17 +684,10 @@ impl FrameReceipt {
         put_u32(&mut out, self.height);
         out.push(self.status as u8);
         out.push(self.evidence_level as u8);
-        match self.presentation_time_ns {
-            Some(time) => {
+        match self.presentation {
+            Some(presentation) => {
                 out.push(1);
-                put_u64(&mut out, time);
-            }
-            None => out.push(0),
-        }
-        match self.presentation_clock_id {
-            Some(clock_id) => {
-                out.push(1);
-                put_u32(&mut out, clock_id);
+                out.extend_from_slice(&presentation.canonical_bytes()?);
             }
             None => out.push(0),
         }
@@ -713,6 +816,8 @@ pub enum ContractError {
     SessionMismatch,
     InvalidSessionBinding,
     SessionBindingMismatch,
+    InvalidPresentationObservation,
+    PresentationTimestampOverflow,
 }
 
 impl fmt::Display for ContractError {
@@ -822,8 +927,15 @@ mod tests {
             height: 1080,
             status,
             evidence_level: evidence,
-            presentation_time_ns: time,
-            presentation_clock_id: time.map(|_| 1),
+            presentation: time.map(|presentation_time_ns| PresentationObservation {
+                source: PresentationSource::WaylandPresentationTimeV2,
+                clock_id: 1,
+                presentation_time_ns,
+                refresh_interval_ns: 16_666_667,
+                refresh_sequence: 9,
+                output_identity_digest: Some([7; 32]),
+                source_flags: WAYLAND_PRESENTATION_VSYNC,
+            }),
         }
     }
 
@@ -975,7 +1087,7 @@ mod tests {
     }
 
     #[test]
-    fn presentation_receipt_requires_clock_and_backend_identity() {
+    fn presentation_receipt_requires_full_observation_and_backend_identity() {
         let mut missing_clock = receipt(
             1,
             1,
@@ -983,7 +1095,7 @@ mod tests {
             EvidenceLevel::CompositorFeedback,
             Some(10),
         );
-        missing_clock.presentation_clock_id = None;
+        missing_clock.presentation = None;
         assert_eq!(
             missing_clock.validate(),
             Err(ContractError::UnsupportedPresentationClaim)
@@ -1004,6 +1116,85 @@ mod tests {
     }
 
     #[test]
+    fn wayland_feedback_combines_split_timestamp_and_refresh_sequence() {
+        let event = WaylandPresentedEvent {
+            seconds_hi: 1,
+            seconds_lo: 2,
+            nanoseconds: 999_999_999,
+            refresh_interval_ns: 0,
+            sequence_hi: 3,
+            sequence_lo: 4,
+            flags: WAYLAND_PRESENTATION_VSYNC | WAYLAND_PRESENTATION_HW_CLOCK,
+        };
+        let observation = event.into_observation(1, None).unwrap();
+        let seconds = (1_u64 << 32) | 2;
+        assert_eq!(
+            observation.presentation_time_ns,
+            seconds * 1_000_000_000 + 999_999_999
+        );
+        assert_eq!(observation.refresh_sequence, (3_u64 << 32) | 4);
+        assert_eq!(observation.refresh_interval_ns, 0);
+        assert_eq!(observation.output_identity_digest, None);
+        assert_eq!(
+            observation.source_flags,
+            WAYLAND_PRESENTATION_VSYNC | WAYLAND_PRESENTATION_HW_CLOCK
+        );
+    }
+
+    #[test]
+    fn wayland_feedback_rejects_invalid_nanoseconds_flags_and_zero_output_digest() {
+        let mut event = WaylandPresentedEvent {
+            seconds_hi: 0,
+            seconds_lo: 5,
+            nanoseconds: 1_000_000_000,
+            refresh_interval_ns: 16_666_667,
+            sequence_hi: 0,
+            sequence_lo: 1,
+            flags: 0,
+        };
+        assert_eq!(
+            event.into_observation(1, None),
+            Err(ContractError::InvalidPresentationObservation)
+        );
+        event.nanoseconds = 0;
+        event.flags = 0x10;
+        assert_eq!(
+            event.into_observation(1, None),
+            Err(ContractError::InvalidPresentationObservation)
+        );
+        event.flags = 0;
+        assert_eq!(
+            event.into_observation(1, Some([0; 32])),
+            Err(ContractError::InvalidPresentationObservation)
+        );
+    }
+
+    #[test]
+    fn presentation_observation_canonical_bytes_bind_protocol_feedback() {
+        let base = WaylandPresentedEvent {
+            seconds_hi: 0,
+            seconds_lo: 10,
+            nanoseconds: 20,
+            refresh_interval_ns: 16_666_667,
+            sequence_hi: 0,
+            sequence_lo: 30,
+            flags: WAYLAND_PRESENTATION_VSYNC,
+        }
+        .into_observation(1, Some([8; 32]))
+        .unwrap();
+        let canonical = base.canonical_bytes().unwrap();
+        let mut changed = base;
+        changed.source_flags |= WAYLAND_PRESENTATION_ZERO_COPY;
+        assert_ne!(canonical, changed.canonical_bytes().unwrap());
+        changed = base;
+        changed.refresh_sequence += 1;
+        assert_ne!(canonical, changed.canonical_bytes().unwrap());
+        changed = base;
+        changed.output_identity_digest = Some([9; 32]);
+        assert_ne!(canonical, changed.canonical_bytes().unwrap());
+    }
+
+    #[test]
     fn submitted_is_not_presented() {
         let submitted = receipt(
             1,
@@ -1020,13 +1211,22 @@ mod tests {
 
     #[test]
     fn discarded_frame_cannot_carry_a_presentation_time() {
-        let invalid = receipt(
+        let mut invalid = receipt(
             1,
             1,
             PresentationStatus::Discarded,
             EvidenceLevel::CompositorFeedback,
-            Some(10),
+            None,
         );
+        invalid.presentation = Some(PresentationObservation {
+            source: PresentationSource::WaylandPresentationTimeV2,
+            clock_id: 1,
+            presentation_time_ns: 10,
+            refresh_interval_ns: 16_666_667,
+            refresh_sequence: 1,
+            output_identity_digest: Some([7; 32]),
+            source_flags: WAYLAND_PRESENTATION_VSYNC,
+        });
         assert_eq!(
             invalid.validate(),
             Err(ContractError::UnsupportedPresentationClaim)
