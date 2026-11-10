@@ -15,8 +15,8 @@ use crate::{
         OuroborosLandmarkReceipt, OuroborosLandmarks,
     },
     ouroboros_face::{
-        OuroborosFaceMesh, OuroborosFaceMeshConfig, OuroborosFaceMeshError,
-        OuroborosFaceMeshPlan, OuroborosFaceMeshReceipt,
+        OuroborosFaceMesh, OuroborosFaceMeshConfig, OuroborosFaceMeshError, OuroborosFaceMeshPlan,
+        OuroborosFaceMeshReceipt,
     },
     ouroboros_mesh::{
         OuroborosMesh, OuroborosMeshBudget, OuroborosMeshConfig, OuroborosMeshError,
@@ -424,7 +424,10 @@ mod tests {
         assert_eq!(first.receipt.face, first.face_mesh.receipt().unwrap());
         assert_eq!(first.receipt.face_plan, face_plan());
         OuroborosFaceMeshConfig::validate_plan(first.receipt.face_plan).unwrap();
-        assert_eq!(first.receipt.face.landmark_digest, first.receipt.landmarks.digest);
+        assert_eq!(
+            first.receipt.face.landmark_digest,
+            first.receipt.landmarks.digest
+        );
         assert_eq!(first.receipt.mesh.vertex_count, plan.vertex_count);
         assert_eq!(first.receipt.mesh.index_count, plan.index_count);
         assert_eq!(first.receipt.host_budget, plan.budget);
@@ -459,8 +462,10 @@ mod tests {
         }
 
         let selected_plan = plan();
-        let baseline = capture_ouroboros_evidence(&base, selected_plan, face_plan(), 160, 160).unwrap();
-        let posed = capture_ouroboros_evidence(&turned, selected_plan, face_plan(), 160, 160).unwrap();
+        let baseline =
+            capture_ouroboros_evidence(&base, selected_plan, face_plan(), 160, 160).unwrap();
+        let posed =
+            capture_ouroboros_evidence(&turned, selected_plan, face_plan(), 160, 160).unwrap();
 
         assert_ne!(
             baseline.receipt.landmarks.digest,
