@@ -82,6 +82,10 @@ impl SemanticLodProfile {
         let required_anchors = self.features.iter().filter(|feature| {
             feature.required && feature.feature_id.is_identity_anchor()
         }).count();
+        let has_optional_feature = self.features.iter().any(|feature| !feature.required);
+        if has_optional_feature && self.missing_optional_penalty_microunits == 0 {
+            return Err(SemanticLodError::InvalidFeatureConstraint);
+        }
         if !has_required_head || required_anchors < 2 {
             return Err(SemanticLodError::InsufficientIdentityAnchors);
         }
@@ -256,7 +260,7 @@ impl SemanticLodDecision {
             || self.semantic_profile_bytes.is_empty()
             || self.semantic_candidate_bytes.is_empty()
             || (self.selected_candidate_id.is_some() != self.weighted_distortion_milliunits.is_some())
-            || (self.is_feasible() != self.infeasible_reason.is_none())
+            || (self.selected_candidate_id.is_some() == self.infeasible_reason.is_some())
         {
             return Err(SemanticLodError::InvalidDecision);
         }
@@ -608,6 +612,99 @@ mod tests {
         set.candidates[0].observations[1].max_screen_error_microunits = 5_001;
         let decision = negotiate_semantic_lod(&quality_request(1_000_000), &capabilities(), &profile(), &set).unwrap();
         assert_eq!(decision.selected_candidate_id(), Some(3));
+    }
+
+    #[test]
+    fn missing_required_nose_and_undersized_eye_are_semantically_infeasible() {
+        let mut set = candidates();
+        let nose = &mut set.candidates[0].observations[3];
+        nose.present = false;
+        nose.projected_diameter_millipixels = 0;
+        nose.max_screen_error_microunits = 0;
+        let decision = negotiate_semantic_lod(
+            &quality_request(1_000_000),
+            &capabilities(),
+            &profile(),
+            &set,
+        )
+        .unwrap();
+        assert_ne!(decision.selected_candidate_id(), Some(1));
+
+        let mut set = candidates();
+        set.candidates[0].observations[1].projected_diameter_millipixels = 499;
+        let decision = negotiate_semantic_lod(
+            &quality_request(1_000_000),
+            &capabilities(),
+            &profile(),
+            &set,
+        )
+        .unwrap();
+        assert_ne!(decision.selected_candidate_id(), Some(1));
+    }
+
+    #[test]
+    fn weighted_distortion_ceiling_is_a_hard_semantic_constraint() {
+        let mut strict = profile();
+        strict.max_weighted_distortion_milliunits = 1;
+        let decision = negotiate_semantic_lod(
+            &quality_request(1_000_000),
+            &capabilities(),
+            &strict,
+            &candidates(),
+        )
+        .unwrap();
+        assert_eq!(
+            decision.infeasible_reason(),
+            Some(SemanticLodInfeasibleReason::NoCandidatePreservesSemanticConstraints)
+        );
+    }
+
+    #[test]
+    fn optional_feature_requires_a_nonzero_missing_penalty() {
+        let mut invalid = profile();
+        invalid.missing_optional_penalty_microunits = 0;
+        assert_eq!(invalid.validate(), Err(SemanticLodError::InvalidFeatureConstraint));
+    }
+
+    #[test]
+    fn equal_distortion_uses_resource_preference_rank_then_candidate_id() {
+        let mut caps = capabilities();
+        caps.candidates[0].preference_rank = 1;
+        caps.candidates[1].preference_rank = 0;
+        caps.candidates[2].preference_rank = 2;
+        let mut set = candidates();
+        // Make candidate IDs 1 and 2 semantically identical. Candidate 2 has
+        // the better resource preference rank and must win the exact tie.
+        set.candidates[1].observations = set.candidates[0].observations.clone();
+        let decision = negotiate_semantic_lod(
+            &quality_request(1_000_000),
+            &caps,
+            &profile(),
+            &set,
+        )
+        .unwrap();
+        assert_eq!(decision.selected_candidate_id(), Some(2));
+    }
+
+    #[test]
+    fn verifier_rejects_decision_replayed_with_changed_semantic_profile() {
+        let request = quality_request(1_000_000);
+        let caps = capabilities();
+        let profile_a = profile();
+        let candidates = candidates();
+        let decision = negotiate_semantic_lod(&request, &caps, &profile_a, &candidates).unwrap();
+        let mut profile_b = profile_a.clone();
+        profile_b.features[1].importance_weight_milli += 1;
+        assert_eq!(
+            verify_semantic_lod_decision(
+                &request,
+                &caps,
+                &profile_b,
+                &candidates,
+                &decision
+            ),
+            Err(SemanticLodError::DecisionMismatch)
+        );
     }
 
     #[test]
