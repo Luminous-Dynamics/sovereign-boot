@@ -18,9 +18,11 @@ wit_bindgen::generate!({
 });
 
 use exports::luminous::sovereign_visual::scene::{
-    Frame, Guest, GuestVisualScene, Rgb, ScenePalette as WitScenePalette,
+    Frame, GuestVisualScene, Rgb, ScenePalette as WitScenePalette,
     SceneSettings as WitSceneSettings,
 };
+#[cfg(target_arch = "wasm32")]
+use exports::luminous::sovereign_visual::scene::Guest;
 
 fn step_error(error: StepError) -> String {
     match error {
@@ -59,6 +61,7 @@ fn settings_from_wit(settings: WitSceneSettings) -> (u32, SceneSettings) {
     )
 }
 
+#[cfg(target_arch = "wasm32")]
 struct Component;
 
 struct VisualScene {
@@ -150,10 +153,15 @@ impl GuestVisualScene for VisualScene {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
 impl Guest for Component {
     type VisualScene = VisualScene;
 }
 
+// WIT export glue is only meaningful for the WASI component target. Expanding it
+// for native host tests creates colon-qualified ABI symbols in a native cdylib
+// version script, which GNU-style linkers reject.
+#[cfg(target_arch = "wasm32")]
 export!(Component);
 
 #[cfg(test)]
