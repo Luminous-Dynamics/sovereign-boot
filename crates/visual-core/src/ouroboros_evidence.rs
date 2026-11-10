@@ -285,9 +285,9 @@ fn encode_bundle(
 mod tests {
     use super::*;
     use crate::{
-        ouroboros::{OuroborosConfig, OuroborosForm},
+        ouroboros::{OuroborosConfig, OuroborosForm, OuroborosMotionMode},
         ouroboros_mesh::{OuroborosMeshBudget, OuroborosMeshConfig, OuroborosQualityTier},
-        ouroboros_trace::{OuroborosEvent, OuroborosMotionMode},
+        ouroboros_trace::OuroborosEvent,
     };
 
     fn trace() -> OuroborosTrace {
