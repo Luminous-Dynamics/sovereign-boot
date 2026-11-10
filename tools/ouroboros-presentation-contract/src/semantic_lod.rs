@@ -753,16 +753,32 @@ mod tests {
 
     #[test]
     fn equal_distortion_uses_resource_preference_rank_then_candidate_id() {
-        let mut caps = capabilities();
-        caps.candidates[0].preference_rank = 1;
-        caps.candidates[1].preference_rank = 0;
-        caps.candidates[2].preference_rank = 2;
-
-        let mut set = candidates();
-        // Make every candidate semantically identical. Candidate 2 has the
-        // better resource preference rank and must win the exact tie.
-        set.candidates[1].observations = set.candidates[0].observations.clone();
-        set.candidates[2].observations = set.candidates[0].observations.clone();
+        let caps = CapabilitySnapshot {
+            schema_version: super::super::CAPABILITY_SCHEMA_VERSION,
+            revision: 3,
+            candidates: vec![
+                resource_candidate(2, 0, 500_000),
+                resource_candidate(1, 1, 800_000),
+                resource_candidate(3, 2, 300_000),
+            ],
+        };
+        let same_observations = candidate(1, 4_000, true).observations;
+        let set = SemanticLodCandidateSet {
+            candidates: vec![
+                SemanticLodCandidate {
+                    candidate_id: 2,
+                    observations: same_observations.clone(),
+                },
+                SemanticLodCandidate {
+                    candidate_id: 1,
+                    observations: same_observations.clone(),
+                },
+                SemanticLodCandidate {
+                    candidate_id: 3,
+                    observations: same_observations,
+                },
+            ],
+        };
 
         let decision = negotiate_semantic_lod(
             &quality_request(1_000_000),
