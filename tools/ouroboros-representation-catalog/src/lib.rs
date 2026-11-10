@@ -682,7 +682,7 @@ mod tests {
             landmark_digest: [3; 32],
             coordinate_frame_digest: [4; 32],
             required_visual_features: FEATURE_HEAD_SILHOUETTE | FEATURE_EYE_PAIR,
-            required_anchors: ANCHOR_HEAD_ROOT | ANCHOR_LEFT_EYE | ANCHOR_RIGHT_EYE,
+            required_anchors: 0,
             representations,
         }
     }
@@ -726,7 +726,9 @@ mod tests {
             RepresentationFormat::GltfMesh,
             RepresentationRole::VisualAppearance,
         );
-        let missing_rig = catalog(vec![visual.clone()]);
+        let mut missing_rig = catalog(vec![visual.clone()]);
+        missing_rig.required_anchors =
+            ANCHOR_HEAD_ROOT | ANCHOR_LEFT_EYE | ANCHOR_RIGHT_EYE;
         assert_eq!(
             missing_rig.validate(),
             Err(CatalogError::RequiredAnchorsUnavailable)
@@ -737,13 +739,16 @@ mod tests {
             RepresentationRole::SemanticRig,
         );
         rig.anchor_mask = ANCHOR_HEAD_ROOT;
-        let missing_anchor = catalog(vec![visual.clone(), rig.clone()]);
+        let mut missing_anchor = catalog(vec![visual.clone(), rig.clone()]);
+        missing_anchor.required_anchors =
+            ANCHOR_HEAD_ROOT | ANCHOR_LEFT_EYE | ANCHOR_RIGHT_EYE;
         assert_eq!(
             missing_anchor.validate(),
             Err(CatalogError::RequiredAnchorsUnavailable)
         );
         rig.anchor_mask = ANCHOR_KNOWN_MASK;
-        let valid = catalog(vec![visual, rig]);
+        let mut valid = catalog(vec![visual, rig]);
+        valid.required_anchors = ANCHOR_HEAD_ROOT | ANCHOR_LEFT_EYE | ANCHOR_RIGHT_EYE;
         assert_eq!(valid.validate(), Ok(()));
     }
 
@@ -754,7 +759,7 @@ mod tests {
             RepresentationFormat::GltfMesh,
             RepresentationRole::VisualAppearance,
         );
-        visual.semantic_feature_mask = FEATURE_HEAD_SILHOUETTE;
+        visual.semantic_feature_mask = FEATURE_HEAD_SILHOUETTE | FEATURE_EYE_PAIR;
         let rig = record(
             2,
             RepresentationFormat::LandmarkSidecar,
@@ -899,6 +904,20 @@ mod tests {
     }
 
     #[test]
+    fn required_visual_features_must_exist_in_at_least_one_visual_representation() {
+        let mut visual = record(
+            1,
+            RepresentationFormat::GltfMesh,
+            RepresentationRole::VisualAppearance,
+        );
+        visual.semantic_feature_mask = FEATURE_HEAD_SILHOUETTE;
+        assert_eq!(
+            catalog(vec![visual]).validate(),
+            Err(CatalogError::RequiredVisualFeaturesUnavailable)
+        );
+    }
+
+    #[test]
     fn sdf_rig_and_raster_formats_cannot_claim_unrelated_roles() {
         assert_eq!(
             record(1, RepresentationFormat::OuroSdfGrid, RepresentationRole::VisualAppearance).validate(),
@@ -929,8 +948,8 @@ mod tests {
             .compatible_entries(
                 cpu_gltf,
                 RepresentationRole::VisualAppearance,
-                FEATURE_HEAD_SILHOUETTE,
-                ANCHOR_HEAD_ROOT,
+                FEATURE_NOSE,
+                0,
                 false,
             )
             .unwrap();
