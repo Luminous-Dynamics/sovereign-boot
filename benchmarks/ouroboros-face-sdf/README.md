@@ -92,6 +92,21 @@ Hold the semantic input field fixed when comparing extraction algorithms.
 4. **SIGGRAPH 2026 discrete-SDF dual contouring:** evaluate the authors' maintained Gpytoolbox reference implementation as an offline comparison after reviewing license and platform reproducibility.
 5. **Rust-first implementation:** only port or reimplement after the reference corpus identifies a material advantage and provides adversarial fixtures.
 
+### Maintained API contract and reproducibility
+
+The maintained Gpytoolbox API accepts `S` (one signed-distance value per grid vertex), `GV` (one 3D position per grid vertex), and `nx, ny, nz`. Its documented flattening rule is `i + nx * (j + ny * k)`: the first axis is fastest. The canonical Ouroboros sampling order is therefore forward-fastest, then lateral, then up.
+
+The function returns vertex positions `V` and quadrilateral faces `F`. For a fair comparison, pin and record:
+- `isovalue` (default 0.0);
+- `outer_iters` / `inner_iters` (default 100 each);
+- `batch_size` (default 200000);
+- `hermite_update` (default true);
+- `mu` (0.1), `dc_weight` (0.02), `svd_threshold` (0.01);
+- new Hermite/face/normal blend weights (0.2 each);
+- the Gpytoolbox package and source revision.
+
+Do not use package defaults as an unexplained baseline. The reference method is iterative; report all settings and run repeated trials. Also keep its returned quad topology separate from triangle-only baselines unless the quad-to-triangle conversion is explicitly specified and included in metrics.
+
 ### SIGGRAPH 2026 research
 
 *Dual Contouring of Signed Distance Data* (Carrera, Wang, Batty, Stein and Sellán, SIGGRAPH 2026) reconstructs sharp features from regularly sampled SDF values without requiring gradient information or arbitrary SDF queries.
