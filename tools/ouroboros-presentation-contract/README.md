@@ -17,7 +17,7 @@ The crate is intentionally isolated from the repository's production Cargo works
 - `EntityDescriptor` separates stable `EntityId` from mutable representation roots. Its canonical bytes are the revision input; the resulting digest is not the entity ID.
 - `QualityRequest` separates hard bounds from soft visual preferences, including independent CPU/GPU time and memory ceilings.
 - `CapabilitySnapshot` contains explicitly ordered candidate plans and a revision.
-- `negotiate` deterministically selects the first feasible candidate, records soft degradation, or returns an explicit infeasible decision.
+- `negotiate` deterministically selects the first feasible candidate, records soft degradation, or returns an explicit infeasible decision. A CPU-only candidate can advertise zero GPU time/memory and remain feasible under a zero-GPU budget.
 - `FrameReceipt` binds the entity/revision/state/decision roots, backend build digest, target format/extent, pool generation, terminal status, evidence level and presentation-clock identity. Presented requires compositor-or-stronger evidence plus a clock-qualified presentation timestamp.
 - `FrameSequenceGuard` rejects stale buffer generations, duplicate/non-monotonic frame sequences and cross-session receipts.
 
