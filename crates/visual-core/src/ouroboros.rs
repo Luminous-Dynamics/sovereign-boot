@@ -438,12 +438,29 @@ impl fmt::Display for OuroborosLandmarkError {
             Self::UnsupportedSceneContractVersion => {
                 write!(f, "unsupported Ouroboros landmark scene contract")
             }
-            Self::NonFiniteCoordinate => write!(f, "Ouroboros landmark contains a non-finite coordinate"),
-            Self::HeadRootMismatch => write!(f, "Ouroboros landmark head root differs from the scene root"),
-            Self::InvalidBasis => write!(f, "Ouroboros landmark basis is not orthonormal and right-handed"),
-            Self::PoseMismatch => write!(f, "Ouroboros landmark basis does not match the scene head pose"),
-            Self::LandmarkOutOfBounds => write!(f, "Ouroboros facial attachment lies outside the head envelope"),
-            Self::AsymmetricEyes => write!(f, "Ouroboros eye attachments are not symmetric around the face basis"),
+            Self::NonFiniteCoordinate => {
+                write!(f, "Ouroboros landmark contains a non-finite coordinate")
+            }
+            Self::HeadRootMismatch => write!(
+                f,
+                "Ouroboros landmark head root differs from the scene root"
+            ),
+            Self::InvalidBasis => write!(
+                f,
+                "Ouroboros landmark basis is not orthonormal and right-handed"
+            ),
+            Self::PoseMismatch => write!(
+                f,
+                "Ouroboros landmark basis does not match the scene head pose"
+            ),
+            Self::LandmarkOutOfBounds => write!(
+                f,
+                "Ouroboros facial attachment lies outside the head envelope"
+            ),
+            Self::AsymmetricEyes => write!(
+                f,
+                "Ouroboros eye attachments are not symmetric around the face basis"
+            ),
         }
     }
 }
@@ -836,8 +853,7 @@ impl OuroborosScene {
                     && velocity.is_finite_and_limited(MAX_FORM_VELOCITY) =>
             {
                 if progress < 1.0 {
-                    let resumable_velocity =
-                        project_outward_boundary_velocity(weights, velocity);
+                    let resumable_velocity = project_outward_boundary_velocity(weights, velocity);
                     let remaining = self.config.transition_seconds * (1.0 - progress);
                     if try_bounded_transition_durations(
                         weights,
@@ -2318,7 +2334,10 @@ mod tests {
         );
 
         let mut invalid = valid;
-        invalid.left_eye = add3(invalid.left_eye, scale3(invalid.lateral, scene.config().major_radius * 0.04));
+        invalid.left_eye = add3(
+            invalid.left_eye,
+            scale3(invalid.lateral, scene.config().major_radius * 0.04),
+        );
         assert_eq!(
             invalid.validate(&scene),
             Err(OuroborosLandmarkError::AsymmetricEyes)
