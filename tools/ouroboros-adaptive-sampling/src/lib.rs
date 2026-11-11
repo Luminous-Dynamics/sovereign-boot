@@ -24,7 +24,7 @@ pub const MAX_LEAF_CELLS: u32 = 4_096;
 pub const MAX_RECEIPT_BYTES: u64 = 64 * 1024 * 1024;
 pub const MAX_WORKING_PAYLOAD_BYTES: u64 = 128 * 1024 * 1024;
 pub const MAX_BALANCE_PAIR_CHECKS: u64 = 67_108_864;
-const SAMPLE_CACHE_ENTRY_ESTIMATE_BYTES: u64 = 64;
+const SAMPLE_CACHE_ENTRY_ESTIMATE_BYTES: u64 = 192;
 const LEAF_ENTRY_ESTIMATE_BYTES: u64 = 160;
 const CELL_CORNERS: [[u32; 3]; 8] = [
     [0, 0, 0],
@@ -1128,11 +1128,20 @@ fn estimate_working_payload(
     source_bytes: u64,
     descriptor_bytes: u64,
 ) -> Result<u64, AdaptiveOctreeError> {
+    let receipt_bytes = canonical_receipt_estimate(
+        source_bytes,
+        descriptor_bytes,
+        sample_count,
+        leaf_count,
+    )?;
     sample_count
         .checked_mul(SAMPLE_CACHE_ENTRY_ESTIMATE_BYTES)
         .and_then(|value| value.checked_add(leaf_count.checked_mul(LEAF_ENTRY_ESTIMATE_BYTES)?))
         .and_then(|value| value.checked_add(source_bytes))
-        .and_then(|value| value.checked_add(descriptor_bytes))
+        // VerifiedExactField and the report retain separate descriptor copies.
+        .and_then(|value| value.checked_add(descriptor_bytes.checked_mul(2)?))
+        // The canonical serialization buffer coexists with the in-memory tree.
+        .and_then(|value| value.checked_add(receipt_bytes))
         .ok_or(AdaptiveOctreeError::SizeOverflow)
 }
 
@@ -1231,6 +1240,24 @@ mod tests {
         assert_eq!(report.samples().len(), report.metrics().unique_sample_count as usize);
         assert_eq!(report.metrics().sample_evaluations, report.metrics().unique_sample_count);
         assert!(report.metrics().sample_cache_hits > 0);
+    }
+
+    #[test]
+    fn initial_working_and_receipt_budgets_reject_before_sampling_tree() {
+        let grid = grid([2, 2, 2], [-2_000_000; 3], [2_000_000; 3]);
+        let mut working_limited = small_config();
+        working_limited.max_working_payload_bytes = 1;
+        assert_eq!(
+            build_adaptive_octree(&grid, working_limited),
+            Err(AdaptiveOctreeError::WorkingPayloadBudgetExceeded)
+        );
+
+        let mut receipt_limited = small_config();
+        receipt_limited.max_receipt_bytes = 1;
+        assert_eq!(
+            build_adaptive_octree(&grid, receipt_limited),
+            Err(AdaptiveOctreeError::ReceiptBudgetExceeded)
+        );
     }
 
     #[test]
