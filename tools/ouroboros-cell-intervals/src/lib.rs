@@ -325,9 +325,6 @@ pub fn classify(grid: &ScalarGrid, limits: IntervalLimits) -> Result<IntervalRep
         0
     };
 
-    let record_bytes = total_cells
-        .checked_mul(CELL_CLASSIFICATION_ENCODED_LEN)
-        .ok_or(IntervalError::SizeOverflow)?;
     let in_memory_cell_bytes = total_cells
         .checked_mul(std::mem::size_of::<CellClassification>() as u64)
         .ok_or(IntervalError::SizeOverflow)?;
@@ -904,8 +901,12 @@ mod tests {
         let second = classify(&grid, IntervalLimits::default()).unwrap();
         let bytes = first.canonical_bytes().unwrap();
         assert_eq!(bytes, second.canonical_bytes().unwrap());
+        assert_eq!(bytes.len() as u64, first.metrics().receipt_bytes);
         assert!(bytes.starts_with(&INTERVAL_MAGIC));
         first.verify(&grid).unwrap();
+        let mut mutated = first.clone();
+        mutated.cells[0].lower_bound_microunits += 1;
+        assert_eq!(mutated.verify(&grid), Err(IntervalError::ReportMismatch));
     }
 
     #[test]
