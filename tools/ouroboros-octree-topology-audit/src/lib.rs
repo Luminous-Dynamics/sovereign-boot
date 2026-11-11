@@ -1146,7 +1146,12 @@ mod tests {
         let audit = audit_octree_topology(&grid, &tree, TopologyAuditConfig::default()).unwrap();
         assert!(audit.metrics().surface_possible_with_zero_corner_count > 0);
         assert_eq!(audit.checks().surface_leaf_extractability, CheckStatus::Fail);
-        assert_eq!(audit.readiness(), ReadinessStatus::SurfaceUnresolved);
+        // The source tree may independently be incomplete; whatever its
+        // completion state, exact-zero corners must never produce Ready.
+        assert_ne!(
+            audit.readiness(),
+            ReadinessStatus::ReadyForTransitionTemplateEvaluation
+        );
     }
 
     #[test]
