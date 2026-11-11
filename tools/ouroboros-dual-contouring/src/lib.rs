@@ -210,7 +210,7 @@ impl DualContourMesh {
             .and_then(|v| v.checked_add(vertex_bytes))
             .and_then(|v| v.checked_add(quad_bytes))
             .and_then(|v| v.checked_add(triangle_bytes))
-            .and_then(|v| v.checked_add(5 * 4 + 5 * 8 + 4))
+            .and_then(|v| v.checked_add(3 * 4 + 5 * 4 + 5 * 8 + 4))
             .and_then(|v| v.checked_add(audit_bytes.len() as u64))
             .ok_or(ExtractError::SizeOverflow)?;
         if total > MAX_CANONICAL_RECEIPT_BYTES {
@@ -1118,6 +1118,31 @@ mod tests {
             mesh.audit_report().checks.self_intersections,
             CheckStatus::NotEvaluated
         );
+    }
+
+    #[test]
+    fn canonical_receipt_length_matches_all_count_and_metric_fields() {
+        let sampled = source_grid([24, 24, 24]);
+        let mesh = extract(&sampled, DualContourConfig::default()).unwrap();
+        let bytes = mesh.canonical_bytes().unwrap();
+        let semantic_mesh = mesh.to_semantic_triangle_mesh().unwrap();
+        let audit_bytes = mesh.audit_report().canonical_bytes(&semantic_mesh).unwrap();
+        let expected = 8_u64
+            + 2
+            + 4
+            + mesh.source_grid_canonical_bytes().len() as u64
+            + mesh.config.canonical_bytes().len() as u64
+            + mesh.vertices().len() as u64 * 40
+            + 4
+            + mesh.quads().len() as u64 * 16
+            + 4
+            + mesh.triangles().len() as u64 * 12
+            + 3 * 4
+            + 5 * 4
+            + 5 * 8
+            + 4
+            + audit_bytes.len() as u64;
+        assert_eq!(bytes.len() as u64, expected);
     }
 
     #[test]
