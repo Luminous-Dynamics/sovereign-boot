@@ -62,9 +62,11 @@ The current source contains 18 authored unit tests:
 - source-grounded 32³ face extraction produces vertices/quads/triangles;
 - repeat extraction emits identical canonical bytes;
 - fixed diagonal (0,2) triangulation;
+- per-cell surface-component classification: a planar sheet is one component, disconnected opposite-corner sheets are rejected, and checkerboard faces are rejected as ambiguous;
 - per-cell surface-component classification: one planar sheet accepted, disconnected opposite-corner sheets rejected, and checkerboard face ambiguity rejected;
 - independent audit's individual dimension statuses and self-intersection NotEvaluated;
 - fixed 37-byte extractor policy serialization and threshold binding;
+- exact canonical-receipt length checks covering the collection counts, grid dimensions, metric fields and independent audit receipt;
 - canonical receipt length accounting across collection counts, grid dimensions, metrics and audit payload;
 - the canonical result embeds the exact source-grid bytes;
 - output vertex hard-limit enforcement;
