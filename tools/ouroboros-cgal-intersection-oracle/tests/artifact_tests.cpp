@@ -30,9 +30,28 @@ void append_i32(std::vector<std::uint8_t>& out, std::int32_t value) {
 std::vector<std::uint8_t> valid_artifact() {
   std::vector<std::uint8_t> bytes{'O', 'U', 'R', 'O', 'D', 'C', 'Q', '1'};
   append_u16(bytes, 1);
-  append_u32(bytes, 1);
-  bytes.push_back(0x42);                 // source grid opaque to this parser
-  bytes.insert(bytes.end(), 37, 0);      // fixed v1 extraction policy
+  std::vector<std::uint8_t> source{'O', 'U', 'R', 'O', 'G', 'R', 'D', '1'};
+  append_u16(source, 1);
+  append_u16(source, 1);
+  source.push_back('f');
+  append_u32(source, 1);
+  source.push_back(0);
+  append_u32(source, 3); append_u32(source, 3); append_u32(source, 3);
+  source.insert(source.end(), {1, 2, 3, 1});
+  for (int i = 0; i < 3; ++i) append_i64(source, -1'000'000);
+  for (int i = 0; i < 3; ++i) append_i64(source, 1'000'000);
+  append_i64(source, 1'000'000);
+  append_u64(source, 27);
+  for (int i = 0; i < 27; ++i) append_i32(source, 1);
+  append_u32(bytes, static_cast<std::uint32_t>(source.size()));
+  bytes.insert(bytes.end(), source.begin(), source.end());
+
+  append_u32(bytes, 50'000);
+  append_u32(bytes, 62'500);
+  append_u64(bytes, 8ULL * 1024ULL * 1024ULL);
+  append_u64(bytes, 128ULL * 1024ULL * 1024ULL);
+  append_u32(bytes, 100); append_u32(bytes, 1);
+  bytes.insert(bytes.end(), {1, 1, 1, 1, 1});
 
   append_u32(bytes, 4);                  // vertices
   const std::array<std::array<std::int64_t, 3>, 4> positions{{
@@ -56,8 +75,10 @@ std::vector<std::uint8_t> valid_artifact() {
   append_u32(bytes, 3); append_u32(bytes, 3); append_u32(bytes, 3);
   append_u32(bytes, 1); append_u32(bytes, 1);
   append_u32(bytes, 0); append_u32(bytes, 0); append_u32(bytes, 0);
-  for (int i = 0; i < 5; ++i) append_u64(bytes, 0);
-  append_u32(bytes, 1); bytes.push_back(0x7f); // one opaque audit byte
+  for (int i = 0; i < 3; ++i) append_u64(bytes, 0);
+  append_u64(bytes, 200);
+  append_u64(bytes, 1'000);
+  append_u32(bytes, 1); bytes.push_back(0x7f); // opaque audit receipt
   return bytes;
 }
 
@@ -98,7 +119,12 @@ void run() {
   auto bad_triangle = bytes;
   // The first triangle's second index is at the fixed offset after header,
   // source, config, vertices and quad section.
-  const std::size_t triangle_section = 14 + 1 + 37 + 4 + 4 * 40 + 4 + 16 + 4;
+  const auto source_size = static_cast<std::size_t>(
+      static_cast<std::uint32_t>(bytes[10]) |
+      (static_cast<std::uint32_t>(bytes[11]) << 8U) |
+      (static_cast<std::uint32_t>(bytes[12]) << 16U) |
+      (static_cast<std::uint32_t>(bytes[13]) << 24U));
+  const std::size_t triangle_section = 14 + source_size + 37 + 4 + 4 * 40 + 4 + 16 + 4;
   bad_triangle[triangle_section + 4] = 99;
   expect_error(std::move(bad_triangle), "FaceIndexOutOfBounds");
 
