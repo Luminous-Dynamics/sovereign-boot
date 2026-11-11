@@ -1324,8 +1324,14 @@ mod tests {
         .unwrap();
         let report = build_adaptive_octree(&plane, small_config()).unwrap();
         assert!(report.samples().values().any(|value| *value == 0));
-        assert!(report.leaves().any(|leaf| leaf.classification.status == CellStatus::SurfacePossible));
-        assert_eq!(report.metrics().leaves_certified_outside, 0);
+        let boundary_leaves: Vec<&OctreeLeaf> = report
+            .leaves()
+            .filter(|leaf| leaf.minimum_tick[2] == 0)
+            .collect();
+        assert!(!boundary_leaves.is_empty());
+        assert!(boundary_leaves
+            .iter()
+            .all(|leaf| leaf.classification.status == CellStatus::SurfacePossible));
     }
 
     #[test]
