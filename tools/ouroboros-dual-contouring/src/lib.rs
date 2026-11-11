@@ -250,6 +250,9 @@ impl DualContourMesh {
                 put_u32(&mut out, *index);
             }
         }
+        for dimension in self.metrics.grid_dimensions {
+            put_u32(&mut out, dimension);
+        }
         put_u32(&mut out, self.metrics.active_cell_count);
         put_u32(&mut out, self.metrics.sign_changing_edge_count);
         put_u32(&mut out, self.metrics.qef_centroid_fallback_count);
@@ -1191,6 +1194,29 @@ mod tests {
             + 4
             + audit_bytes.len() as u64;
         assert_eq!(bytes.len() as u64, expected);
+    }
+
+    #[test]
+    fn canonical_receipt_length_matches_grid_and_metrics_encoding() {
+        let sampled = source_grid([24, 24, 24]);
+        let mesh = extract(&sampled, DualContourConfig::default()).unwrap();
+        let bytes = mesh.canonical_bytes().unwrap();
+        let source_len = u32::from_le_bytes(bytes[10..14].try_into().unwrap()) as usize;
+        let config_len = DualContourConfig::default().canonical_bytes().len();
+        let audit_mesh = mesh.to_semantic_triangle_mesh().unwrap();
+        let audit_len = mesh.audit_report().canonical_bytes(&audit_mesh).unwrap().len();
+        let expected = 14
+            + source_len
+            + config_len
+            + 4 + mesh.vertices().len() * 40
+            + 4 + mesh.quads().len() * 16
+            + 4 + mesh.triangles().len() * 12
+            + 3 * 4
+            + 5 * 4
+            + 5 * 8
+            + 4
+            + audit_len;
+        assert_eq!(bytes.len(), expected);
     }
 
     #[test]
