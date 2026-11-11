@@ -561,19 +561,49 @@ fn verify_adjacent_sample_consistency(
     grid: &ScalarGrid,
     axis_steps: [u128; 3],
 ) -> Result<u64, IntervalError> {
-    let dims = grid.spec().dimensions;
+    verify_adjacent_values(
+        grid.spec().dimensions,
+        grid.quantized_samples(),
+        axis_steps,
+    )
+}
+
+fn verify_adjacent_values(
+    dims: [u32; 3],
+    samples: &[i32],
+    axis_steps: [u128; 3],
+) -> Result<u64, IntervalError> {
+    let expected = u64::from(dims[0])
+        .checked_mul(u64::from(dims[1]))
+        .and_then(|value| value.checked_mul(u64::from(dims[2])))
+        .ok_or(IntervalError::SizeOverflow)?;
+    if samples.len() as u64 != expected {
+        return Err(IntervalError::InvalidGrid);
+    }
     let mut checks = 0_u64;
     for z in 0..dims[2] {
         for y in 0..dims[1] {
             for x in 0..dims[0] {
-                let value = i64::from(grid.value_at(x, y, z)?);
+                let index = usize::try_from(
+                    u64::from(x)
+                        + u64::from(dims[0])
+                            * (u64::from(y) + u64::from(dims[1]) * u64::from(z)),
+                )
+                .map_err(|_| IntervalError::SizeOverflow)?;
+                let value = i64::from(*samples.get(index).ok_or(IntervalError::InvalidGrid)?);
                 for axis in 0..3 {
                     let mut next = [x, y, z];
                     if next[axis] + 1 >= dims[axis] {
                         continue;
                     }
                     next[axis] += 1;
-                    let other = i64::from(grid.value_at(next[0], next[1], next[2])?);
+                    let other_index = usize::try_from(
+                        u64::from(next[0])
+                            + u64::from(dims[0])
+                                * (u64::from(next[1]) + u64::from(dims[1]) * u64::from(next[2])),
+                    )
+                    .map_err(|_| IntervalError::SizeOverflow)?;
+                    let other = i64::from(*samples.get(other_index).ok_or(IntervalError::InvalidGrid)?);
                     let difference = value.abs_diff(other) as u128;
                     let allowed = axis_steps[axis]
                         .checked_add(1)
@@ -808,23 +838,63 @@ mod tests {
     }
 
     #[test]
-    fn exact_samples_are_checked_for_discrete_lipschitz_consistency() {
-        let exact = sphere_grid([9, 9, 9], 1_000_000);
-        let mut samples = exact.quantized_samples().to_vec();
-        let index = exact.spec().linear_index(0, 0, 0).unwrap();
-        samples[index] = i32::MAX;
-        let forged = ScalarGrid::from_samples(
-            exact.spec(),
-            FieldSemantics::ExactAnalyticSdf,
-            exact.descriptor_bytes().to_vec(),
-            0,
-            samples,
-        )
-        .unwrap();
+    fn adjacent_sample_lipschitz_check_rejects_a_discontinuous_grid() {
+        let samples = [0_i32, 0, 0, 0, 0, 10_000, 0, 0];
         assert_eq!(
-            classify(&forged, IntervalLimits::default()),
-            Err(IntervalError::SourceSampleMismatch)
+            verify_adjacent_values([2, 2, 2], &samples, [100, 100, 100]),
+            Err(IntervalError::InconsistentSamples)
         );
+        assert_eq!(
+            verify_adjacent_values([2, 2, 2], &[0_i32; 8], [100, 100, 100]),
+            Ok(12)
+        );
+    }
+
+    #[test]
+    fn every_builtin_exact_field_descriptor_decodes_and_reproduces_samples() {
+        const Q30: i64 = 1_i64 << 30;
+        let fields = [
+            AnalyticField::Sphere {
+                center_microunits: [0, 0, 0],
+                radius_microunits: 1_000_000,
+            },
+            AnalyticField::Box {
+                center_microunits: [0, 0, 0],
+                half_extents_microunits: [1_000_000; 3],
+            },
+            AnalyticField::OrientedBox {
+                center_microunits: [0, 0, 0],
+                half_extents_microunits: [1_000_000; 3],
+                rotation_q30: [0, 0, 0, Q30],
+            },
+            AnalyticField::Capsule {
+                endpoint_a_microunits: [0, -500_000, 0],
+                endpoint_b_microunits: [0, 500_000, 0],
+                radius_microunits: 250_000,
+            },
+            AnalyticField::Torus {
+                center_microunits: [0, 0, 0],
+                major_radius_microunits: 1_000_000,
+                minor_radius_microunits: 250_000,
+            },
+            AnalyticField::CappedCylinder {
+                center_microunits: [0, 0, 0],
+                radius_microunits: 750_000,
+                half_length_microunits: 1_000_000,
+            },
+            AnalyticField::Plane {
+                normal_q30: [0, 0, Q30],
+                offset_microunits: 0,
+            },
+        ];
+        for field in fields {
+            let descriptor = field.canonical_descriptor().unwrap();
+            assert_eq!(decode_exact_analytic_descriptor(&descriptor).unwrap(), field);
+            let grid = ScalarGrid::sample_exact(spec([5, 5, 5]), field, 0).unwrap();
+            let report = classify(&grid, IntervalLimits::default()).unwrap();
+            assert_eq!(report.policy().authority, BoundAuthority::VerifiedExactAnalyticSampler);
+            assert_eq!(report.metrics().verified_source_samples, 125);
+        }
     }
 
     #[test]
