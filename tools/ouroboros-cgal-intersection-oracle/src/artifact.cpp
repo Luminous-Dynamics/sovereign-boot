@@ -17,7 +17,6 @@ constexpr std::size_t kConfigBytes = 37;
 constexpr std::size_t kVertexBytes = 40;
 constexpr std::size_t kQuadBytes = 16;
 constexpr std::size_t kTriangleBytes = 12;
-constexpr std::size_t kMetricsBytes = 3 * 4 + 5 * 4 + 5 * 8;
 constexpr std::uint64_t kMaxWorkingBytes = 128ULL * 1024ULL * 1024ULL;
 
 void require(bool condition, const char* code, const char* detail) {
@@ -62,6 +61,62 @@ std::size_t checked_bytes(std::uint32_t count, std::size_t stride) {
   require(count64 <= std::numeric_limits<std::size_t>::max() / stride,
           "CountOverflow", "count multiplied by record size overflows size_t");
   return static_cast<std::size_t>(count64) * stride;
+}
+
+void validate_source_grid(std::span<const std::uint8_t> source,
+                         const std::array<std::uint32_t, 3>& expected_dimensions) {
+  constexpr std::array<std::uint8_t, 8> grid_magic{
+      'O', 'U', 'R', 'O', 'G', 'R', 'D', '1'};
+  require(source.size() >= 8 + 2 + 2 + 4, "InvalidSourceGrid",
+          "embedded source grid header is truncated");
+  require(std::equal(grid_magic.begin(), grid_magic.end(), source.begin()),
+          "InvalidSourceGrid", "embedded source grid magic is not OUROGRD1");
+  std::size_t offset = 8;
+  require(read_le<std::uint16_t>(source, offset) == 1, "InvalidSourceGrid",
+          "unsupported OUROGRD1 schema version");
+  const auto fixture_size = read_le<std::uint16_t>(source, offset);
+  require(fixture_size > 0, "InvalidSourceGrid", "source fixture identifier is empty");
+  skip(source, offset, fixture_size);
+  const auto descriptor_size = read_le<std::uint32_t>(source, offset);
+  require(descriptor_size > 0, "InvalidSourceGrid", "field descriptor is empty");
+  skip(source, offset, descriptor_size);
+
+  std::array<std::uint32_t, 3> dimensions{};
+  for (auto& dimension : dimensions) {
+    dimension = read_le<std::uint32_t>(source, offset);
+    require(dimension >= 3, "InvalidSourceGrid", "source grid dimension is below 3");
+  }
+  require(dimensions == expected_dimensions, "GridDimensionMismatch",
+          "mesh metrics and embedded source-grid dimensions differ");
+
+  constexpr std::array<std::uint8_t, 4> axes_and_layout{1, 2, 3, 1};
+  require_available(source, offset, axes_and_layout.size());
+  require(std::equal(axes_and_layout.begin(), axes_and_layout.end(),
+                     source.begin() + static_cast<std::ptrdiff_t>(offset)),
+          "InvalidSourceGrid", "axis basis or first-axis-fastest layout tag differs");
+  offset += axes_and_layout.size();
+
+  std::array<std::int64_t, 6> bounds{};
+  for (auto& value : bounds) value = read_le<std::int64_t>(source, offset);
+  for (std::size_t axis = 0; axis < 3; ++axis) {
+    require(bounds[axis + 3] > bounds[axis], "InvalidSourceGrid",
+            "canonical minimum/maximum bounds are not increasing");
+  }
+  require(read_le<std::int64_t>(source, offset) == 1'000'000,
+          "InvalidSourceGrid", "distance quantization must be signed microunits");
+
+  const auto declared_samples = read_le<std::uint64_t>(source, offset);
+  const auto expected_samples =
+      static_cast<std::uint64_t>(dimensions[0]) *
+      static_cast<std::uint64_t>(dimensions[1]) *
+      static_cast<std::uint64_t>(dimensions[2]);
+  require(declared_samples == expected_samples, "InvalidSourceGrid",
+          "declared sample count differs from dimensions");
+  require(expected_samples <= (source.size() - offset) / sizeof(std::int32_t),
+          "InvalidSourceGrid", "sample payload is truncated");
+  const auto expected_bytes = expected_samples * sizeof(std::int32_t);
+  require(expected_bytes == source.size() - offset, "InvalidSourceGrid",
+          "source-grid sample payload length or trailing bytes differ");
 }
 
 bool all_distinct(const std::array<std::uint32_t, 4>& q) {
@@ -111,11 +166,28 @@ Artifact parse_artifact(std::span<const std::uint8_t> bytes) {
                                     bytes.begin() + static_cast<std::ptrdiff_t>(offset + source_size));
   offset += source_size;
 
-  skip(bytes, offset, kConfigBytes);
+  const auto max_vertices = read_le<std::uint32_t>(bytes, offset);
+  const auto max_quads = read_le<std::uint32_t>(bytes, offset);
+  const auto max_geometry_bytes = read_le<std::uint64_t>(bytes, offset);
+  const auto max_working_bytes = read_le<std::uint64_t>(bytes, offset);
+  (void)read_le<std::uint32_t>(bytes, offset);  // QEF regularization is bound in source bytes.
+  (void)read_le<std::uint32_t>(bytes, offset);  // Gradient fallback threshold is bound too.
+  require(max_vertices > 0 && max_vertices <= kMaxVertices &&
+              max_quads > 0 && max_quads <= kMaxQuads &&
+              max_geometry_bytes > 0 && max_geometry_bytes <= 8ULL * 1024ULL * 1024ULL &&
+              max_working_bytes > 0 && max_working_bytes <= kMaxWorkingBytes,
+          "InvalidConfig", "resource ceilings are outside extractor policy bounds");
+  require_available(bytes, offset, 5);
+  for (std::size_t i = 0; i < 5; ++i) {
+    require(bytes[offset + i] == 1, "InvalidConfig", "unsupported extractor policy ID");
+  }
+  offset += 5;
+  require(offset <= bytes.size() && offset >= kHeaderBytes + source_size + kConfigBytes,
+          "InvalidConfig", "fixed configuration section is malformed");
 
   const auto vertex_count = read_le<std::uint32_t>(bytes, offset);
-  require(vertex_count > 0 && vertex_count <= kMaxVertices,
-          "InvalidVertexCount", "vertex count is outside the canonical limits");
+  require(vertex_count > 0 && vertex_count <= max_vertices && vertex_count <= kMaxVertices,
+          "InvalidVertexCount", "vertex count exceeds the serialized or parser ceiling");
   skip(bytes, offset, checked_bytes(vertex_count, kVertexBytes));
   const auto vertex_start = offset - checked_bytes(vertex_count, kVertexBytes);
   artifact.vertices.reserve(vertex_count);
@@ -136,8 +208,8 @@ Artifact parse_artifact(std::span<const std::uint8_t> bytes) {
   }
 
   const auto quad_count = read_le<std::uint32_t>(bytes, offset);
-  require(quad_count > 0 && quad_count <= kMaxQuads,
-          "InvalidQuadCount", "quad count is outside the canonical limits");
+  require(quad_count > 0 && quad_count <= max_quads && quad_count <= kMaxQuads,
+          "InvalidQuadCount", "quad count exceeds the serialized or parser ceiling");
   require_available(bytes, offset, checked_bytes(quad_count, kQuadBytes));
   artifact.quads.reserve(quad_count);
   for (std::uint32_t i = 0; i < quad_count; ++i) {
@@ -180,6 +252,7 @@ Artifact parse_artifact(std::span<const std::uint8_t> bytes) {
     dimension = read_le<std::uint32_t>(bytes, offset);
     require(dimension >= 3, "InvalidGridDimensions", "grid dimensions must be at least 3");
   }
+  validate_source_grid(artifact.source_grid_bytes, artifact.metrics.grid_dimensions);
   artifact.metrics.active_cell_count = read_le<std::uint32_t>(bytes, offset);
   artifact.metrics.sign_changing_edge_count = read_le<std::uint32_t>(bytes, offset);
   artifact.metrics.qef_centroid_fallback_count = read_le<std::uint32_t>(bytes, offset);
@@ -202,8 +275,11 @@ Artifact parse_artifact(std::span<const std::uint8_t> bytes) {
   const auto expected_geometry_bytes =
       static_cast<std::uint64_t>(vertex_count) * 40ULL +
       static_cast<std::uint64_t>(quad_count) * 40ULL;
-  require(artifact.metrics.geometry_bytes == expected_geometry_bytes,
-          "InvalidMetrics", "geometry byte count does not match canonical buffers");
+  require(artifact.metrics.geometry_bytes == expected_geometry_bytes &&
+              artifact.metrics.geometry_bytes <= max_geometry_bytes,
+          "InvalidMetrics", "geometry byte count does not match buffers or serialized ceiling");
+  require(artifact.metrics.working_payload_estimate_bytes <= max_working_bytes,
+          "InvalidMetrics", "working-payload estimate exceeds serialized config ceiling");
   require(artifact.metrics.working_payload_estimate_bytes <= kMaxWorkingBytes,
           "InvalidMetrics", "working-payload estimate exceeds extractor ceiling");
 
