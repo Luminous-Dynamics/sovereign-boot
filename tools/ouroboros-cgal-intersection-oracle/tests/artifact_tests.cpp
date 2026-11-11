@@ -34,8 +34,8 @@ std::vector<std::uint8_t> valid_artifact() {
   append_u16(source, 1);
   append_u16(source, 1);
   source.push_back('f');
-  append_u32(source, 1);
-  source.push_back(0);
+  append_u32(source, 123);
+  source.insert(source.end(), 123, 0);
   append_u32(source, 3); append_u32(source, 3); append_u32(source, 3);
   source.insert(source.end(), {1, 2, 3, 1});
   for (int i = 0; i < 3; ++i) append_i64(source, -1'000'000);
