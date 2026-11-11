@@ -58,19 +58,20 @@ The extractor invokes `ouroboros-mesh-audit` on its triangle view and stores the
 
 ## Tests authored
 
-The current source contains 10 authored unit tests:
+The current source contains 14 authored unit tests:
 - source-grounded 32³ face extraction produces vertices/quads/triangles;
 - repeat extraction emits identical canonical bytes;
 - fixed diagonal (0,2) triangulation;
-- independent audit's self-intersection status remains NotEvaluated;
+- independent audit's individual dimension statuses and self-intersection NotEvaluated;
+- fixed 37-byte extractor policy serialization and threshold binding;
 - the canonical result embeds the exact source-grid bytes;
 - output vertex hard-limit enforcement;
-- grid-boundary cuts fail instead of yielding partial geometry;
+- cuts on each of the six grid boundaries fail instead of yielding partial geometry;
 - exact-zero crossing ambiguity fails closed;
 - singular QEF uses centroid fallback;
 - too-small grids reject before cell allocation.
 
-These tests are authored, not run. The current execution environment did not provide `rustc`, `cargo` or `rustup`; no compile or passing CI claim is made.
+These 14 tests are authored, not run. The current execution environment did not provide `rustc`, `cargo` or `rustup`; no compile or passing CI claim is made.
 
 ## Comparison plan
 
