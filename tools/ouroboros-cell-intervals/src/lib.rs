@@ -347,10 +347,15 @@ pub fn classify(grid: &ScalarGrid, limits: IntervalLimits) -> Result<IntervalRep
         return Err(IntervalError::CellBudgetExceeded);
     }
 
+    // Keep the verified field handle available to downstream adaptive
+    // samplers; an exact semantic label alone never grants certification.
+    let verified_field = if grid.semantics() == FieldSemantics::ExactAnalyticSdf {
+        Some(VerifiedExactField::from_grid(grid)?)
+    } else {
+        None
+    };
     let (authority, verified_source_samples, lipschitz_q32) =
-        if grid.semantics() == FieldSemantics::ExactAnalyticSdf {
-            let field = decode_exact_analytic_descriptor(grid.descriptor_bytes())?;
-            verify_exact_samples(grid, field)?;
+        if verified_field.is_some() {
             (BoundAuthority::VerifiedExactAnalyticSampler, grid_limits.sample_count, Q32_ONE)
         } else {
             (BoundAuthority::Uncertified, 0, 0)
