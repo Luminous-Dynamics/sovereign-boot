@@ -129,7 +129,11 @@ class QueryMeter:
         return {name: meter.snapshot().to_dict() for name, meter in items}
 
     def totals(self) -> dict[str, int]:
-        snapshots = [meter.snapshot() for meter in self._meters.values()]
+        # Copy the registry under its lock, then snapshot each independently.
+        # Calls can continue concurrently without holding the registry lock.
+        with self._lock:
+            meters = list(self._meters.values())
+        snapshots = [meter.snapshot() for meter in meters]
         return {
             "calls_attempted": sum(item.calls_attempted for item in snapshots),
             "points_submitted": sum(item.points_submitted for item in snapshots),
