@@ -179,16 +179,16 @@
           "method": "Marching Cubes",
           "grid": "1024^3",
           "distance_queries": 1073741824,
-          "ram_gib_lower_bound": 150
+          "ram_gb_lower_bound": 150
         },
         {
           "method": "McGrids",
           "sampling": "adaptive",
           "distance_queries": 62012058,
-          "ram_gib_upper_bound": 10
+          "ram_gb_upper_bound": 10
         }
       ],
-      "notes": "Paper figure values are a single example, not a general speedup guarantee. Public wrapper query_count bypasses one adaptive sampling call path; external function-boundary instrumentation is required for new trials."
+      "notes": "Paper figure values are a single example, not a general speedup guarantee. Public wrapper query_count bypasses one adaptive sampling call path; external function-boundary instrumentation is required for new trials. RAM values are the paper's decimal GB annotations (not GiB)."
     }
   ]
 }
