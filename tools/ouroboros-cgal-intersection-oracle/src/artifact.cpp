@@ -78,7 +78,8 @@ void validate_source_grid(std::span<const std::uint8_t> source,
   require(fixture_size > 0, "InvalidSourceGrid", "source fixture identifier is empty");
   skip(source, offset, fixture_size);
   const auto descriptor_size = read_le<std::uint32_t>(source, offset);
-  require(descriptor_size > 0, "InvalidSourceGrid", "field descriptor is empty");
+  require(descriptor_size == 123, "InvalidSourceGrid",
+          "OUROFLD1 v1 field descriptor must be exactly 123 bytes");
   skip(source, offset, descriptor_size);
 
   std::array<std::uint32_t, 3> dimensions{};
@@ -106,12 +107,20 @@ void validate_source_grid(std::span<const std::uint8_t> source,
           "InvalidSourceGrid", "distance quantization must be signed microunits");
 
   const auto declared_samples = read_le<std::uint64_t>(source, offset);
-  const auto expected_samples =
-      static_cast<std::uint64_t>(dimensions[0]) *
-      static_cast<std::uint64_t>(dimensions[1]) *
-      static_cast<std::uint64_t>(dimensions[2]);
-  require(declared_samples == expected_samples, "InvalidSourceGrid",
-          "declared sample count differs from dimensions");
+  constexpr std::uint64_t max_samples = 2'097'152;
+  const auto nx = static_cast<std::uint64_t>(dimensions[0]);
+  const auto ny = static_cast<std::uint64_t>(dimensions[1]);
+  const auto nz = static_cast<std::uint64_t>(dimensions[2]);
+  require(nx <= std::numeric_limits<std::uint64_t>::max() / ny,
+          "InvalidSourceGrid", "dimension product overflows uint64");
+  const auto nxy = nx * ny;
+  require(nxy <= std::numeric_limits<std::uint64_t>::max() / nz,
+          "InvalidSourceGrid", "dimension product overflows uint64");
+  const auto expected_samples = nxy * nz;
+  require(expected_samples <= max_samples && declared_samples == expected_samples,
+          "InvalidSourceGrid", "sample count differs from dimensions or exceeds SDF ceiling");
+  require(expected_samples <= std::numeric_limits<std::uint64_t>::max() / sizeof(std::int32_t),
+          "InvalidSourceGrid", "sample byte count overflows uint64");
   require(expected_samples <= (source.size() - offset) / sizeof(std::int32_t),
           "InvalidSourceGrid", "sample payload is truncated");
   const auto expected_bytes = expected_samples * sizeof(std::int32_t);
@@ -158,7 +167,8 @@ Artifact parse_artifact(std::span<const std::uint8_t> bytes) {
   const auto schema = read_le<std::uint16_t>(bytes, offset);
   require(schema == kSchemaVersion, "UnsupportedSchema", "expected schema version 1");
   const auto source_size = read_le<std::uint32_t>(bytes, offset);
-  require(source_size > 0, "InvalidSourceGrid", "source-grid section must be non-empty");
+  require(source_size > 0 && source_size <= 16U * 1024U * 1024U,
+          "InvalidSourceGrid", "source-grid section is empty or exceeds 16 MiB");
   require_available(bytes, offset, source_size);
 
   Artifact artifact;
