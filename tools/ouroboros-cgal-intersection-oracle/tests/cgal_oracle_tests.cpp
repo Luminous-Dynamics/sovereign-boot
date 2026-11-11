@@ -47,6 +47,21 @@ ourodc::Artifact tetra_pair(std::int64_t second_x_offset) {
   return artifact;
 }
 
+ourodc::Artifact two_triangle_artifact(
+    const std::array<std::array<std::int64_t, 3>, 6>& positions) {
+  ourodc::Artifact artifact;
+  for (const auto& position : positions) {
+    ourodc::Vertex vertex;
+    vertex.position_nanounits = position;
+    vertex.normal_nanounits = {0, 0, 1'000'000'000};
+    vertex.feature_mask = 9;
+    artifact.vertices.push_back(vertex);
+  }
+  artifact.triangles.push_back({0, 1, 2});
+  artifact.triangles.push_back({3, 4, 5});
+  return artifact;
+}
+
 void require(bool condition, const char* detail) {
   if (!condition) throw std::runtime_error(detail);
 }
@@ -84,6 +99,35 @@ void run() {
   const auto inconsistent_result = ourodc::inspect_self_intersections(inconsistent);
   require(inconsistent_result.status == "NotEvaluated",
           "inconsistent winding must not be called intersection-free");
+
+  const auto coplanar_overlap = two_triangle_artifact({{
+      {{0, 0, 0}}, {{2'000'000'000, 0, 0}}, {{0, 2'000'000'000, 0}},
+      {{500'000'000, 500'000'000, 0}}, {{2'000'000'000, 500'000'000, 0}},
+      {{500'000'000, 2'000'000'000, 0}},
+  }});
+  const auto coplanar_result = ourodc::inspect_self_intersections(coplanar_overlap);
+  require(coplanar_result.status == "Fail" &&
+              coplanar_result.intersecting_triangle_pairs ==
+                  std::vector<std::pair<std::uint32_t, std::uint32_t>>{{0, 1}},
+          "coplanar overlapping faces must be reported by original face index");
+
+  const auto coincident = two_triangle_artifact({{
+      {{0, 0, 0}}, {{1'000'000'000, 0, 0}}, {{0, 1'000'000'000, 0}},
+      {{0, 0, 0}}, {{1'000'000'000, 0, 0}}, {{0, 1'000'000'000, 0}},
+  }});
+  const auto coincident_result = ourodc::inspect_self_intersections(coincident);
+  require(coincident_result.status == "Fail" &&
+              !coincident_result.intersecting_triangle_pairs.empty(),
+          "coincident faces with distinct vertex IDs must not disappear");
+
+  const auto one_nanounit_separation = two_triangle_artifact({{
+      {{0, 0, 0}}, {{1'000'000'000, 0, 0}}, {{0, 1'000'000'000, 0}},
+      {{0, 0, 1}}, {{1'000'000'000, 0, 1}}, {{0, 1'000'000'000, 1}},
+  }});
+  const auto separated_result = ourodc::inspect_self_intersections(one_nanounit_separation);
+  require(separated_result.status == "Pass" &&
+              separated_result.intersecting_triangle_pairs.empty(),
+          "one-nanounit parallel separation must remain exactly disjoint");
 }
 
 }  // namespace
