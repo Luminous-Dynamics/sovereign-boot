@@ -116,6 +116,62 @@ pub struct CellClassification {
     pub upper_bound_microunits: i64,
 }
 
+/// A verified evaluator for new samples from one canonical exact-analytic
+/// grid. Construction decodes the descriptor and reproduces every existing
+/// sample; subsequent coordinates must remain inside the source grid bounds.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VerifiedExactField {
+    field: AnalyticField,
+    isovalue_microunits: i32,
+    minimum_microunits: [i64; 3],
+    maximum_microunits: [i64; 3],
+    descriptor_bytes: Vec<u8>,
+}
+
+impl VerifiedExactField {
+    pub fn from_grid(grid: &ScalarGrid) -> Result<Self, IntervalError> {
+        grid.validate()?;
+        if grid.semantics() != FieldSemantics::ExactAnalyticSdf {
+            return Err(IntervalError::FieldNotCertifiable);
+        }
+        let field = decode_exact_analytic_descriptor(grid.descriptor_bytes())?;
+        verify_exact_samples(grid, field)?;
+        Ok(Self {
+            field,
+            isovalue_microunits: grid.isovalue_microunits(),
+            minimum_microunits: grid.spec().minimum_microunits,
+            maximum_microunits: grid.spec().maximum_microunits,
+            descriptor_bytes: grid.descriptor_bytes().to_vec(),
+        })
+    }
+
+    pub fn descriptor_bytes(&self) -> &[u8] {
+        &self.descriptor_bytes
+    }
+
+    pub fn isovalue_microunits(&self) -> i32 {
+        self.isovalue_microunits
+    }
+
+    pub fn bounds_microunits(&self) -> ([i64; 3], [i64; 3]) {
+        (self.minimum_microunits, self.maximum_microunits)
+    }
+
+    pub fn sample_at_microunits(&self, coordinate: [i64; 3]) -> Result<i32, IntervalError> {
+        for axis in 0..3 {
+            if coordinate[axis] < self.minimum_microunits[axis]
+                || coordinate[axis] > self.maximum_microunits[axis]
+            {
+                return Err(IntervalError::SampleOutsideSourceBounds);
+            }
+        }
+        let point = coordinate.map(|value| value as f64 / DISTANCE_QUANTIZATION);
+        let value = self.field.evaluate(point)?
+            - f64::from(self.isovalue_microunits) / DISTANCE_QUANTIZATION;
+        quantize_distance_microunits(value)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct IntervalMetrics {
     pub cell_dimensions: [u32; 3],
@@ -225,6 +281,8 @@ pub enum IntervalError {
     AllocationFailed,
     ExactDescriptorMalformed,
     ExactDescriptorUnsupported,
+    FieldNotCertifiable,
+    SampleOutsideSourceBounds,
     SourceSampleMismatch,
     InconsistentSamples,
     ReportMismatch,
@@ -533,20 +591,21 @@ fn decode_exact_analytic_descriptor(bytes: &[u8]) -> Result<AnalyticField, Inter
     Ok(field)
 }
 
+fn quantize_distance_microunits(value: f64) -> Result<i32, IntervalError> {
+    let scaled = value * DISTANCE_QUANTIZATION;
+    if !scaled.is_finite() || scaled < i32::MIN as f64 || scaled > i32::MAX as f64 {
+        return Err(IntervalError::SourceSampleMismatch);
+    }
+    Ok(scaled.round() as i32)
+}
+
 fn verify_exact_samples(grid: &ScalarGrid, field: AnalyticField) -> Result<(), IntervalError> {
     let spec = grid.spec();
     let iso = f64::from(grid.isovalue_microunits()) / DISTANCE_QUANTIZATION;
     for (index, stored) in grid.quantized_samples().iter().enumerate() {
         let point = spec.point_at_linear_index(index)?;
         let sampled = field.evaluate(point)? - iso;
-        let scaled = sampled * DISTANCE_QUANTIZATION;
-        if !scaled.is_finite()
-            || scaled < i32::MIN as f64
-            || scaled > i32::MAX as f64
-        {
-            return Err(IntervalError::SourceSampleMismatch);
-        }
-        let expected = scaled.round() as i32;
+        let expected = quantize_distance_microunits(sampled)?;
         if expected != *stored {
             return Err(IntervalError::SourceSampleMismatch);
         }
@@ -723,6 +782,39 @@ mod tests {
             0,
         )
         .unwrap()
+    }
+
+    #[test]
+    fn verified_exact_field_samples_inside_bounds_and_rejects_outside() {
+        let grid = sphere_grid([9, 9, 9], 1_000_000);
+        let verified = VerifiedExactField::from_grid(&grid).unwrap();
+        let spec = grid.spec();
+        let center_index = spec.linear_index(4, 4, 4).unwrap();
+        let center = [
+            0_i64,
+            0_i64,
+            0_i64,
+        ];
+        assert_eq!(
+            verified.sample_at_microunits(center).unwrap(),
+            grid.quantized_samples()[center_index]
+        );
+        assert_eq!(
+            verified.sample_at_microunits([2_000_001, 0, 0]),
+            Err(IntervalError::SampleOutsideSourceBounds)
+        );
+        let approximate = ScalarGrid::from_samples(
+            grid.spec(),
+            FieldSemantics::ApproximateAnalyticField,
+            grid.descriptor_bytes().to_vec(),
+            grid.isovalue_microunits(),
+            grid.quantized_samples().to_vec(),
+        )
+        .unwrap();
+        assert_eq!(
+            VerifiedExactField::from_grid(&approximate),
+            Err(IntervalError::FieldNotCertifiable)
+        );
     }
 
     #[test]
