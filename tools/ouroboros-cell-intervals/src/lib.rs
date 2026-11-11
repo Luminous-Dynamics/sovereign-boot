@@ -778,6 +778,27 @@ mod tests {
     }
 
     #[test]
+    fn exact_zero_lattice_vertices_remain_surface_possible() {
+        let field = AnalyticField::Plane {
+            normal_q30: [0, 0, 1_i64 << 30],
+            offset_microunits: 0,
+        };
+        let grid = ScalarGrid::sample_exact(spec([9, 9, 9]), field, 0).unwrap();
+        let report = classify(&grid, IntervalLimits::default()).unwrap();
+        let cell_dims = report.metrics().cell_dimensions;
+        for z in [3_u32, 4_u32] {
+            for y in 0..cell_dims[1] {
+                for x in 0..cell_dims[0] {
+                    let index = x as usize
+                        + cell_dims[0] as usize
+                            * (y as usize + cell_dims[1] as usize * z as usize);
+                    assert_eq!(report.cells()[index].status, CellStatus::SurfacePossible);
+                }
+            }
+        }
+    }
+
+    #[test]
     fn approximate_field_never_receives_an_exact_lipschitz_certificate() {
         let exact = sphere_grid([9, 9, 9], 1_000_000);
         let approximate = ScalarGrid::from_samples(
