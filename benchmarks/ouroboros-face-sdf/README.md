@@ -215,3 +215,26 @@ The opt-in adapter:
 The current face field uses the IQ-style approximate ellipsoid distance, not an exact Euclidean SDF. Therefore this fixture supports application-specific comparison, but it cannot be the sole accuracy oracle. The benchmark plan in [Issue #48](https://github.com/Luminous-Dynamics/sovereign-boot/issues/48) keeps exact analytic SDFs, mesh-derived SDFs and the face fixture as separate strata.
 
 No maintained DCSDFD output has yet been measured by this adapter. The existing results above remain marching-cubes and a simple classical QEF reference. The Rust QEF crate in [PR #47](https://github.com/Luminous-Dynamics/sovereign-boot/pull/47) remains a control baseline, not a DCSDFD port.
+
+
+## Published SIGGRAPH 2026 reference metrics
+
+The paper's reported ABC CAD values and noise-study values are transcribed separately in [`dcsdd-paper-baseline-v1.json`](dcsdd-paper-baseline-v1.json). They are published reference data, not Ouroboros measurements.
+
+For the paper's 55-shape ABC subset, DCSDFD reports (Chamfer ×10^-3 / Hausdorff ×10^-2 / edge-Chamfer / SDF energy ×10^-5 / vertices):
+- 50³: 2.958 / 2.970 / 0.03787 / 1.074 / 3.4k
+- 100³: 0.7788 / 1.221 / 0.02622 / 0.05776 / 14k
+- 150³: 0.4432 / 0.7037 / 0.01684 / 0.241 / 32k
+- 200³: 0.4576 / 0.6741 / 0.01599 / 0.4359 / 57k
+
+The paper reports a 100³ noise study across ten shapes at 0.1%, 0.5% and 1.0%. At 1.0% noise, DCSDFD's reported Chamfer / Hausdorff / edge-Chamfer are 10.79 ×10^-3 / 8.729 ×10^-2 / 0.1138. This is why we keep noise robustness as a separate acceptance dimension rather than inferring it from clean data.
+
+Paper details that should be reproduced:
+- 55 randomly selected ABC CAD shapes, 50³/100³/150³/200³.
+- Ten smooth-only shape controls; the paper reports mixed results and performance roughly on par with the strongest prior methods.
+- Ten-shape, 100³ noise sweep at 0.1%, 0.5%, 1.0%.
+- A random rotation is applied for each reported result to control grid alignment.
+- 100 maximum inner and outer iterations and 200,000 maximum random SDF sample batch.
+- At high resolutions, the paper discusses narrow-band SDF samples or randomized per-outer-iteration batches.
+
+The raw ABC shape IDs/hashes, per-shape rotations, exact noise scaling details and full Table 3 transcription are not yet captured in the JSON. These gaps are explicitly listed; do not pretend this is a complete reproduction dataset.
