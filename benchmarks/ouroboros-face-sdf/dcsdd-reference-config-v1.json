@@ -1,0 +1,165 @@
+{
+  "schemaVersion": 1,
+  "referenceId": "gpytoolbox-dcsdd-v0.3.8",
+  "method": "Dual Contouring of Signed Distance Data",
+  "paper": {
+    "venue": "SIGGRAPH 2026",
+    "authors": [
+      "Xiana Carrera",
+      "Ningna Wang",
+      "Christopher Batty",
+      "Oded Stein",
+      "Silvia Sellán"
+    ],
+    "doi": "10.1145/3799902.3811116",
+    "projectUrl": "https://gatc.cs.columbia.edu/projects/dual-contouring-of-signed-distance-data.html"
+  },
+  "maintainedReference": {
+    "package": "gpytoolbox",
+    "version": "0.3.8",
+    "pypiUrl": "https://pypi.org/project/gpytoolbox/0.3.8/",
+    "repository": "https://github.com/sgsellan/gpytoolbox",
+    "tag": "v0.3.8",
+    "commit": "b6e2c2b4330b0b7c0dcc5c84f6282b8fa6080ebe",
+    "apiPath": "src/gpytoolbox/dual_contouring_of_signed_distance_data.py",
+    "implementationPath": "src/cpp/dual_contouring_of_signed_distance_data/",
+    "apiName": "dual_contouring_of_signed_distance_data",
+    "verifiedParametersFromTaggedSource": [
+      "S",
+      "GV",
+      "nx",
+      "ny",
+      "nz",
+      "isovalue",
+      "outer_iters",
+      "inner_iters",
+      "batch_size",
+      "hermite_update",
+      "mu",
+      "dc_weight",
+      "svd_threshold",
+      "new_hermite_pos_weight",
+      "new_face_pos_weight",
+      "new_hermite_normal_weight",
+      "verbose"
+    ],
+    "linuxX86_64Python313Wheel": {
+      "filename": "gpytoolbox-0.3.8-cp313-cp313-manylinux_2_28_x86_64.whl",
+      "sha256": "5cd2dac58cf015bb1ab86a91efc063fcff3d5c6fbfc10ea7fcbce463e7dbaeec",
+      "sha256VerifiedFrom": "PyPI gpytoolbox 0.3.8 release metadata (CPython 3.13 manylinux_2_28_x86_64 wheel)"
+    }
+  },
+  "workload": {
+    "fixtureId": "ouroboros-face-skin-v1",
+    "sourceCommit": "d5a7f877d71757db49e63ad1b1582a661f6e4ef2",
+    "dimensions": [
+      64,
+      64,
+      64
+    ],
+    "boundsNormalizedMajorRadius": [
+      [
+        -0.18,
+        -0.14,
+        -0.16
+      ],
+      [
+        0.25,
+        0.14,
+        0.16
+      ]
+    ],
+    "field": {
+      "estimator": "IQ-style approximate ellipsoid distance",
+      "exactEuclideanSdf": false,
+      "composition": "polynomial smooth-min",
+      "smoothUnionWidth": 0.004,
+      "distanceScale": 1000000,
+      "sampleType": "little-endian signed int32 microunits",
+      "sampleOrder": "i + nx * (j + ny * k)",
+      "previouslyMeasuredSamplesSha256": "0ce6069a45f415734f8649f9ef2fe9fb0aa2b269ea69b2ababbd50ca4910853c"
+    },
+    "referenceInputConversion": {
+      "S": "samples.ravel(order='F').astype(float64) / 1_000_000",
+      "GV": "column_stack of each meshgrid coordinate component ravelled in Fortran order",
+      "nxNyNz": "64,64,64",
+      "isovalue": 0,
+      "noExternalSdfFunction": true,
+      "noExternalGradientFunction": true,
+      "preserveInt32SourceHash": true,
+      "readsOurogrd1Container": false,
+      "sampleSource": "The comparison harness regenerates the deterministic fixture sample vector from the pinned analytic field definition, then checks its signed-int32 little-endian microunit payload SHA-256 against the previously recorded canonical sample digest. It does not yet parse an OUROGRD1 container.",
+      "futureDirectContainerIngestion": "Once the Rust sampler can emit an artifact in the benchmark environment, add a reader that parses OUROGRD1 and proves the extracted sample vector/grid coordinates match this reference input byte-for-byte before calling Gpytoolbox."
+    }
+  },
+  "parameters": {
+    "outer_iters": 100,
+    "inner_iters": 100,
+    "batch_size": 200000,
+    "hermite_update": true,
+    "mu": 0.1,
+    "dc_weight": 0.02,
+    "svd_threshold": 0.01,
+    "new_hermite_pos_weight": 0.2,
+    "new_face_pos_weight": 0.2,
+    "new_hermite_normal_weight": 0.2,
+    "verbose": false
+  },
+  "outputContract": {
+    "expectedVertices": "N x 3 float64",
+    "expectedFaces": "M x 4 integer quads",
+    "preserveQuadsAsPrimaryOutput": true,
+    "commonTopologyView": "split each quad along diagonal (0,2) only for separate triangle-audit comparisons",
+    "noAssumptionOfIdenticalVertexOrdering": true
+  },
+  "trialPolicy": {
+    "correctnessRuns": 1,
+    "warmupRuns": 3,
+    "measuredTrials": 10,
+    "performanceReport": [
+      "p50_ms",
+      "p95_ms",
+      "p99_ms",
+      "max_ms"
+    ],
+    "record": {
+      "packageVersion": true,
+      "packageWheelSha256": true,
+      "sourceCommit": true,
+      "pythonVersion": true,
+      "numpyVersion": true,
+      "gpytoolboxVersion": true,
+      "osKernelCpu": true,
+      "threadEnvironment": true,
+      "methodParameters": true,
+      "inputSampleSha256": true,
+      "inputGridDimensions": true
+    },
+    "deterministicAssessment": "run identical input and parameters repeatedly; measure output geometry variation separately from runtime variation"
+  },
+  "parityMetrics": [
+    "vertex_count",
+    "quad_count",
+    "connected_components",
+    "watertightness",
+    "winding_consistency",
+    "manifold_edge_incidence",
+    "vertex_link_manifoldness",
+    "boundary_edge_count",
+    "self_intersection_oracle_status",
+    "symmetric_surface_distance_p50_p95_p99_max",
+    "distance_to_same_discrete_sdf_field_p50_p95_p99_max",
+    "sharp_feature_line_drift",
+    "silhouette_iou_by_view",
+    "semantic_landmark_error",
+    "runtime_p50_p95_p99_max",
+    "peak_rss_bytes"
+  ],
+  "nonClaims": [
+    "This is the maintained DCSDFD reference configuration, not a Rust port.",
+    "The paper reproduction repository is archived and its README directs new users to maintained Gpytoolbox.",
+    "Do not compare elapsed time across unlike compiled/reference implementations without matched environments and trial policy.",
+    "Do not call the current IQ-style ellipsoid field an exact Euclidean SDF.",
+    "A self-intersection check is not supplied by Trimesh watertightness or winding diagnostics."
+  ]
+}

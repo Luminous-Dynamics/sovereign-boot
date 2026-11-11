@@ -1,0 +1,274 @@
+{
+  "schemaVersion": 1,
+  "benchmarkId": "siggraph-2026-dcsdd-paper-baselines-v1",
+  "status": "transcribed-published-reference-values-not-our-measurements",
+  "source": {
+    "paper": "Dual Contouring of Signed Distance Data",
+    "authors": [
+      "Xiana Carrera",
+      "Ningna Wang",
+      "Christopher Batty",
+      "Oded Stein",
+      "Silvia Sellán"
+    ],
+    "venue": "SIGGRAPH 2026",
+    "doi": "10.1145/3799902.3811116",
+    "pdf": "https://www.cs.columbia.edu/~silviasellan/pdf/papers/dcsdd.pdf",
+    "sections": [
+      "4 Experiments & Results",
+      "Supplemental Tables 1-3"
+    ]
+  },
+  "publishedSettings": {
+    "outerIterations": 100,
+    "innerIterations": 100,
+    "batchSize": 200000,
+    "hermiteEnergyWeight": 0.02,
+    "updateWeight": 0.2,
+    "regularizationMu": 0.1,
+    "randomRotationAppliedToEveryResult": true,
+    "rotationSeeds": "not present in the paper table; reproduction must generate, record and freeze its own seeds",
+    "highResolutionStrategy": [
+      "narrow band around zero level set",
+      "randomized SDF sample batches up to 200000 per outer iteration"
+    ],
+    "complexityNotes": "paper states inner optimization cost scales linearly with input sample count and iteration counts; random batching bounds per-outer-iteration data work by batch size"
+  },
+  "abcCadStudy": {
+    "shapeCount": 55,
+    "source": "random subset of ABC dataset described by Koch et al. 2019 and released by Xu et al. 2024",
+    "resolutions": [
+      50,
+      100,
+      150,
+      200
+    ],
+    "metricUnits": {
+      "chamfer": "x 10^-3",
+      "hausdorff": "x 10^-2",
+      "edgeChamfer": "paper metric units",
+      "sdfEnergy": "x 10^-5",
+      "vertices": "count"
+    },
+    "methods": {
+      "marchingCubes": {
+        "50": {
+          "chamfer": 7.586,
+          "hausdorff": 3.692,
+          "edgeChamfer": 0.3636,
+          "sdfEnergy": 13.34,
+          "vertices": 3400
+        },
+        "100": {
+          "chamfer": 2.62,
+          "hausdorff": 1.81,
+          "edgeChamfer": 0.4171,
+          "sdfEnergy": 3.061,
+          "vertices": 14000
+        },
+        "150": {
+          "chamfer": 1.329,
+          "hausdorff": 1.107,
+          "edgeChamfer": 0.3256,
+          "sdfEnergy": 1.175,
+          "vertices": 32000
+        },
+        "200": {
+          "chamfer": 1.059,
+          "hausdorff": 0.9969,
+          "edgeChamfer": 0.3003,
+          "sdfEnergy": 1.115,
+          "vertices": 57000
+        }
+      },
+      "dualContouringEstimatedHermite": {
+        "50": {
+          "chamfer": 4.71,
+          "hausdorff": 2.937,
+          "edgeChamfer": 0.356,
+          "sdfEnergy": 8.611,
+          "vertices": 3400
+        },
+        "100": {
+          "chamfer": 1.589,
+          "hausdorff": 1.372,
+          "edgeChamfer": 0.3502,
+          "sdfEnergy": 1.866,
+          "vertices": 14000
+        },
+        "150": {
+          "chamfer": 0.8344,
+          "hausdorff": 0.8513,
+          "edgeChamfer": 0.3139,
+          "sdfEnergy": 0.7912,
+          "vertices": 32000
+        },
+        "200": {
+          "chamfer": 0.7411,
+          "hausdorff": 0.8208,
+          "edgeChamfer": 0.2929,
+          "sdfEnergy": 0.9148,
+          "vertices": 57000
+        }
+      },
+      "dcsdfd": {
+        "50": {
+          "chamfer": 2.958,
+          "hausdorff": 2.97,
+          "edgeChamfer": 0.03787,
+          "sdfEnergy": 1.074,
+          "vertices": 3400
+        },
+        "100": {
+          "chamfer": 0.7788,
+          "hausdorff": 1.221,
+          "edgeChamfer": 0.02622,
+          "sdfEnergy": 0.05776,
+          "vertices": 14000
+        },
+        "150": {
+          "chamfer": 0.4432,
+          "hausdorff": 0.7037,
+          "edgeChamfer": 0.01684,
+          "sdfEnergy": 0.241,
+          "vertices": 32000
+        },
+        "200": {
+          "chamfer": 0.4576,
+          "hausdorff": 0.6741,
+          "edgeChamfer": 0.01599,
+          "sdfEnergy": 0.4359,
+          "vertices": 57000
+        }
+      }
+    },
+    "paperSummary": "The paper states DCSDFD attains the best score in all but two metric/resolution instances in Table 2. These are paper results on its ABC sample set, not independently reproduced results."
+  },
+  "noiseStudy": {
+    "shapeCount": 10,
+    "resolution": 100,
+    "noiseLevels": [
+      {
+        "label": "0.1%",
+        "noiseValue": 0.001,
+        "dcsdfd": {
+          "chamfer": 2.683,
+          "hausdorff": 2.651,
+          "edgeChamfer": 0.04688
+        },
+        "marchingCubes": {
+          "chamfer": 4.552,
+          "hausdorff": 2.448,
+          "edgeChamfer": 0.2272
+        },
+        "dualContouringEstimatedHermite": {
+          "chamfer": 3.698,
+          "hausdorff": 2.129,
+          "edgeChamfer": 0.1253
+        },
+        "kohlbrennerAlexa2025a": {
+          "chamfer": 3.611,
+          "hausdorff": 2.107,
+          "edgeChamfer": 0.1468
+        }
+      },
+      {
+        "label": "0.5%",
+        "noiseValue": 0.005,
+        "dcsdfd": {
+          "chamfer": 5.104,
+          "hausdorff": 4.816,
+          "edgeChamfer": 0.1027
+        },
+        "marchingCubes": {
+          "chamfer": 6.338,
+          "hausdorff": 2.117,
+          "edgeChamfer": 0.08841
+        },
+        "dualContouringEstimatedHermite": {
+          "chamfer": 6.543,
+          "hausdorff": 5.037,
+          "edgeChamfer": 0.1022
+        },
+        "kohlbrennerAlexa2025a": {
+          "chamfer": 3.612,
+          "hausdorff": 2.109,
+          "edgeChamfer": 0.1401
+        }
+      },
+      {
+        "label": "1.0%",
+        "noiseValue": 0.01,
+        "dcsdfd": {
+          "chamfer": 10.79,
+          "hausdorff": 8.729,
+          "edgeChamfer": 0.1138
+        },
+        "marchingCubes": {
+          "chamfer": 11.8,
+          "hausdorff": 3.713,
+          "edgeChamfer": 0.1147
+        },
+        "dualContouringEstimatedHermite": {
+          "chamfer": 12.8,
+          "hausdorff": 6.927,
+          "edgeChamfer": 0.1124
+        },
+        "kohlbrennerAlexa2025a": {
+          "chamfer": 3.614,
+          "hausdorff": 2.11,
+          "edgeChamfer": 0.1423
+        }
+      }
+    ],
+    "metricUnits": {
+      "chamfer": "x 10^-3",
+      "hausdorff": "x 10^-2",
+      "edgeChamfer": "paper metric units"
+    },
+    "noiseNormalization": "The table labels noise by values 0.001, 0.005 and 0.01 / 0.1%, 0.5% and 1.0%; exact scaling/normalization must be verified from the reproduction details before generating data. Do not infer a standard deviation from the labels alone.",
+    "cleanNoNoiseBaseline": "not included in the transcribed Table 1 values; generate this separately for the reproduction"
+  },
+  "smoothShapeControl": {
+    "shapeCount": 10,
+    "source": "ten artist-designed smooth geometries used by Sellán et al. 2024",
+    "summary": "The paper reports more mixed results on smooth-only shapes; DCSDFD is roughly on par with the best existing methods, varying by resolution and metric.",
+    "fullTable3Transcription": "not yet transcribed in this artifact"
+  },
+  "reportingRules": {
+    "exactSameInputAcrossMethods": true,
+    "mustReportIndependently": [
+      "Chamfer",
+      "Hausdorff",
+      "edge-Chamfer",
+      "SDF energy",
+      "vertex count",
+      "boundary edges",
+      "non-manifold edges",
+      "vertex-link validity",
+      "face flips",
+      "cell escape distances",
+      "self-intersection status",
+      "runtime",
+      "peak RSS"
+    ],
+    "doNotUseSingleWeightedScore": true,
+    "separateCleanAndNoisyResults": true,
+    "preserveOriginalQuadOutput": true,
+    "triangulationOnlyForCommonTriangleChecks": true
+  },
+  "missingReproductionData": [
+    "exact identifiers and hashes for all 55 ABC meshes",
+    "exact source SDF generation executable/version and all input mesh preprocessing",
+    "per-shape random rotation values/seeds",
+    "full noise normalization/standard deviation details",
+    "full Table 3 numeric transcription",
+    "runtime and peak-memory numbers for the paper's table rows"
+  ],
+  "nonClaims": [
+    "This artifact transcribes published paper values; it is not an independent reproduction.",
+    "Paper results do not guarantee the same metrics on the Ouroboros face field.",
+    "The face field in the current benchmark is an approximate IQ ellipsoid distance, not exact Euclidean SDF.",
+    "A high Chamfer score does not prove manifoldness or absence of self-intersections."
+  ]
+}

@@ -1,0 +1,221 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "ouroboros-face-semantic-sdf-v1",
+  "source": {
+    "repository": "Luminous-Dynamics/sovereign-boot",
+    "commit": "d5a7f877d71757db49e63ad1b1582a661f6e4ef2",
+    "files": [
+      "crates/visual-core/src/ouroboros.rs",
+      "crates/visual-core/src/ouroboros_face.rs"
+    ],
+    "sceneContract": "OUROLND1",
+    "faceMeshContract": "OUROFAC1"
+  },
+  "units": {
+    "distance": "normalized-major-radius",
+    "normalizedMajorRadius": 1,
+    "coordinateFrame": {
+      "x": "forward",
+      "y": "lateral",
+      "z": "up",
+      "handedness": "right-handed",
+      "signConvention": "negative-inside-positive-outside"
+    }
+  },
+  "distanceEstimator": {
+    "id": "ellipsoid-iq-approximation-v1",
+    "exactSignedDistance": false,
+    "formula": [
+      "q = abs((p - center) / radii)",
+      "k0 = length(q)",
+      "k1 = length(q / radii)",
+      "distance = k0 * (k0 - 1) / max(k1, epsilon)"
+    ],
+    "note": "Approximate ellipsoid distance estimator used for this initial reference experiment; do not label these field values exact Euclidean distances."
+  },
+  "features": [
+    {
+      "regionId": 1,
+      "stableName": "head-shell",
+      "surfaceRole": "skin-union-candidate",
+      "centerLocalFwdLatUp": [
+        0.03,
+        0,
+        0
+      ],
+      "radiiFwdLatUp": [
+        0.12,
+        0.06,
+        0.11
+      ],
+      "sourceDerivation": "head anchor + forward * 0.030r; OUROFAC1 head ellipsoid"
+    },
+    {
+      "regionId": 2,
+      "stableName": "left-eye",
+      "surfaceRole": "independent-attached-anatomy",
+      "centerLocalFwdLatUp": [
+        0.06,
+        -0.05,
+        0.02
+      ],
+      "radiiFwdLatUp": [
+        0.016,
+        0.018,
+        0.014
+      ],
+      "sourceDerivation": "OUROLND1 left_eye; OUROFAC1 left-eye ellipsoid"
+    },
+    {
+      "regionId": 3,
+      "stableName": "right-eye",
+      "surfaceRole": "independent-attached-anatomy",
+      "centerLocalFwdLatUp": [
+        0.06,
+        0.05,
+        0.02
+      ],
+      "radiiFwdLatUp": [
+        0.016,
+        0.018,
+        0.014
+      ],
+      "sourceDerivation": "OUROLND1 right_eye; OUROFAC1 right-eye ellipsoid"
+    },
+    {
+      "regionId": 4,
+      "stableName": "nose",
+      "surfaceRole": "skin-union-candidate",
+      "centerLocalFwdLatUp": [
+        0.16,
+        0,
+        0.005
+      ],
+      "radiiFwdLatUp": [
+        0.02,
+        0.014,
+        0.018
+      ],
+      "sourceDerivation": "OUROLND1 nose_tip minus forward * 0.020r; OUROFAC1 nose ellipsoid"
+    },
+    {
+      "regionId": 5,
+      "stableName": "mouth",
+      "surfaceRole": "surface-patch-or-cavity-candidate",
+      "centerLocalFwdLatUp": [
+        0.14,
+        0,
+        -0.035
+      ],
+      "radiiFwdLatUp": [
+        0.008,
+        0.035,
+        0.006
+      ],
+      "sourceDerivation": "OUROLND1 mouth_center; OUROFAC1 mouth ellipsoid"
+    }
+  ],
+  "compositionExperiments": [
+    {
+      "id": "head-nose-sharp-union-v1",
+      "features": [
+        1,
+        4
+      ],
+      "operation": "sharp-min",
+      "smoothWidth": 0
+    },
+    {
+      "id": "head-nose-smooth-union-v1",
+      "features": [
+        1,
+        4
+      ],
+      "operation": "polynomial-smooth-min",
+      "smoothWidths": [
+        0,
+        0.002,
+        0.004,
+        0.006,
+        0.01
+      ]
+    }
+  ],
+  "sampling": {
+    "gridDimensionsPerAxis": [
+      64,
+      96,
+      128,
+      192,
+      256
+    ],
+    "localBoundsFwdLatUp": [
+      [
+        -0.18,
+        0.25
+      ],
+      [
+        -0.14,
+        0.14
+      ],
+      [
+        -0.16,
+        0.16
+      ]
+    ],
+    "axisLayout": [
+      "forward",
+      "lateral",
+      "up"
+    ],
+    "recommendedQuantizationForFutureCanonicalSamples": "signed-int32 microunits",
+    "currentReferenceSampleFormat": "float32",
+    "serializationOrder": "i + nx * (j + ny * k)",
+    "fastestAxis": "forward",
+    "referenceApi": {
+      "name": "gpytoolbox.dual_contouring_of_signed_distance_data",
+      "contract": "SDF samples S and grid vertices GV use row i + nx*(j + ny*k); first axis varies fastest",
+      "output": "vertex positions V and quadrilateral faces F"
+    }
+  },
+  "algorithmCandidates": [
+    "separate-closed-volumes-with-explicit-occlusion",
+    "marching-cubes",
+    "classical-dual-contouring-with-finite-difference-gradients",
+    "discrete-sdf-dual-contouring-siggraph-2026"
+  ],
+  "hardLimitsFromCurrentFaceCore": {
+    "maxVertices": 50000,
+    "maxIndices": 300000,
+    "maxGeometryBytes": 2500000,
+    "vertexBytes": 36,
+    "indexBytes": 4
+  },
+  "requiredMetrics": [
+    "watertightness",
+    "manifold-edge-incidence",
+    "winding-consistency",
+    "connected-components",
+    "euler-characteristic",
+    "self-intersections",
+    "degenerate-triangles",
+    "approximate-field-residual",
+    "symmetric-chamfer",
+    "hausdorff",
+    "silhouette-iou",
+    "landmark-error",
+    "semantic-region-recovery",
+    "peak-rss",
+    "allocation-count",
+    "p50-build-time",
+    "p95-build-time"
+  ],
+  "nonClaims": [
+    "not-exact-ellipsoid-sdf",
+    "not-production-rust-mesher",
+    "not-siggraph-2026-algorithm-implementation",
+    "not-self-intersection-qualified",
+    "not-human-perception-qualified",
+    "not-gpu-performance-evidence"
+  ]
+}

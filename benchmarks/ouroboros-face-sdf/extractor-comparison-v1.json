@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "status": "exploratory-python-reference-not-qualified",
+  "fixtureId": "ouroboros-face-semantic-sdf-v1",
+  "sourceCommit": "d5a7f877d71757db49e63ad1b1582a661f6e4ef2",
+  "grid": [
+    64,
+    64,
+    64
+  ],
+  "smoothUnionWidth": 0.004,
+  "sampleRepresentation": "signed int32 microunit samples; identical canonical samples supplied to both methods",
+  "sampleOrder": "i + nx * (j + ny * k)",
+  "samplesSha256": "0ce6069a45f415734f8649f9ef2fe9fb0aa2b269ea69b2ababbd50ca4910853c",
+  "inputBytes": 1048576,
+  "environment": {
+    "python": "3.13.5",
+    "numpy": "2.3.5",
+    "scikitImage": "0.26.0",
+    "trimesh": "4.11.1",
+    "platform": "Linux 6.18.57 virtualized x86_64",
+    "cpuModel": "Intel Xeon Platinum 8573C",
+    "logicalCpuCount": 3
+  },
+  "methods": [
+    {
+      "id": "lewiner-marching-cubes",
+      "algorithm": "scikit-image 0.26.0 marching_cubes(method=lewiner, allow_degenerate=false)",
+      "vertices": 5786,
+      "quads": 0,
+      "triangles": 11568,
+      "indices": 34704,
+      "watertight": true,
+      "windingConsistent": true,
+      "components": 1,
+      "eulerCharacteristic": 2,
+      "fieldResidualP95": 0.00003447068404099066,
+      "fieldResidualMaximum": 0.0009574767671521019,
+      "oneRunMs": 10.641011000188882,
+      "estimatedFaceBufferBytes": 347112
+    },
+    {
+      "id": "finite-gradient-qef-dual-contouring-reference",
+      "algorithm": "one vertex per active cell; finite-difference gradients; regularized least-squares QEF; cell-clamped vertices; quad output triangulated on diagonal 0-2 for shared topology checks",
+      "vertices": 5788,
+      "quads": 5786,
+      "triangles": 11572,
+      "indices": 34716,
+      "watertight": true,
+      "windingConsistent": true,
+      "components": 1,
+      "eulerCharacteristic": 2,
+      "activeCells": 5788,
+      "fieldResidualP95": 0.00045616942211299986,
+      "fieldResidualMaximum": 0.0034676541139892687,
+      "oneRunMs": 1074.4490420001966,
+      "estimatedFaceBufferBytes": 347232
+    }
+  ],
+  "limitations": [
+    "The DC implementation is a simple Python finite-difference/QEF reference, not the SIGGRAPH 2026 discrete-SDF dual-contouring method.",
+    "Timing is not a fair algorithm-performance comparison: scikit-image marching cubes is compiled while the QEF reference uses Python loops.",
+    "Only one timing observation per method was recorded for this initial cross-method probe.",
+    "Residual is evaluated against the same approximate continuous field, not exact Euclidean geometry.",
+    "Trimesh topology diagnostics do not establish absence of self-intersections.",
+    "Dual-contouring quads were triangulated on a fixed diagonal only for common Trimesh topology checks.",
+    "No production Rust, GPU or blinded perceptual qualification."
+  ]
+}
