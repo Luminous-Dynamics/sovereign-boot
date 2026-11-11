@@ -80,7 +80,17 @@ void validate_source_grid(std::span<const std::uint8_t> source,
   const auto descriptor_size = read_le<std::uint32_t>(source, offset);
   require(descriptor_size == 123, "InvalidSourceGrid",
           "OUROFLD1 v1 field descriptor must be exactly 123 bytes");
-  skip(source, offset, descriptor_size);
+  require_available(source, offset, descriptor_size);
+  constexpr std::array<std::uint8_t, 8> field_magic{
+      'O', 'U', 'R', 'O', 'F', 'L', 'D', '1'};
+  require(std::equal(field_magic.begin(), field_magic.end(),
+                     source.begin() + static_cast<std::ptrdiff_t>(offset)),
+          "InvalidSourceGrid", "embedded field descriptor magic is not OUROFLD1");
+  constexpr std::array<std::uint8_t, 6> field_schema_and_tags{1, 0, 1, 1, 1, 1};
+  require(std::equal(field_schema_and_tags.begin(), field_schema_and_tags.end(),
+                     source.begin() + static_cast<std::ptrdiff_t>(offset + 8)),
+          "InvalidSourceGrid", "field descriptor schema or interpretation tags differ");
+  offset += descriptor_size;
 
   std::array<std::uint32_t, 3> dimensions{};
   for (auto& dimension : dimensions) {
