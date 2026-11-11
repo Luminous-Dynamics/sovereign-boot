@@ -1,0 +1,19 @@
+[package]
+name = "ouroboros-adaptive-sampling"
+version = "0.1.0"
+edition = "2024"
+description = "Bounded deterministic sample-cached octree over verified exact Ouroboros fields"
+license = "AGPL-3.0-or-later"
+
+[dependencies]
+ouroboros-scalar-grid = { path = "../ouroboros-scalar-grid" }
+ouroboros-cell-intervals = { path = "../ouroboros-cell-intervals" }
+
+[lib]
+path = "src/lib.rs"
+
+[[example]]
+name = "sample-exact-sphere-octree"
+path = "examples/sample-exact-sphere-octree.rs"
+
+[workspace]
