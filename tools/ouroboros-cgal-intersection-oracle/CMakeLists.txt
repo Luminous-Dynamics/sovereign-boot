@@ -31,3 +31,14 @@ if(OUROBOROS_BUILD_CGAL_ORACLE)
   target_compile_features(ouroboros-cgal-intersection-oracle PRIVATE cxx_std_20)
   target_compile_options(ouroboros-cgal-intersection-oracle PRIVATE -Wall -Wextra -Wpedantic)
 endif()
+
+if(BUILD_TESTING AND OUROBOROS_BUILD_CGAL_ORACLE)
+  add_executable(ourodc_cgal_oracle_tests
+    tests/cgal_oracle_tests.cpp
+    src/cgal_oracle.cpp
+  )
+  target_link_libraries(ourodc_cgal_oracle_tests PRIVATE ourodc_artifact CGAL::CGAL)
+  target_compile_features(ourodc_cgal_oracle_tests PRIVATE cxx_std_20)
+  target_compile_options(ourodc_cgal_oracle_tests PRIVATE -Wall -Wextra -Wpedantic)
+  add_test(NAME ourodc_cgal_oracle_tests COMMAND ourodc_cgal_oracle_tests)
+endif()
