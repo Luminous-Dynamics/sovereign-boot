@@ -13,6 +13,7 @@ import json
 import platform
 import sys
 import time
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 import numpy as np
@@ -223,6 +224,72 @@ def classical_dual_contouring_reference(
     return np.asarray(vertices), np.asarray(quads, dtype=np.int64), int(len(active_cells))
 
 
+DCSDFD_REFERENCE = {
+    "package": "gpytoolbox",
+    "version": "0.3.8",
+    "sourceCommit": "b6e2c2b4330b0b7c0dcc5c84f6282b8fa6080ebe",
+    "parameters": {
+        "isovalue": 0.0,
+        "outer_iters": 100,
+        "inner_iters": 100,
+        "batch_size": 200000,
+        "hermite_update": True,
+        "mu": 0.1,
+        "dc_weight": 0.02,
+        "svd_threshold": 0.01,
+        "new_hermite_pos_weight": 0.2,
+        "new_face_pos_weight": 0.2,
+        "new_hermite_normal_weight": 0.2,
+        "verbose": False,
+    },
+}
+
+
+def maintained_dcsdfd_reference(
+    samples: np.ndarray, axes: list[np.ndarray]
+) -> tuple[np.ndarray, np.ndarray]:
+    """Run the maintained DCSDFD API over the same canonical samples."""
+    try:
+        installed = version("gpytoolbox")
+    except PackageNotFoundError as exc:
+        raise RuntimeError(
+            "Install gpytoolbox==0.3.8 to run --include-dcsdfd"
+        ) from exc
+    if installed != DCSDFD_REFERENCE["version"]:
+        raise RuntimeError(
+            f"Expected gpytoolbox=={DCSDFD_REFERENCE['version']}, found {installed}"
+        )
+    import gpytoolbox as gpy
+
+    dimensions = samples.shape
+    if len(dimensions) != 3 or len(set(dimensions)) != 1:
+        raise ValueError("DCSDFD adapter requires a cubic 3D grid")
+    S = samples.ravel(order="F").astype(np.float64) / DISTANCE_SCALE
+    coordinate_grids = np.meshgrid(*axes, indexing="ij")
+    GV = np.column_stack(
+        [coordinate.ravel(order="F") for coordinate in coordinate_grids]
+    ).astype(np.float64, copy=False)
+    if len(S) != int(np.prod(dimensions)) or GV.shape != (len(S), 3):
+        raise ValueError("DCSDFD input flattening does not match the canonical grid")
+    vertices, quads = gpy.dual_contouring_of_signed_distance_data(
+        S,
+        GV,
+        int(dimensions[0]),
+        int(dimensions[1]),
+        int(dimensions[2]),
+        **DCSDFD_REFERENCE["parameters"],
+    )
+    vertices = np.asarray(vertices, dtype=np.float64)
+    quads = np.asarray(quads, dtype=np.int64)
+    if vertices.ndim != 2 or vertices.shape[1] != 3:
+        raise ValueError("DCSDFD returned vertices other than N x 3")
+    if quads.ndim != 2 or quads.shape[1] != 4:
+        raise ValueError("DCSDFD returned faces other than quad M x 4")
+    if len(quads) and (quads.min() < 0 or quads.max() >= len(vertices)):
+        raise ValueError("DCSDFD returned an out-of-range face index")
+    return vertices, quads
+
+
 def time_trials(function, trials: int) -> tuple[object, list[float]]:
     outputs = []
     elapsed_ms = []
@@ -238,10 +305,15 @@ def main() -> int:
     parser.add_argument("--resolution", type=int, default=64)
     parser.add_argument("--smooth-width", type=float, default=0.004)
     parser.add_argument("--trials", type=int, default=3)
+    parser.add_argument("--include-dcsdfd", action="store_true")
+    parser.add_argument("--dcsdfd-warmups", type=int, default=3)
+    parser.add_argument("--dcsdfd-trials", type=int, default=10)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     if args.resolution < 8 or args.resolution > 128 or args.trials < 1:
         parser.error("resolution must be 8..128 and trials must be >= 1")
+    if args.dcsdfd_warmups < 0 or args.dcsdfd_trials < 1:
+        parser.error("DCSDFD warmups must be >= 0 and trials must be >= 1")
     if args.smooth_width < 0.0 or args.smooth_width > 0.05:
         parser.error("smooth width must be 0..0.05")
 
@@ -275,6 +347,43 @@ def main() -> int:
         "medianTimeMs": float(np.median(dc_times)),
     })
 
+    dcsdfd_result = None
+    if args.include_dcsdfd:
+        for _ in range(args.dcsdfd_warmups):
+            maintained_dcsdfd_reference(samples, axes)
+        dcsdfd_mesh, dcsdfd_times = time_trials(
+            lambda: maintained_dcsdfd_reference(samples, axes),
+            args.dcsdfd_trials,
+        )
+        dcsdfd_vertices, dcsdfd_quads = dcsdfd_mesh
+        if len(dcsdfd_quads):
+            dcsdfd_triangles = np.vstack([
+                dcsdfd_quads[:, [0, 1, 2]],
+                dcsdfd_quads[:, [0, 2, 3]],
+            ])
+        else:
+            dcsdfd_triangles = np.empty((0, 3), dtype=np.int64)
+        dcsdfd_result = topology_report(
+            dcsdfd_vertices, dcsdfd_triangles, args.smooth_width
+        )
+        dcsdfd_result.update({
+            "algorithm": "maintained SIGGRAPH 2026 DCSDFD (gpytoolbox)",
+            "referenceVersion": DCSDFD_REFERENCE["version"],
+            "referenceSourceCommit": DCSDFD_REFERENCE["sourceCommit"],
+            "parameters": DCSDFD_REFERENCE["parameters"],
+            "quads": int(len(dcsdfd_quads)),
+            "quadIndexCount": int(len(dcsdfd_quads) * 4),
+            "estimatedQuadBufferBytes": int(
+                len(dcsdfd_vertices) * 36 + len(dcsdfd_quads) * 16
+            ),
+            "triangulationForCommonTopologyChecks": "fixed diagonal 0-2 only",
+            "trialTimesMs": dcsdfd_times,
+            "medianTimeMs": float(np.median(dcsdfd_times)),
+            "p95TimeMs": float(np.percentile(dcsdfd_times, 95)),
+            "p99TimeMs": float(np.percentile(dcsdfd_times, 99)),
+            "maximumTimeMs": float(np.max(dcsdfd_times)),
+        })
+
     report = {
         "schemaVersion": 1,
         "status": "exploratory-python-reference-not-qualified",
@@ -296,10 +405,21 @@ def main() -> int:
             "trimesh": trimesh.__version__,
             "platform": platform.platform(),
         },
-        "methods": [mc_result, dc_result],
+        "referenceConfiguration": {
+            "id": "gpytoolbox-dcsdd-v0.3.8",
+            "included": bool(args.include_dcsdfd),
+            "sourceCommit": DCSDFD_REFERENCE["sourceCommit"],
+            "parameters": DCSDFD_REFERENCE["parameters"],
+            "warmupRuns": args.dcsdfd_warmups if args.include_dcsdfd else None,
+            "measuredTrials": args.dcsdfd_trials if args.include_dcsdfd else None,
+            "sampleConversion": "int32 microunits -> float64 / 1_000_000",
+            "gridVertexOrder": "i + nx * (j + ny * k)",
+        },
+        "methods": [mc_result, dc_result] + ([dcsdfd_result] if dcsdfd_result is not None else []),
         "limitations": [
             "Both methods receive the same canonical int32 microunit sample grid.",
             "The DC implementation is a simple finite-difference QEF reference, not the SIGGRAPH 2026 algorithm.",
+            "The maintained DCSDFD reference requires the exact gpytoolbox 0.3.8 package and the source pin in dcsdd-reference-config-v1.json.",
             "The timing comparison crosses a compiled scikit-image extractor and a Python-loop QEF implementation; timings are not an algorithmic performance comparison.",
             "The residual is evaluated against the same approximate field, not exact Euclidean geometry.",
             "No self-intersection or independent manifold test is run.",
