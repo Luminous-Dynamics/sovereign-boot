@@ -1,0 +1,186 @@
+{
+  "schemaVersion": 1,
+  "fixtureSetId": "ouroboros-cell-intervals-v1",
+  "sourceContract": "OUROSGD1",
+  "descriptorContract": "OUROFLD1",
+  "classifierSchema": "OUROIV1",
+  "assumptions": {
+    "signConvention": "negative-inside-positive-outside",
+    "sampleQuantization": "nearest-integer signed microunits",
+    "exactAnalyticAuthority": "descriptor decode plus full sample-stream recomputation",
+    "lipschitzBound": {
+      "q32": 4294967296,
+      "numerator": 1,
+      "denominator": 1
+    },
+    "intervalRule": "max(corner samples)-ceil(cell diagonal)-1 <= f(x) <= min(corner samples)+ceil(cell diagonal)+1",
+    "classification": "CertifiedOutside iff lower>0; CertifiedInside iff upper<0; otherwise SurfacePossible",
+    "approximateAndMeshDerived": "UncertifiedField"
+  },
+  "cases": [
+    {
+      "id": "exact-sphere-inside-outside-surface-band",
+      "semantics": "ExactAnalyticSdf",
+      "field": {
+        "kind": "Sphere",
+        "centerMicrounits": [
+          0,
+          0,
+          0
+        ],
+        "radiusMicrounits": 1500000
+      },
+      "grid": {
+        "minimumMicrounits": [
+          -2000000,
+          -2000000,
+          -2000000
+        ],
+        "maximumMicrounits": [
+          2000000,
+          2000000,
+          2000000
+        ],
+        "dimensions": [
+          17,
+          17,
+          17
+        ],
+        "isovalueMicrounits": 0
+      },
+      "expected": {
+        "authority": "VerifiedExactAnalyticSampler",
+        "certifiedInsideMin": 1,
+        "certifiedOutsideMin": 1,
+        "surfacePossibleMin": 1,
+        "uncertified": 0,
+        "denseWitnessSubdivisionsPerCell": 4,
+        "falseCertificateWitnesses": 0
+      }
+    },
+    {
+      "id": "exact-zero-plane-is-never-certified-empty",
+      "semantics": "ExactAnalyticSdf",
+      "field": {
+        "kind": "Plane",
+        "normalQ30": [
+          0,
+          0,
+          1073741824
+        ],
+        "offsetMicrounits": 0
+      },
+      "grid": {
+        "minimumMicrounits": [
+          -2000000,
+          -2000000,
+          -2000000
+        ],
+        "maximumMicrounits": [
+          2000000,
+          2000000,
+          2000000
+        ],
+        "dimensions": [
+          9,
+          9,
+          9
+        ],
+        "isovalueMicrounits": 0
+      },
+      "expected": {
+        "authority": "VerifiedExactAnalyticSampler",
+        "cellZLayers": [
+          3,
+          4
+        ],
+        "allCellsInThoseLayers": "SurfacePossible"
+      }
+    },
+    {
+      "id": "approximate-field-must-remain-uncertified",
+      "semantics": "ApproximateAnalyticField",
+      "field": {
+        "kind": "Sphere",
+        "centerMicrounits": [
+          0,
+          0,
+          0
+        ],
+        "radiusMicrounits": 1000000
+      },
+      "grid": {
+        "minimumMicrounits": [
+          -2000000,
+          -2000000,
+          -2000000
+        ],
+        "maximumMicrounits": [
+          2000000,
+          2000000,
+          2000000
+        ],
+        "dimensions": [
+          9,
+          9,
+          9
+        ],
+        "isovalueMicrounits": 0
+      },
+      "expected": {
+        "authority": "Uncertified",
+        "certifiedInside": 0,
+        "certifiedOutside": 0,
+        "uncertifiedEqualsTotalCells": true
+      }
+    },
+    {
+      "id": "forged-exact-semantic-with-mutated-sample",
+      "semantics": "ExactAnalyticSdf",
+      "field": {
+        "kind": "Sphere",
+        "centerMicrounits": [
+          0,
+          0,
+          0
+        ],
+        "radiusMicrounits": 1000000
+      },
+      "grid": {
+        "minimumMicrounits": [
+          -2000000,
+          -2000000,
+          -2000000
+        ],
+        "maximumMicrounits": [
+          2000000,
+          2000000,
+          2000000
+        ],
+        "dimensions": [
+          9,
+          9,
+          9
+        ],
+        "isovalueMicrounits": 0
+      },
+      "mutation": {
+        "linearIndex": [
+          4,
+          4,
+          4
+        ],
+        "addMicrounits": 500000
+      },
+      "expected": {
+        "error": "SourceSampleMismatch",
+        "noReportProduced": true
+      }
+    }
+  ],
+  "limitations": [
+    "Uniform-grid cell classifier only; no octree subdivision or mesh extraction.",
+    "MeshDerivedSdf does not receive a 1-Lipschitz certificate until its source distance backend and signed-distance semantics are independently qualified.",
+    "Content-addressed receipt is not a signature or authentication of the producer."
+  ]
+}
