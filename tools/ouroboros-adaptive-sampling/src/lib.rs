@@ -399,12 +399,15 @@ pub fn build_adaptive_octree(
     config: AdaptiveOctreeConfig,
 ) -> Result<AdaptiveOctreeReport, AdaptiveOctreeError> {
     config.validate()?;
-    source_grid.validate()?;
-    let verified = VerifiedExactField::from_grid(source_grid)?;
-    let source_grid_canonical_bytes = source_grid.canonical_bytes()?;
-    let source_descriptor_bytes = verified.descriptor_bytes().to_vec();
-    let (minimum, maximum) = verified.bounds_microunits();
-    let source_bounds_microunits = [minimum, maximum];
+    let source_limits = source_grid.validate()?;
+    let spec = source_grid.spec();
+    let minimum = spec.minimum_microunits;
+    let maximum = spec.maximum_microunits;
+    let descriptor_len = u64::try_from(source_grid.descriptor_bytes().len())
+        .map_err(|_| AdaptiveOctreeError::SizeOverflow)?;
+    if config.max_unique_samples < 8 {
+        return Err(AdaptiveOctreeError::SampleBudgetTooSmall);
+    }
     let scale = 1_u32
         .checked_shl(u32::from(config.max_depth))
         .ok_or(AdaptiveOctreeError::DepthOverflow)?;
@@ -419,6 +422,31 @@ pub fn build_adaptive_octree(
         }
         span_micro[axis] = i64::try_from(span).map_err(|_| AdaptiveOctreeError::SizeOverflow)?;
     }
+    // Check the minimum viable tree, duplicate source descriptor and receipt
+    // ceilings before cloning the descriptor, verifying the source stream, or
+    // allocating the canonical source-grid copy.
+    let initial_working = estimate_working_payload(
+        8,
+        1,
+        source_limits.canonical_bytes,
+        descriptor_len,
+    )?;
+    if initial_working > config.max_working_payload_bytes {
+        return Err(AdaptiveOctreeError::WorkingPayloadBudgetExceeded);
+    }
+    let initial_receipt = canonical_receipt_estimate(
+        source_limits.canonical_bytes,
+        descriptor_len,
+        8,
+        1,
+    )?;
+    if initial_receipt > config.max_receipt_bytes {
+        return Err(AdaptiveOctreeError::ReceiptBudgetExceeded);
+    }
+    let verified = VerifiedExactField::from_grid(source_grid)?;
+    let source_grid_canonical_bytes = source_grid.canonical_bytes()?;
+    let source_descriptor_bytes = verified.descriptor_bytes().to_vec();
+    let source_bounds_microunits = [minimum, maximum];
 
     let mut samples = BTreeMap::<[i64; 3], i32>::new();
     let mut sample_cache_hits = 0_u64;
@@ -668,6 +696,7 @@ fn split_leaf(
         projected_samples as u64,
         (leaves.len() as u64).saturating_add(7),
         source_bytes,
+        verified.descriptor_bytes().len() as u64,
     )
     .map_err(|_| SplitFailure::WorkingPayloadBudget)?;
     if projected_working > config.max_working_payload_bytes {
@@ -920,6 +949,7 @@ fn evaluate_missing_points(
         existing.len().saturating_add(missing.len()) as u64,
         projected_leaves,
         source_bytes,
+        verified.descriptor_bytes().len() as u64,
     )?;
     if working > config.max_working_payload_bytes {
         return Err(AdaptiveOctreeError::WorkingPayloadBudgetExceeded);
@@ -1074,6 +1104,7 @@ fn calculate_metrics(
         metrics.unique_sample_count,
         metrics.leaf_count,
         source_bytes,
+        descriptor_bytes,
     )?;
     metrics.canonical_receipt_estimate_bytes = canonical_receipt_estimate(
         source_bytes,
@@ -1095,11 +1126,13 @@ fn estimate_working_payload(
     sample_count: u64,
     leaf_count: u64,
     source_bytes: u64,
+    descriptor_bytes: u64,
 ) -> Result<u64, AdaptiveOctreeError> {
     sample_count
         .checked_mul(SAMPLE_CACHE_ENTRY_ESTIMATE_BYTES)
         .and_then(|value| value.checked_add(leaf_count.checked_mul(LEAF_ENTRY_ESTIMATE_BYTES)?))
         .and_then(|value| value.checked_add(source_bytes))
+        .and_then(|value| value.checked_add(descriptor_bytes))
         .ok_or(AdaptiveOctreeError::SizeOverflow)
 }
 
