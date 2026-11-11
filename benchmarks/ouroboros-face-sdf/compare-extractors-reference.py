@@ -271,6 +271,21 @@ def maintained_dcsdfd_reference(
     ).astype(np.float64, copy=False)
     if len(S) != int(np.prod(dimensions)) or GV.shape != (len(S), 3):
         raise ValueError("DCSDFD input flattening does not match the canonical grid")
+
+    # Verify the flattening convention at grid corners and axis endpoints.
+    # The maintained API defines row i + nx*(j + ny*k) as point (i,j,k).
+    nx, ny, nz = dimensions
+    sentinel_points = [
+        (0, 0, 0), (nx - 1, 0, 0), (0, ny - 1, 0),
+        (0, 0, nz - 1), (nx - 1, ny - 1, nz - 1),
+    ]
+    for i, j, k in sentinel_points:
+        linear = i + nx * (j + ny * k)
+        expected_position = np.array([axes[0][i], axes[1][j], axes[2][k]])
+        if S[linear] != float(samples[i, j, k]) / DISTANCE_SCALE:
+            raise ValueError("DCSDFD S vector does not preserve canonical samples")
+        if not np.array_equal(GV[linear], expected_position):
+            raise ValueError("DCSDFD GV vector does not preserve first-axis-fastest coordinates")
     vertices, quads = gpy.dual_contouring_of_signed_distance_data(
         S,
         GV,
