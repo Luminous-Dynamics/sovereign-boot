@@ -58,6 +58,7 @@ The 11 authored tests cover:
 - a corner-only 2:1 violation that face-only balance would miss;
 - a maximum-depth SurfacePossible leaf with zero crossing mask;
 - exact-zero isovalue corners blocking transition readiness;
+- exact-zero isovalue corners blocking transition readiness;
 - exact canonical receipt-length accounting;
 - pair-budget exhaustion as Unknown/Incomplete, not zero;
 - no-surface trees reported separately;
