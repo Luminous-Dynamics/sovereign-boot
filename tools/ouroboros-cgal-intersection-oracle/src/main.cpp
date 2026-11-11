@@ -64,6 +64,23 @@ void print_not_evaluated(const std::string& reason) {
             << "}\n";
 }
 
+void print_oracle_not_evaluated(
+    const ourodc::Artifact& artifact,
+    const std::string& reason) {
+  std::cout << "{"
+            << "\"schema\":\"OUROCGI1\","
+            << "\"input_sha256\":\"" << artifact.input_sha256 << "\","
+            << "\"input_byte_length\":" << artifact.input_byte_length << ","
+            << "\"cgal_version\":\"" << CGAL_VERSION_STR << "\","
+            << "\"kernel\":\"Exact_predicates_exact_constructions_kernel\","
+            << "\"parser\":\"Pass\","
+            << "\"surface_construction\":\"NotEvaluated\","
+            << "\"self_intersection_status\":\"NotEvaluated\","
+            << "\"reason\":\"" << json_escape(reason) << "\","
+            << "\"pair_count\":0,\"pairs\":[]"
+            << "}\n";
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -75,7 +92,13 @@ int main(int argc, char** argv) {
   try {
     const auto bytes = read_file(argv[1]);
     const auto artifact = ourodc::parse_artifact(bytes);
-    const auto result = ourodc::inspect_self_intersections(artifact);
+    ourodc::IntersectionResult result;
+    try {
+      result = ourodc::inspect_self_intersections(artifact);
+    } catch (const std::exception& error) {
+      print_oracle_not_evaluated(artifact, error.what());
+      return 4;
+    }
 
     std::cout << "{"
               << "\"schema\":\"OUROCGI1\","
