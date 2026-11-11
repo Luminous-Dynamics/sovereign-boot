@@ -14,7 +14,7 @@ CGAL 6.2.1 is the latest stable release as of 11 November 2026. Its Polygon Mesh
 - `does_self_intersect(mesh)`: an early-out boolean;
 - `self_intersections(faces(mesh), mesh, output_iterator)`: a full list of non-adjacent intersecting face pairs.
 
-This implementation runs both. The full pair list is mapped back to the exact input triangle indices. An internal disagreement between the boolean and pair-list paths is `NotEvaluated`, never coerced to Pass.
+This implementation runs both. The full pair list is mapped back to the exact input triangle indices. Enumeration is bounded at 1,000,000 pairs with a one-pair sentinel using CGAL's `maximum_number` named parameter; exceeding the bound returns `NotEvaluated: IntersectionPairBudgetExceeded`. An internal disagreement between the boolean and pair-list paths is `NotEvaluated`, never coerced to Pass.
 
 Primary documentation:
 - https://www.cgal.org/releases.html
@@ -97,7 +97,7 @@ The process exit code is 0 for Pass, 3 for Fail, 4 for NotEvaluated, 2 for parse
 
 Parser fixture tests cover a valid artifact, SHA stability, invalid magic, truncation, invalid triangle index, incorrect quad/triangle correspondence, trailing bytes and inconsistent metrics.
 
-CGAL fixture tests cover two disjoint closed tetrahedra, overlapping closed components, deterministic pair ordering, a degenerate triangle and inconsistent winding. These CGAL tests are authored but not run without CGAL 6.2.1 installed.
+CGAL fixture tests cover two disjoint closed tetrahedra, overlapping closed components, deterministic pair ordering, a degenerate triangle, inconsistent winding, coplanar overlap, coincident faces with distinct vertex IDs and one-nanounit parallel separation. These CGAL tests are authored but not run without CGAL 6.2.1 installed.
 
 ## Next qualification steps
 
