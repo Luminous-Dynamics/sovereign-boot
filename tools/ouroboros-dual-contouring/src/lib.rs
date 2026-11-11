@@ -186,11 +186,9 @@ impl DualContourMesh {
     /// parameters, fixed-point geometry, quad/triangle topology, metrics and
     /// the independently recomputable mesh-audit receipt. Hash/sign externally.
     pub fn canonical_bytes(&self) -> Result<Vec<u8>, ExtractError> {
+        // The audit receipt serializer independently recomputes and verifies
+        // its report against this semantic mesh; avoid a duplicate full audit.
         let semantic_mesh = self.to_semantic_triangle_mesh()?;
-        let recomputed = audit_mesh(&semantic_mesh, AuditLimits::default())?;
-        if recomputed != self.audit_report {
-            return Err(ExtractError::AuditReportMismatch);
-        }
         let audit_bytes = self.audit_report.canonical_bytes(&semantic_mesh)?;
         let source_len = u64::try_from(self.source_grid_canonical_bytes.len())
             .map_err(|_| ExtractError::SizeOverflow)?;
@@ -297,6 +295,8 @@ pub enum ExtractError {
     ExactZeroCrossing,
     SurfaceTouchesGridBoundary,
     MissingAdjacentCellVertex,
+    AmbiguousCellTopology,
+    MultipleCellSurfaceComponents,
     DegenerateQuad,
     SingularQefUnresolved,
     NonFiniteFieldGradient,
@@ -449,6 +449,11 @@ pub fn extract(
                 }
                 if !any_inside || !any_outside {
                     continue;
+                }
+                match cell_surface_component_count(corner_values)? {
+                    0 => return Err(ExtractError::NoSurfaceCrossings),
+                    1 => {}
+                    _ => return Err(ExtractError::MultipleCellSurfaceComponents),
                 }
 
                 let mut hermite = [HermiteSample {
@@ -725,6 +730,68 @@ fn semantic_triangle_mesh(
         faces,
         face_region_ids: face_regions,
     })
+}
+
+// Face boundary edge cycles using CELL_EDGES indices. Each face must have
+// either zero crossings or exactly two; four-crossing checkerboards are
+// rejected until a separately qualified asymptotic-decider policy exists.
+const FACE_EDGE_CYCLES: [[usize; 4]; 6] = [
+    [0, 5, 1, 4],   // z = 0
+    [2, 7, 3, 6],   // z = 1
+    [0, 9, 4, 8],   // y = 0
+    [1, 11, 3, 10], // y = 1
+    [4, 10, 6, 8],  // x = 0
+    [5, 11, 7, 9],  // x = 1
+];
+
+fn cell_surface_component_count(values: [i32; 8]) -> Result<usize, ExtractError> {
+    let mut parent = std::array::from_fn::<usize, 12, _>(|index| index);
+    let mut crossing = [false; 12];
+    for (edge_index, [a, b]) in CELL_EDGES.iter().enumerate() {
+        crossing[edge_index] = (values[*a] < 0) != (values[*b] < 0);
+    }
+    for cycle in FACE_EDGE_CYCLES {
+        let crossed: Vec<usize> = cycle
+            .into_iter()
+            .filter(|edge| crossing[*edge])
+            .collect();
+        match crossed.len() {
+            0 => {}
+            2 => union_crossing_edges(&mut parent, crossed[0], crossed[1]),
+            4 => return Err(ExtractError::AmbiguousCellTopology),
+            _ => return Err(ExtractError::AmbiguousCellTopology),
+        }
+    }
+    let mut roots = std::collections::BTreeSet::new();
+    for edge in 0..12 {
+        if crossing[edge] {
+            roots.insert(find_crossing_root(&mut parent, edge));
+        }
+    }
+    Ok(roots.len())
+}
+
+fn find_crossing_root(parent: &mut [usize; 12], item: usize) -> usize {
+    let mut root = item;
+    while parent[root] != root {
+        root = parent[root];
+    }
+    let mut current = item;
+    while parent[current] != current {
+        let next = parent[current];
+        parent[current] = root;
+        current = next;
+    }
+    root
+}
+
+fn union_crossing_edges(parent: &mut [usize; 12], a: usize, b: usize) {
+    let root_a = find_crossing_root(parent, a);
+    let root_b = find_crossing_root(parent, b);
+    if root_a != root_b {
+        let (low, high) = if root_a < root_b { (root_a, root_b) } else { (root_b, root_a) };
+        parent[high] = low;
+    }
 }
 
 fn sample_value(grid: &SampledGrid, dims: [u32; 3], x: u32, y: u32, z: u32) -> Result<i32, ExtractError> {
@@ -1129,6 +1196,29 @@ mod tests {
         assert_ne!(checks.near_degeneracy, CheckStatus::NotEvaluated);
         assert_ne!(checks.semantic_provenance, CheckStatus::NotEvaluated);
         assert_eq!(checks.self_intersections, CheckStatus::NotEvaluated);
+    }
+
+    #[test]
+    fn one_plane_crossing_is_one_cell_surface_component() {
+        let values = [-1, 1, -1, 1, -1, 1, -1, 1];
+        assert_eq!(cell_surface_component_count(values).unwrap(), 1);
+    }
+
+    #[test]
+    fn opposite_corner_islands_are_two_cell_surface_components() {
+        let values = [-1, 1, 1, 1, 1, 1, 1, -1];
+        assert_eq!(cell_surface_component_count(values).unwrap(), 2);
+        let values = [1, 1, 1, 1, 1, 1, 1, 1];
+        assert_eq!(cell_surface_component_count(values).unwrap(), 0);
+    }
+
+    #[test]
+    fn checkerboard_face_is_rejected_as_ambiguous() {
+        let values = [-1, 1, 1, -1, 1, 1, 1, 1];
+        assert_eq!(
+            cell_surface_component_count(values),
+            Err(ExtractError::AmbiguousCellTopology)
+        );
     }
 
     #[test]
