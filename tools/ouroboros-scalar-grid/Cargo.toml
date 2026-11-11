@@ -1,0 +1,15 @@
+[package]
+name = "ouroboros-scalar-grid"
+version = "0.1.0"
+edition = "2024"
+description = "Canonical generic scalar-grid and exact analytic SDF fixture contract for Ouroboros"
+license = "AGPL-3.0-or-later"
+
+[lib]
+path = "src/lib.rs"
+
+[[example]]
+name = "sample-exact-fixtures"
+path = "examples/sample-exact-fixtures.rs"
+
+[workspace]

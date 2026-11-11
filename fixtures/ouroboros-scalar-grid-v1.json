@@ -1,0 +1,481 @@
+{
+  "schemaVersion": 1,
+  "corpusId": "ouroboros-scalar-grid-v1",
+  "format": {
+    "magic": "OUROSGD1",
+    "schemaVersion": 1,
+    "coordinateUnits": "microunits",
+    "distanceUnits": "microunits",
+    "sampleType": "signed-int32",
+    "signConvention": "negative-inside-positive-outside",
+    "sampleLayout": "first-axis-fastest-i+nx*(j+ny*k)",
+    "isovalueStorage": "samples-store-field-minus-isovalue",
+    "digest": "external-content-digest-not-included-in-v1"
+  },
+  "exactAnalyticFixtures": [
+    {
+      "id": "sphere-unit",
+      "field": "Sphere",
+      "semantics": "ExactAnalyticSdf",
+      "centerMicrounits": [
+        0,
+        0,
+        0
+      ],
+      "radiusMicrounits": 1000000,
+      "resolutions": [
+        [
+          32,
+          32,
+          32
+        ],
+        [
+          64,
+          64,
+          64
+        ],
+        [
+          128,
+          128,
+          128
+        ]
+      ],
+      "boundsMicrounits": [
+        [
+          -2000000,
+          -2000000,
+          -2000000
+        ],
+        [
+          2000000,
+          2000000,
+          2000000
+        ]
+      ],
+      "expectedSamples": {
+        "center": -1000000,
+        "positiveXSurface": 0,
+        "positiveXOutside": 1000000
+      }
+    },
+    {
+      "id": "box-axis-aligned",
+      "field": "Box",
+      "semantics": "ExactAnalyticSdf",
+      "centerMicrounits": [
+        0,
+        0,
+        0
+      ],
+      "halfExtentsMicrounits": [
+        1000000,
+        750000,
+        500000
+      ],
+      "resolutions": [
+        [
+          32,
+          32,
+          32
+        ],
+        [
+          64,
+          64,
+          64
+        ],
+        [
+          128,
+          128,
+          128
+        ]
+      ],
+      "boundsMicrounits": [
+        [
+          -2000000,
+          -2000000,
+          -2000000
+        ],
+        [
+          2000000,
+          2000000,
+          2000000
+        ]
+      ],
+      "expectedSamples": {
+        "center": -500000,
+        "positiveXOutside": 1000000
+      }
+    },
+    {
+      "id": "box-rotated-z-45",
+      "field": "OrientedBox",
+      "semantics": "ExactAnalyticSdf",
+      "centerMicrounits": [
+        0,
+        0,
+        0
+      ],
+      "halfExtentsMicrounits": [
+        1000000,
+        2000000,
+        750000
+      ],
+      "rotationQ30": [
+        0,
+        0,
+        759250125,
+        759250125
+      ],
+      "resolutions": [
+        [
+          32,
+          32,
+          32
+        ],
+        [
+          64,
+          64,
+          64
+        ],
+        [
+          128,
+          128,
+          128
+        ]
+      ],
+      "boundsMicrounits": [
+        [
+          -3000000,
+          -3000000,
+          -2000000
+        ],
+        [
+          3000000,
+          3000000,
+          2000000
+        ]
+      ],
+      "rotationPurpose": "expose grid-axis alignment bias"
+    },
+    {
+      "id": "capsule-z-axis",
+      "field": "Capsule",
+      "semantics": "ExactAnalyticSdf",
+      "endpointAMicrounits": [
+        0,
+        0,
+        -1000000
+      ],
+      "endpointBMicrounits": [
+        0,
+        0,
+        1000000
+      ],
+      "radiusMicrounits": 500000,
+      "resolutions": [
+        [
+          32,
+          32,
+          32
+        ],
+        [
+          64,
+          64,
+          64
+        ],
+        [
+          128,
+          128,
+          128
+        ]
+      ],
+      "boundsMicrounits": [
+        [
+          -2000000,
+          -2000000,
+          -3000000
+        ],
+        [
+          2000000,
+          2000000,
+          3000000
+        ]
+      ]
+    },
+    {
+      "id": "ring-torus-z-axis",
+      "field": "Torus",
+      "semantics": "ExactAnalyticSdf",
+      "centerMicrounits": [
+        0,
+        0,
+        0
+      ],
+      "majorRadiusMicrounits": 1500000,
+      "minorRadiusMicrounits": 500000,
+      "resolutions": [
+        [
+          32,
+          32,
+          32
+        ],
+        [
+          64,
+          64,
+          64
+        ],
+        [
+          128,
+          128,
+          128
+        ]
+      ],
+      "boundsMicrounits": [
+        [
+          -3000000,
+          -3000000,
+          -2000000
+        ],
+        [
+          3000000,
+          3000000,
+          2000000
+        ]
+      ]
+    },
+    {
+      "id": "capped-cylinder-z-axis",
+      "field": "CappedCylinder",
+      "semantics": "ExactAnalyticSdf",
+      "centerMicrounits": [
+        0,
+        0,
+        0
+      ],
+      "radiusMicrounits": 1000000,
+      "halfLengthMicrounits": 1500000,
+      "resolutions": [
+        [
+          32,
+          32,
+          32
+        ],
+        [
+          64,
+          64,
+          64
+        ],
+        [
+          128,
+          128,
+          128
+        ]
+      ],
+      "boundsMicrounits": [
+        [
+          -2000000,
+          -2000000,
+          -3000000
+        ],
+        [
+          2000000,
+          2000000,
+          3000000
+        ]
+      ]
+    },
+    {
+      "id": "plane-z-control",
+      "field": "Plane",
+      "semantics": "ExactAnalyticSdf",
+      "normalQ30": [
+        0,
+        0,
+        1073741824
+      ],
+      "offsetMicrounits": 0,
+      "resolutions": [
+        [
+          32,
+          32,
+          32
+        ],
+        [
+          64,
+          64,
+          64
+        ]
+      ],
+      "boundsMicrounits": [
+        [
+          -2000000,
+          -2000000,
+          -2000000
+        ],
+        [
+          2000000,
+          2000000,
+          2000000
+        ]
+      ],
+      "expectedBoundaryBehavior": "all surfaces intersect finite grid boundaries"
+    }
+  ],
+  "approximateAnalyticStrata": [
+    {
+      "id": "sharp-min-union",
+      "semantics": "ApproximateAnalyticField",
+      "construction": "minimum of primitive signed distance estimators",
+      "note": "a useful CSG zero set but not automatically exact Euclidean distance to the union boundary"
+    },
+    {
+      "id": "polynomial-smooth-min-union",
+      "semantics": "ApproximateAnalyticField",
+      "construction": "polynomial smooth minimum",
+      "note": "smooth composition changes the field and must not be labelled ExactAnalyticSdf"
+    },
+    {
+      "id": "ouroboros-head-nose",
+      "semantics": "ApproximateAnalyticField",
+      "source": "OUROGRD1 face-specialized field",
+      "note": "IQ-style ellipsoid estimator; keep as application stratum, not the only accuracy oracle"
+    }
+  ],
+  "meshDerivedStrata": [
+    {
+      "id": "mesh-derived-placeholder",
+      "semantics": "MeshDerivedSdf",
+      "requiredProvenance": [
+        "sourceMeshDigest",
+        "distanceBackend",
+        "backendVersion",
+        "signConvention",
+        "preprocessingPipeline",
+        "gridBounds",
+        "gridDimensions"
+      ],
+      "status": "awaiting-pinned-source-mesh"
+    }
+  ],
+  "perturbationProtocol": {
+    "rotationSeeds": [
+      7,
+      19,
+      41,
+      73,
+      101
+    ],
+    "translationOffsetsInCellFractions": [
+      [
+        0,
+        0,
+        0
+      ],
+      [
+        0.5,
+        0,
+        0
+      ],
+      [
+        0,
+        0.5,
+        0
+      ],
+      [
+        0,
+        0,
+        0.5
+      ],
+      [
+        0.5,
+        0.5,
+        0.5
+      ]
+    ],
+    "thinFeatureThicknessInVoxels": [
+      0.5,
+      1,
+      1.5,
+      2
+    ],
+    "gapWidthInVoxels": [
+      0.5,
+      1,
+      2,
+      4
+    ],
+    "noiseLevelsInVoxelEquivalentAmplitude": [
+      0,
+      0.1,
+      0.25,
+      0.5
+    ],
+    "noiseSeedRule": "fixture-id plus stable integer seed; record the realized quantized noise bytes in the grid descriptor or a bound perturbation descriptor",
+    "exactZeroAndAmbiguityCases": [
+      "zero-valued lattice vertex",
+      "checkerboard face",
+      "multiple disconnected components in one cell",
+      "surface cut by each of six grid boundaries"
+    ]
+  },
+  "resolutions": {
+    "default": [
+      [
+        32,
+        32,
+        32
+      ],
+      [
+        64,
+        64,
+        64
+      ],
+      [
+        128,
+        128,
+        128
+      ]
+    ],
+    "conditional": [
+      [
+        256,
+        256,
+        256
+      ]
+    ],
+    "conditionalReason": "respect sample, canonical-byte and simultaneous working-payload limits before generation"
+  },
+  "comparisonMethods": [
+    "Marching Cubes reference",
+    "Ouroboros classical Hermite-QEF control",
+    "maintained Gpytoolbox SIGGRAPH 2026 DCSDFD pinned revision",
+    "future faithful Rust DCSDFD port",
+    "future adaptive sampler / topology-aware variants"
+  ],
+  "requiredMetrics": [
+    "symmetric_chamfer",
+    "hausdorff_p95_p99_max",
+    "edge_feature_chamfer",
+    "sharp_edge_localization_error",
+    "normal_angular_error",
+    "silhouette_iou_fixed_camera_set",
+    "connected_components",
+    "euler_characteristic",
+    "boundary_loops",
+    "edge_and_vertex_manifoldness",
+    "face_flips",
+    "cell_escape_voxels",
+    "self_intersection_pairs_or_NotEvaluated",
+    "build_latency_p50_p95_p99",
+    "peak_rss_bytes",
+    "allocation_bytes",
+    "output_bytes"
+  ],
+  "nonClaims": [
+    "field semantics are source declarations and not authenticated merely by the grid format",
+    "quantized samples are not exact real numbers",
+    "min/smooth-min compositions are not exact Euclidean SDFs by default",
+    "the face fixture is not an exact distance oracle",
+    "no mesh quality, runtime, energy or SOTA advantage is claimed"
+  ]
+}
