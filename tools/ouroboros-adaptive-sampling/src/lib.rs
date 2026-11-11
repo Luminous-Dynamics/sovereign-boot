@@ -6,6 +6,7 @@
 //! partial result; unresolved space is never silently reclassified as empty.
 
 use std::{
+    cmp::Ordering,
     collections::{BTreeMap, BTreeSet},
     error::Error,
     fmt,
@@ -22,8 +23,7 @@ pub const MAX_ADAPTIVE_DEPTH: u8 = 18;
 pub const MAX_LEAF_CELLS: u32 = 4_096;
 pub const MAX_RECEIPT_BYTES: u64 = 64 * 1024 * 1024;
 pub const MAX_WORKING_PAYLOAD_BYTES: u64 = 128 * 1024 * 1024;
-pub const MAX_BALANCE_PAIR_CHECKS: u64 = 16_777_216;
-const DISTANCE_QUANTIZATION: i64 = 1_000_000;
+pub const MAX_BALANCE_PAIR_CHECKS: u64 = 67_108_864;
 const SAMPLE_CACHE_ENTRY_ESTIMATE_BYTES: u64 = 64;
 const LEAF_ENTRY_ESTIMATE_BYTES: u64 = 160;
 const CELL_CORNERS: [[u32; 3]; 8] = [
@@ -86,10 +86,34 @@ impl AdaptiveOctreeConfig {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MortonKey {
     pub level: u8,
     pub path_code: u64,
+}
+
+impl MortonKey {
+    fn spatial_order_code(self) -> u64 {
+        if self.level > MAX_ADAPTIVE_DEPTH {
+            return u64::MAX;
+        }
+        self.path_code << (3 * u32::from(MAX_ADAPTIVE_DEPTH - self.level))
+    }
+}
+
+impl Ord for MortonKey {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.spatial_order_code()
+            .cmp(&other.spatial_order_code())
+            .then_with(|| self.level.cmp(&other.level))
+            .then_with(|| self.path_code.cmp(&other.path_code))
+    }
+}
+
+impl PartialOrd for MortonKey {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 impl MortonKey {
@@ -387,7 +411,10 @@ pub fn build_adaptive_octree(
     let mut span_micro = [0_i64; 3];
     for axis in 0..3 {
         let span = i128::from(maximum[axis]) - i128::from(minimum[axis]);
-        if span <= 0 || span % i128::from(scale) != 0 {
+        // Every max-depth tick must advance by at least one microunit.
+        // Non-divisible spans are supported: tick coordinates are floored,
+        // while each cell's interval diagonal rounds its extent upward.
+        if span < i128::from(scale) {
             return Err(AdaptiveOctreeError::NonDyadicDomain);
         }
         span_micro[axis] = i64::try_from(span).map_err(|_| AdaptiveOctreeError::SizeOverflow)?;
@@ -448,6 +475,7 @@ pub fn build_adaptive_octree(
     let mut balance_status = BalanceStatus::Balanced;
     let mut tree_budget_stopped = false;
     let mut balance_check_exhausted = false;
+    let mut remaining_2_to_1_violations = 0_u64;
 
     // Surface refinement and balance are iterated together. A balance split
     // can create new surface-possible children, so they re-enter this loop.
@@ -488,7 +516,7 @@ pub fn build_adaptive_octree(
         balance_rounds = balance_rounds
             .checked_add(1)
             .ok_or(AdaptiveOctreeError::SizeOverflow)?;
-        let (coarse_keys, comparisons) = match find_2_to_1_violations(
+        let (coarse_keys, comparisons, violations) = match find_2_to_1_violations(
             &leaves,
             config.max_balance_pair_checks.saturating_sub(balance_pair_checks),
         ) {
@@ -504,6 +532,7 @@ pub fn build_adaptive_octree(
         balance_pair_checks = balance_pair_checks
             .checked_add(comparisons)
             .ok_or(AdaptiveOctreeError::SizeOverflow)?;
+        remaining_2_to_1_violations = violations;
         if coarse_keys.is_empty() {
             balance_status = BalanceStatus::Balanced;
             if !changed {
@@ -540,13 +569,11 @@ pub fn build_adaptive_octree(
         }
     }
 
-    let remaining_2_to_1_violations = if balance_check_exhausted {
-        // u64::MAX is a sentinel meaning the pairwise check budget was exhausted;
-        // the exact remaining violation count is unknown, never implicitly zero.
-        u64::MAX
-    } else {
-        count_2_to_1_violations(&leaves)?
-    };
+    if balance_check_exhausted {
+        // u64::MAX means the pairwise check budget was exhausted; the exact
+        // remaining violation count is unknown, never implicitly zero.
+        remaining_2_to_1_violations = u64::MAX;
+    }
     if remaining_2_to_1_violations > 0 {
         balance_status = BalanceStatus::BalanceIncomplete;
     }
@@ -693,11 +720,8 @@ fn split_leaf(
             child_samples[index] = lookup_with_pending(samples, &pending, point)
                 .ok_or(SplitFailure::WorkingPayloadBudget)?;
         }
-        let child_spans = [
-            span_micro[0] * i64::from(half) / i64::from(scale),
-            span_micro[1] * i64::from(half) / i64::from(scale),
-            span_micro[2] * i64::from(half) / i64::from(scale),
-        ];
+        let child_spans = spans_for_ticks(span_micro, half, scale)
+            .map_err(|_| SplitFailure::WorkingPayloadBudget)?;
         let classification = classify_corner_samples(child_samples, child_spans)
             .map_err(|_| SplitFailure::WorkingPayloadBudget)?;
         children.push(OctreeLeaf {
@@ -748,11 +772,7 @@ fn classify_cell(
         let point = point_at_tick(minimum, span_micro, scale, tick)?;
         values[index] = *samples.get(&point).ok_or(AdaptiveOctreeError::MissingCachedSample)?;
     }
-    let spans = [
-        span_micro[0] * i64::from(span_ticks) / i64::from(scale),
-        span_micro[1] * i64::from(span_ticks) / i64::from(scale),
-        span_micro[2] * i64::from(span_ticks) / i64::from(scale),
-    ];
+    let spans = spans_for_ticks(span_micro, span_ticks, scale)?;
     classify_corner_samples(values, spans)
 }
 
@@ -832,7 +852,7 @@ fn mark_split_failure(
 fn find_2_to_1_violations(
     leaves: &BTreeMap<MortonKey, OctreeLeaf>,
     remaining_pair_budget: u64,
-) -> Result<(BTreeSet<MortonKey>, u64), AdaptiveOctreeError> {
+) -> Result<(BTreeSet<MortonKey>, u64, u64), AdaptiveOctreeError> {
     let values: Vec<OctreeLeaf> = leaves.values().copied().collect();
     let pair_count = (values.len() as u64)
         .checked_mul(values.len().saturating_sub(1) as u64)
@@ -842,6 +862,7 @@ fn find_2_to_1_violations(
         return Err(AdaptiveOctreeError::BalanceCheckBudgetExceeded);
     }
     let mut coarse = BTreeSet::new();
+    let mut violation_count = 0_u64;
     for i in 0..values.len() {
         for j in (i + 1)..values.len() {
             let a = values[i];
@@ -851,28 +872,14 @@ fn find_2_to_1_violations(
             }
             let difference = a.key.level.abs_diff(b.key.level);
             if difference > 1 {
+                violation_count = violation_count
+                    .checked_add(1)
+                    .ok_or(AdaptiveOctreeError::SizeOverflow)?;
                 coarse.insert(if a.key.level < b.key.level { a.key } else { b.key });
             }
         }
     }
-    Ok((coarse, pair_count))
-}
-
-fn count_2_to_1_violations(
-    leaves: &BTreeMap<MortonKey, OctreeLeaf>,
-) -> Result<u64, AdaptiveOctreeError> {
-    let values: Vec<OctreeLeaf> = leaves.values().copied().collect();
-    let mut count = 0_u64;
-    for i in 0..values.len() {
-        for j in (i + 1)..values.len() {
-            if share_face(values[i], values[j])
-                && values[i].key.level.abs_diff(values[j].key.level) > 1
-            {
-                count = count.checked_add(1).ok_or(AdaptiveOctreeError::SizeOverflow)?;
-            }
-        }
-    }
-    Ok(count)
+    Ok((coarse, pair_count, violation_count))
 }
 
 fn share_face(a: OctreeLeaf, b: OctreeLeaf) -> bool {
@@ -960,6 +967,37 @@ fn lookup_with_pending(
     existing.get(&coordinate).copied().or_else(|| {
         pending.iter().find(|(point, _)| *point == coordinate).map(|(_, value)| *value)
     })
+}
+
+fn spans_for_ticks(
+    span_microunits: [i64; 3],
+    span_ticks: u32,
+    scale: u32,
+) -> Result<[i64; 3], AdaptiveOctreeError> {
+    if scale == 0 || span_ticks == 0 || span_ticks > scale {
+        return Err(AdaptiveOctreeError::InvalidCell);
+    }
+    let mut result = [0_i64; 3];
+    for axis in 0..3 {
+        if span_microunits[axis] <= 0 {
+            return Err(AdaptiveOctreeError::InvalidCell);
+        }
+        let numerator = u128::try_from(span_microunits[axis])
+            .map_err(|_| AdaptiveOctreeError::SizeOverflow)?
+            .checked_mul(u128::from(span_ticks))
+            .ok_or(AdaptiveOctreeError::SizeOverflow)?;
+        let denominator = u128::from(scale);
+        let rounded_up = numerator
+            .checked_add(denominator - 1)
+            .ok_or(AdaptiveOctreeError::SizeOverflow)?
+            / denominator;
+        result[axis] = i64::try_from(rounded_up)
+            .map_err(|_| AdaptiveOctreeError::SizeOverflow)?;
+        if result[axis] <= 0 {
+            return Err(AdaptiveOctreeError::InvalidCell);
+        }
+    }
+    Ok(result)
 }
 
 fn point_at_tick(
