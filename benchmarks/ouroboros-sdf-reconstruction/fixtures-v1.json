@@ -1,0 +1,799 @@
+{
+  "schemaVersion": 1,
+  "corpusId": "ouroboros-sdf-reconstruction-v1",
+  "status": "fixture-design-not-yet-sampled",
+  "inputContractProposal": "OUROSGD1",
+  "sourceCommitments": {
+    "axisOrder": "forward-lateral-up",
+    "sampleLayout": "first-axis-fastest-i-plus-nx-times-j-plus-nyk",
+    "signConvention": "negative-inside-zero-surface-positive-outside",
+    "units": "normalized-major-radius",
+    "sampleQuantization": "signed-int32-microunits",
+    "sampleCountOnly": {
+      "gridResolutions": [
+        [
+          32,
+          32,
+          32
+        ],
+        [
+          64,
+          64,
+          64
+        ],
+        [
+          128,
+          128,
+          128
+        ]
+      ],
+      "optionalResolution": [
+        256,
+        256,
+        256
+      ],
+      "optionalResolutionRequiresExplicitBudget": true
+    }
+  },
+  "transformConvention": {
+    "rotation": "quaternion [x,y,z,w], normalized, canonical sign w>=0; rotate points into shape-local frame by conjugate",
+    "translation": "local-to-grid coordinate frame in normalized-major-radius units",
+    "deterministicQuantization": "all transform components rounded to 1e-6 before evaluation; exact serialized values bind the field descriptor"
+  },
+  "fixtures": [
+    {
+      "id": "analytic-sphere-r050",
+      "semanticClass": "exact-analytic-sdf",
+      "formula": "length(p-center)-radius",
+      "parameters": {
+        "center": [
+          0,
+          0,
+          0
+        ],
+        "radius": 0.5
+      },
+      "bounds": {
+        "minimum": [
+          -0.8,
+          -0.8,
+          -0.8
+        ],
+        "maximum": [
+          0.8,
+          0.8,
+          0.8
+        ]
+      },
+      "rotations": [
+        [
+          0,
+          0,
+          0,
+          1
+        ]
+      ],
+      "resolutions": [
+        [
+          32,
+          32,
+          32
+        ],
+        [
+          64,
+          64,
+          64
+        ],
+        [
+          128,
+          128,
+          128
+        ]
+      ],
+      "expectedTopology": {
+        "components": 1,
+        "closed": true,
+        "genus": 0
+      },
+      "measures": [
+        "symmetric-chamfer",
+        "hausdorff",
+        "normal-angular-error",
+        "silhouette-iou"
+      ]
+    },
+    {
+      "id": "analytic-box-050-axis-aligned",
+      "semanticClass": "exact-analytic-sdf",
+      "formula": "length(max(abs(p-center)-half_extents,0))+min(max_component(abs(p-center)-half_extents),0)",
+      "parameters": {
+        "center": [
+          0,
+          0,
+          0
+        ],
+        "halfExtents": [
+          0.5,
+          0.35,
+          0.25
+        ]
+      },
+      "bounds": {
+        "minimum": [
+          -0.8,
+          -0.65,
+          -0.55
+        ],
+        "maximum": [
+          0.8,
+          0.65,
+          0.55
+        ]
+      },
+      "rotations": [
+        [
+          0,
+          0,
+          0,
+          1
+        ]
+      ],
+      "resolutions": [
+        [
+          32,
+          32,
+          32
+        ],
+        [
+          64,
+          64,
+          64
+        ],
+        [
+          128,
+          128,
+          128
+        ]
+      ],
+      "expectedTopology": {
+        "components": 1,
+        "closed": true,
+        "genus": 0
+      },
+      "measures": [
+        "symmetric-chamfer",
+        "hausdorff",
+        "edge-feature-chamfer",
+        "sharp-edge-localization",
+        "silhouette-iou"
+      ]
+    },
+    {
+      "id": "analytic-box-rotated-37deg",
+      "semanticClass": "exact-analytic-sdf",
+      "formula": "exact-axis-aligned-box-sdf(inverse_rotate(p-center,rotation),half_extents)",
+      "parameters": {
+        "center": [
+          0,
+          0,
+          0
+        ],
+        "halfExtents": [
+          0.5,
+          0.35,
+          0.25
+        ]
+      },
+      "bounds": {
+        "minimum": [
+          -0.9,
+          -0.9,
+          -0.7
+        ],
+        "maximum": [
+          0.9,
+          0.9,
+          0.7
+        ]
+      },
+      "rotations": [
+        [
+          0,
+          0,
+          0.3173046564,
+          0.9483236812
+        ]
+      ],
+      "resolutions": [
+        [
+          32,
+          32,
+          32
+        ],
+        [
+          64,
+          64,
+          64
+        ],
+        [
+          128,
+          128,
+          128
+        ]
+      ],
+      "expectedTopology": {
+        "components": 1,
+        "closed": true,
+        "genus": 0
+      },
+      "measures": [
+        "symmetric-chamfer",
+        "hausdorff",
+        "edge-feature-chamfer",
+        "sharp-edge-localization",
+        "rotation-sensitivity"
+      ]
+    },
+    {
+      "id": "analytic-capsule-axis-z",
+      "semanticClass": "exact-analytic-sdf",
+      "formula": "length(p-clamp_projection_to_segment(p,a,b))-radius",
+      "parameters": {
+        "segmentA": [
+          0,
+          0,
+          -0.35
+        ],
+        "segmentB": [
+          0,
+          0,
+          0.35
+        ],
+        "radius": 0.18
+      },
+      "bounds": {
+        "minimum": [
+          -0.4,
+          -0.4,
+          -0.75
+        ],
+        "maximum": [
+          0.4,
+          0.4,
+          0.75
+        ]
+      },
+      "rotations": [
+        [
+          0,
+          0,
+          0,
+          1
+        ]
+      ],
+      "resolutions": [
+        [
+          32,
+          32,
+          32
+        ],
+        [
+          64,
+          64,
+          64
+        ],
+        [
+          128,
+          128,
+          128
+        ]
+      ],
+      "expectedTopology": {
+        "components": 1,
+        "closed": true,
+        "genus": 0
+      },
+      "measures": [
+        "symmetric-chamfer",
+        "hausdorff",
+        "normal-angular-error",
+        "thin-feature-recovery"
+      ]
+    },
+    {
+      "id": "analytic-torus-ring",
+      "semanticClass": "exact-analytic-sdf",
+      "formula": "length([sqrt(x*x+y*y)-major_radius,z])-minor_radius",
+      "parameters": {
+        "center": [
+          0,
+          0,
+          0
+        ],
+        "majorRadius": 0.42,
+        "minorRadius": 0.12
+      },
+      "bounds": {
+        "minimum": [
+          -0.7,
+          -0.7,
+          -0.3
+        ],
+        "maximum": [
+          0.7,
+          0.7,
+          0.3
+        ]
+      },
+      "rotations": [
+        [
+          0,
+          0,
+          0,
+          1
+        ]
+      ],
+      "resolutions": [
+        [
+          32,
+          32,
+          32
+        ],
+        [
+          64,
+          64,
+          64
+        ],
+        [
+          128,
+          128,
+          128
+        ]
+      ],
+      "expectedTopology": {
+        "components": 1,
+        "closed": true,
+        "genus": 1
+      },
+      "measures": [
+        "symmetric-chamfer",
+        "hausdorff",
+        "normal-angular-error",
+        "topology-euler"
+      ]
+    },
+    {
+      "id": "analytic-capsule-subvoxel-050",
+      "semanticClass": "exact-analytic-sdf",
+      "formula": "length(p-clamp_projection_to_segment(p,a,b))-radius",
+      "parameters": {
+        "segmentA": [
+          -0.42,
+          0,
+          0
+        ],
+        "segmentB": [
+          0.42,
+          0,
+          0
+        ],
+        "radius": 0.012
+      },
+      "bounds": {
+        "minimum": [
+          -0.55,
+          -0.15,
+          -0.15
+        ],
+        "maximum": [
+          0.55,
+          0.15,
+          0.15
+        ]
+      },
+      "resolutions": [
+        [
+          32,
+          32,
+          32
+        ],
+        [
+          64,
+          64,
+          64
+        ],
+        [
+          128,
+          128,
+          128
+        ]
+      ],
+      "featureScaleInVoxels": [
+        0.5,
+        1,
+        1.5,
+        2
+      ],
+      "expectedTopology": {
+        "components": 1,
+        "closed": true,
+        "genus": 0
+      },
+      "measures": [
+        "thin-feature-recall",
+        "component-preservation",
+        "symmetric-chamfer",
+        "feature-survival-probability"
+      ]
+    },
+    {
+      "id": "analytic-separated-spheres",
+      "semanticClass": "exact-analytic-sdf",
+      "formula": "min(length(p-centerA)-radiusA,length(p-centerB)-radiusB); each component ground truth is exact, composite min distance semantics are recorded separately",
+      "parameters": {
+        "centerA": [
+          -0.28,
+          0,
+          0
+        ],
+        "centerB": [
+          0.28,
+          0,
+          0
+        ],
+        "radiusA": 0.16,
+        "radiusB": 0.16
+      },
+      "bounds": {
+        "minimum": [
+          -0.6,
+          -0.35,
+          -0.35
+        ],
+        "maximum": [
+          0.6,
+          0.35,
+          0.35
+        ]
+      },
+      "resolutions": [
+        [
+          32,
+          32,
+          32
+        ],
+        [
+          64,
+          64,
+          64
+        ],
+        [
+          128,
+          128,
+          128
+        ]
+      ],
+      "expectedTopology": {
+        "components": 2,
+        "closed": true,
+        "genus": 0
+      },
+      "measures": [
+        "component-count-error",
+        "component-merge-threshold",
+        "symmetric-chamfer"
+      ]
+    },
+    {
+      "id": "analytic-plane-boundary-control",
+      "semanticClass": "exact-analytic-sdf-boundary-control",
+      "formula": "dot(p-planePoint,unitNormal)",
+      "parameters": {
+        "planePoint": [
+          0,
+          0,
+          0
+        ],
+        "unitNormal": [
+          1,
+          0,
+          0
+        ]
+      },
+      "bounds": {
+        "minimum": [
+          -0.5,
+          -0.5,
+          -0.5
+        ],
+        "maximum": [
+          0.5,
+          0.5,
+          0.5
+        ]
+      },
+      "resolutions": [
+        [
+          32,
+          32,
+          32
+        ],
+        [
+          64,
+          64,
+          64
+        ]
+      ],
+      "expectedTopology": {
+        "components": 1,
+        "closed": false,
+        "gridBoundaryTouch": true
+      },
+      "measures": [
+        "boundary-loop-count",
+        "boundary-touch-detection",
+        "fail-closed-behavior"
+      ]
+    },
+    {
+      "id": "composite-min-box-sphere",
+      "semanticClass": "approximate-composite-min-field",
+      "formula": "min(exact_box_sdf(p),exact_sphere_sdf(p))",
+      "parameters": {
+        "boxHalfExtents": [
+          0.35,
+          0.3,
+          0.25
+        ],
+        "sphereCenter": [
+          0.2,
+          0,
+          0
+        ],
+        "sphereRadius": 0.28
+      },
+      "bounds": {
+        "minimum": [
+          -0.65,
+          -0.6,
+          -0.55
+        ],
+        "maximum": [
+          0.65,
+          0.6,
+          0.55
+        ]
+      },
+      "resolutions": [
+        [
+          32,
+          32,
+          32
+        ],
+        [
+          64,
+          64,
+          64
+        ],
+        [
+          128,
+          128,
+          128
+        ]
+      ],
+      "expectedTopology": {
+        "components": "measured-from-field"
+      },
+      "measures": [
+        "symmetric-chamfer-to-field-zero-set",
+        "feature-localization",
+        "surface-normal-error"
+      ]
+    },
+    {
+      "id": "smooth-union-two-spheres",
+      "semanticClass": "approximate-smooth-composite-field",
+      "formula": "polynomial_smooth_min(sphere_sdf_A,sphere_sdf_B,k)",
+      "parameters": {
+        "centerA": [
+          -0.22,
+          0,
+          0
+        ],
+        "centerB": [
+          0.22,
+          0,
+          0
+        ],
+        "radius": 0.25,
+        "smoothWidth": 0.08
+      },
+      "bounds": {
+        "minimum": [
+          -0.6,
+          -0.45,
+          -0.45
+        ],
+        "maximum": [
+          0.6,
+          0.45,
+          0.45
+        ]
+      },
+      "resolutions": [
+        [
+          32,
+          32,
+          32
+        ],
+        [
+          64,
+          64,
+          64
+        ],
+        [
+          128,
+          128,
+          128
+        ]
+      ],
+      "expectedTopology": {
+        "components": "measured-from-field"
+      },
+      "measures": [
+        "surface-error-to-declared-field",
+        "normal-error",
+        "smoothness-profile"
+      ]
+    },
+    {
+      "id": "face-skin-head-nose-application",
+      "semanticClass": "approximate-application-field",
+      "source": "existing OUROGRD1 face-skin fixture",
+      "formula": "polynomial_smooth_min(iq_ellipsoid_distance(head),iq_ellipsoid_distance(nose),width)",
+      "parameters": {
+        "smoothWidth": 0.004
+      },
+      "bounds": {
+        "minimum": [
+          -0.18,
+          -0.14,
+          -0.16
+        ],
+        "maximum": [
+          0.25,
+          0.14,
+          0.16
+        ]
+      },
+      "resolutions": [
+        [
+          32,
+          32,
+          32
+        ],
+        [
+          64,
+          64,
+          64
+        ],
+        [
+          128,
+          128,
+          128
+        ]
+      ],
+      "expectedTopology": {
+        "components": "must-be-measured"
+      },
+      "measures": [
+        "landmark-error",
+        "silhouette-iou",
+        "semantic-feature-preservation",
+        "identity-recognition-separate-study"
+      ]
+    },
+    {
+      "id": "noisy-box-controlled",
+      "semanticClass": "exact-analytic-sdf-with-declared-sample-noise",
+      "formula": "exact_box_sdf(p)+deterministic_noise(sample_index,seed)",
+      "parameters": {
+        "center": [
+          0,
+          0,
+          0
+        ],
+        "halfExtents": [
+          0.4,
+          0.3,
+          0.2
+        ],
+        "noiseSeed": 20261111,
+        "noiseAmplitudesVoxel": [
+          0,
+          0.1,
+          0.25,
+          0.5
+        ]
+      },
+      "bounds": {
+        "minimum": [
+          -0.65,
+          -0.55,
+          -0.45
+        ],
+        "maximum": [
+          0.65,
+          0.55,
+          0.45
+        ]
+      },
+      "resolutions": [
+        [
+          32,
+          32,
+          32
+        ],
+        [
+          64,
+          64,
+          64
+        ],
+        [
+          128,
+          128,
+          128
+        ]
+      ],
+      "noiseGenerator": "pinned integer PRNG plus quantized lookup; exact generated int32 perturbation vector must be hashed in the sampled-grid receipt",
+      "measures": [
+        "noise-sensitivity-curve",
+        "feature-recall",
+        "hausdorff-vs-noise",
+        "topology-failure-rate"
+      ]
+    }
+  ],
+  "comparatorMethods": [
+    "marching-cubes-reference",
+    "ouroboros-classical-hermite-qef",
+    "gpytoolbox-dcsdfd-pinned",
+    "ouroboros-rust-dcsdfd-future"
+  ],
+  "metrics": {
+    "geometry": [
+      "symmetric-chamfer",
+      "hausdorff-p95-p99-max",
+      "edge-feature-chamfer",
+      "normal-angular-error",
+      "silhouette-iou",
+      "landmark-error"
+    ],
+    "topology": [
+      "edge-manifoldness",
+      "vertex-link-manifoldness",
+      "watertightness",
+      "orientation",
+      "euler-characteristic",
+      "boundary-loops",
+      "self-intersection-pairs"
+    ],
+    "operations": [
+      "latency-p50-p95-p99",
+      "peak-rss",
+      "allocation-count",
+      "allocated-bytes",
+      "output-bytes",
+      "failure-class",
+      "iteration-energy-trace"
+    ]
+  },
+  "noClaims": [
+    "no sampled grid bytes have been generated by this manifest",
+    "no method comparison has been executed",
+    "exact field formulas do not imply the quantized sampled grid is exact",
+    "min/smooth-min composites are not labelled exact SDFs without a proof",
+    "topology pass does not imply self-intersection freedom",
+    "face identity recognition requires a separate blinded human study"
+  ]
+}
