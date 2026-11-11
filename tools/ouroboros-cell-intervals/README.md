@@ -64,7 +64,7 @@ The working estimate includes the input sample vector, canonical source bytes, i
 
 ## Tests authored
 
-The current source contains 12 authored tests:
+The current source contains 13 authored tests:
 - exact sphere returns inside/outside/surface-possible classes;
 - exact-zero lattice vertices remain SurfacePossible;
 - dense 4×4×4 interior probes find no false inside/outside certificate in every certified cell;
@@ -73,11 +73,12 @@ The current source contains 12 authored tests:
 - malformed or unsupported descriptors fail closed;
 - adjacent sample Lipschitz consistency rejects discontinuous sample sets;
 - all seven built-in exact primitive descriptors decode and reproduce their sample streams;
+- a VerifiedExactField handle can only be created from a fully reproduced exact grid and samples new in-bounds points;
 - canonical receipt is byte-deterministic and recomputable;
 - first-axis-fastest cell order is deterministic;
 - cell-count, receipt and working-payload limits reject before classification allocation.
 
-These 12 tests are authored, not run. The current environment has no Rust toolchain; no compilation or passing CI claim is made.
+These 13 tests are authored, not run. The current environment has no Rust toolchain; no compilation or passing CI claim is made.
 
 ## Current limitations
 
