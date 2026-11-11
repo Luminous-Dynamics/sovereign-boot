@@ -732,7 +732,8 @@ mod tests {
         assert_eq!(grid.isovalue_microunits(), 250_000);
         assert_eq!(grid.value_at(1, 1, 1).unwrap(), -1_250_000);
         let bytes = grid.canonical_bytes().unwrap();
-        assert!(bytes.windows(4).any(|window| window == 250_000_i32.to_le_bytes()));
+        let isovalue_bytes = 250_000_i32.to_le_bytes();
+        assert!(bytes.windows(4).any(|window| window == isovalue_bytes.as_slice()));
     }
 
     #[test]
