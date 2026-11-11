@@ -41,4 +41,4 @@ For each fixture, use a fixed host/build and repeat 25 measured audits after 3 w
 
 ## Current non-claims
 
-Eleven Rust unit tests are authored. They have not been compiled/run in this environment, and no CI pass is claimed. No transition mesh, self-intersection, perceptual, renderer or energy result is claimed.
+Ten Rust unit tests are authored. They have not been compiled/run in this environment, and no CI pass is claimed. No transition mesh, self-intersection, perceptual, renderer or energy result is claimed.

@@ -52,7 +52,7 @@ The certificate uses fixed-width fields and exact canonical-length accounting. I
 
 ## Authored adversarial tests
 
-The 11 authored tests cover:
+The 10 authored tests cover:
 - independent leaf partition and cache/sign-mask verification on an exact sphere;
 - separate face/edge/corner contact classification;
 - a corner-only 2:1 violation that face-only balance would miss;

@@ -1035,17 +1035,6 @@ mod tests {
     }
 
     #[test]
-    fn pair_scan_budget_does_not_turn_unknown_into_zero() {
-        let pair_count = 100_u64;
-        let config = TopologyAuditConfig {
-            max_pair_checks: 10,
-            ..TopologyAuditConfig::default()
-        };
-        assert!(pair_count > config.max_pair_checks);
-        assert_eq!(UNKNOWN_COUNT, u64::MAX);
-    }
-
-    #[test]
     fn pair_budget_exhaustion_is_unknown_not_zero_violations() {
         let (grid, tree) = sphere_fixture(3);
         assert!(tree.metrics().leaf_count > 2);
