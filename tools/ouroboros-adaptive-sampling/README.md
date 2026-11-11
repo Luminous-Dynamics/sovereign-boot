@@ -65,7 +65,7 @@ Global hard limits cap depth at 18, leaves at 4,096, working payload at 128 MiB,
 
 A failed split does not partially modify the tree. The parent remains a `BudgetStopped` leaf with its original `SurfacePossible` classification. Balance-stopped leaves use `BalanceStopped`. A tree can be balanced while some surface leaves are budget-stopped; these are separate claims.
 
-Payload values are estimates, not an operating-system RSS cap. They exclude allocator metadata and process code/stack. The canonical receipt embeds the exact source grid and ordered sample/leaf records. It identifies bytes; hashing, signing and build provenance are external.
+The working-payload estimate includes conservative per-entry cache and leaf overhead, the canonical source-grid copy, two separately retained descriptor copies, and the canonical receipt buffer that coexists with the tree during serialization. It is still a payload estimate, not an operating-system RSS cap; allocator metadata and process code/stack are excluded. The canonical receipt embeds the exact source grid and ordered sample/leaf records. It identifies bytes; hashing, signing and build provenance are external.
 
 ## Canonical output
 
@@ -75,7 +75,7 @@ Payload values are estimates, not an operating-system RSS cap. They exclude allo
 
 ## Authored adversarial tests
 
-The current source contains 13 authored tests:
+The current source contains 14 authored tests:
 
 - An enclosed sphere with all eight root corners outside is still discovered.
 - Shared edge/face samples are evaluated once and recorded as cache hits.
@@ -89,9 +89,10 @@ The current source contains 13 authored tests:
 - An approximate-field label cannot acquire exact sampling authority.
 - Exact-zero plane samples remain `SurfacePossible`.
 - Completed trees satisfy the declared face-neighbor 2:1 check.
+- Initial working-payload and receipt budgets reject before tree sampling allocations.
 - Repeated builds produce byte-identical receipts; mutated reports are rejected.
 
-These tests are authored, not compiled or run. No Rust test or CI pass is claimed.
+These 14 tests are authored, not compiled or run. No Rust test or CI pass is claimed.
 
 ## Benchmark contract
 
