@@ -1,0 +1,420 @@
+{
+  "schemaVersion": 1,
+  "benchmarkId": "ouroboros-adaptive-exact-sdf-v1",
+  "sourceContracts": {
+    "scalarGrid": "OUROSGD1",
+    "fieldDescriptor": "OUROFLD1",
+    "intervalAuthority": "VerifiedExactField",
+    "adaptiveReceipt": "OUROOCT1",
+    "sampleType": "signed-int32-microunits",
+    "signConvention": "negative-inside-positive-outside",
+    "coordinateFrame": "forward-lateral-up",
+    "layout": "first-axis-fastest-i+nx*(j+ny*k)"
+  },
+  "uniformControls": [
+    {
+      "dimensions": [
+        32,
+        32,
+        32
+      ],
+      "sampleCount": 32768
+    },
+    {
+      "dimensions": [
+        64,
+        64,
+        64
+      ],
+      "sampleCount": 262144
+    },
+    {
+      "dimensions": [
+        128,
+        128,
+        128
+      ],
+      "sampleCount": 2097152
+    }
+  ],
+  "exactAnalyticFixtures": [
+    {
+      "id": "sphere-enclosed-by-outside-root-corners",
+      "field": {
+        "kind": "Sphere",
+        "centerMicrounits": [
+          0,
+          0,
+          0
+        ],
+        "radiusMicrounits": 1500000
+      },
+      "boundsMicrounits": [
+        [
+          -2000000,
+          -2000000,
+          -2000000
+        ],
+        [
+          2000000,
+          2000000,
+          2000000
+        ]
+      ],
+      "coarseSourceDimensions": [
+        2,
+        2,
+        2
+      ],
+      "expectedRootCorners": "all-positive-outside",
+      "requiredOutcome": "SurfacePossible-root-then-refine",
+      "purpose": "prove that equal-sign coarse corners do not certify the enclosed cell empty"
+    },
+    {
+      "id": "axis-aligned-box",
+      "field": {
+        "kind": "Box",
+        "centerMicrounits": [
+          0,
+          0,
+          0
+        ],
+        "halfExtentsMicrounits": [
+          1000000,
+          750000,
+          500000
+        ]
+      },
+      "boundsMicrounits": [
+        [
+          -2000000,
+          -2000000,
+          -2000000
+        ],
+        [
+          2000000,
+          2000000,
+          2000000
+        ]
+      ],
+      "coarseSourceDimensions": [
+        2,
+        2,
+        2
+      ],
+      "requiredOutcome": "exact-field-authority-and-interval-refinement",
+      "purpose": "axis-aligned planar features and corners"
+    },
+    {
+      "id": "rotated-box-grid-alignment-control",
+      "field": {
+        "kind": "OrientedBox",
+        "centerMicrounits": [
+          0,
+          0,
+          0
+        ],
+        "halfExtentsMicrounits": [
+          1000000,
+          2000000,
+          750000
+        ],
+        "rotationQ30": [
+          0,
+          0,
+          759250125,
+          759250125
+        ]
+      },
+      "boundsMicrounits": [
+        [
+          -3000000,
+          -3000000,
+          -2000000
+        ],
+        [
+          3000000,
+          3000000,
+          2000000
+        ]
+      ],
+      "coarseSourceDimensions": [
+        2,
+        2,
+        2
+      ],
+      "requiredOutcome": "exact-field-authority-and-interval-refinement",
+      "purpose": "expose axis-alignment sensitivity"
+    },
+    {
+      "id": "capsule-thin-feature-control",
+      "field": {
+        "kind": "Capsule",
+        "endpointAMicrounits": [
+          0,
+          0,
+          -1000000
+        ],
+        "endpointBMicrounits": [
+          0,
+          0,
+          1000000
+        ],
+        "radiusMicrounits": 500000
+      },
+      "boundsMicrounits": [
+        [
+          -2000000,
+          -2000000,
+          -3000000
+        ],
+        [
+          2000000,
+          2000000,
+          3000000
+        ]
+      ],
+      "coarseSourceDimensions": [
+        2,
+        2,
+        2
+      ],
+      "requiredOutcome": "exact-field-authority-and-interval-refinement",
+      "purpose": "round ends and a long narrow body"
+    },
+    {
+      "id": "ring-torus-enclosed-component",
+      "field": {
+        "kind": "Torus",
+        "centerMicrounits": [
+          0,
+          0,
+          0
+        ],
+        "majorRadiusMicrounits": 1500000,
+        "minorRadiusMicrounits": 500000
+      },
+      "boundsMicrounits": [
+        [
+          -3000000,
+          -3000000,
+          -2000000
+        ],
+        [
+          3000000,
+          3000000,
+          2000000
+        ]
+      ],
+      "coarseSourceDimensions": [
+        2,
+        2,
+        2
+      ],
+      "requiredOutcome": "surface-ring-discovery-with-empty-center",
+      "purpose": "discover a disconnected toroidal surface despite an empty center and equal-sign coarse corners"
+    },
+    {
+      "id": "capped-cylinder-control",
+      "field": {
+        "kind": "CappedCylinder",
+        "centerMicrounits": [
+          0,
+          0,
+          0
+        ],
+        "radiusMicrounits": 1000000,
+        "halfLengthMicrounits": 1500000
+      },
+      "boundsMicrounits": [
+        [
+          -2000000,
+          -2000000,
+          -3000000
+        ],
+        [
+          2000000,
+          2000000,
+          3000000
+        ]
+      ],
+      "coarseSourceDimensions": [
+        2,
+        2,
+        2
+      ],
+      "requiredOutcome": "exact-field-authority-and-interval-refinement",
+      "purpose": "flat caps and curved side wall"
+    }
+  ],
+  "boundaryAndBudgetControls": [
+    {
+      "id": "exact-zero-plane",
+      "field": {
+        "kind": "Plane",
+        "normalQ30": [
+          0,
+          0,
+          1073741824
+        ],
+        "offsetMicrounits": 0
+      },
+      "boundsMicrounits": [
+        [
+          -2000000,
+          -2000000,
+          0
+        ],
+        [
+          2000000,
+          2000000,
+          2000000
+        ]
+      ],
+      "coarseSourceDimensions": [
+        2,
+        2,
+        2
+      ],
+      "expected": "zero samples remain SurfacePossible"
+    },
+    {
+      "id": "budget-stopped-sphere",
+      "field": {
+        "kind": "Sphere",
+        "centerMicrounits": [
+          0,
+          0,
+          0
+        ],
+        "radiusMicrounits": 1500000
+      },
+      "boundsMicrounits": [
+        [
+          -2000000,
+          -2000000,
+          -2000000
+        ],
+        [
+          2000000,
+          2000000,
+          2000000
+        ]
+      ],
+      "coarseSourceDimensions": [
+        2,
+        2,
+        2
+      ],
+      "configOverride": {
+        "maxUniqueSamples": 8
+      },
+      "expected": "root remains BudgetStopped and SurfacePossible; no false empty result"
+    },
+    {
+      "id": "balance-budget-exhaustion",
+      "field": {
+        "kind": "Sphere",
+        "centerMicrounits": [
+          0,
+          0,
+          0
+        ],
+        "radiusMicrounits": 1500000
+      },
+      "boundsMicrounits": [
+        [
+          -2000000,
+          -2000000,
+          -2000000
+        ],
+        [
+          2000000,
+          2000000,
+          2000000
+        ]
+      ],
+      "coarseSourceDimensions": [
+        2,
+        2,
+        2
+      ],
+      "configOverride": {
+        "maxBalancePairChecks": 1
+      },
+      "expected": "BalanceIncomplete and remaining violations unknown sentinel, not zero"
+    }
+  ],
+  "adaptiveConfigSweep": {
+    "maxDepth": [
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "maxUniqueSamples": [
+      4096,
+      8192,
+      16384,
+      32768,
+      65536
+    ],
+    "maxLeafCells": [
+      512,
+      1024,
+      2048,
+      4096
+    ],
+    "balancePairChecks": [
+      100000,
+      1000000,
+      8000000
+    ],
+    "repeatsPerCase": 5,
+    "warmupBuilds": 2
+  },
+  "requiredMetrics": [
+    "unique_sample_count",
+    "dense_equivalent_sample_count",
+    "sample_reduction_fraction",
+    "sample_cache_hit_count",
+    "split_count",
+    "leaf_count_by_depth",
+    "certified_inside_leaf_fraction",
+    "certified_outside_leaf_fraction",
+    "surface_possible_leaf_fraction",
+    "budget_stopped_leaf_count",
+    "balance_status",
+    "remaining_2_to_1_violations_or_unknown",
+    "false_empty_certificate_count_against_independent_dense_witness",
+    "missed_component_count",
+    "thin_feature_and_gap_preservation",
+    "adaptive_build_latency_p50_p95_p99",
+    "peak_rss_bytes",
+    "working_payload_estimate_bytes",
+    "canonical_receipt_bytes"
+  ],
+  "matchPolicy": {
+    "sameFieldDescriptor": true,
+    "sameBounds": true,
+    "sameCoordinateFrame": true,
+    "sameIsovalue": true,
+    "sameDistanceQuantization": true,
+    "compareAtMatchedSurfaceAndFeatureError": true,
+    "useDense128AsGroundTruthControl": true,
+    "doNotCompareDifferentFieldSemantics": true
+  },
+  "proposedTargets": {
+    "maximumDenseSampleFraction": 0.4,
+    "falseEmptySpaceCertificates": 0,
+    "status": "hypotheses-not-measured"
+  },
+  "nonClaims": [
+    "No adaptive sample reduction has been measured yet.",
+    "Zero false-empty target is conditional on verified exact analytic authority and independent dense witnesses.",
+    "The Ouroboros head+nose IQ ellipsoid field is approximate and excluded from exact-certificate fixtures.",
+    "A balanced adaptive tree is not a mesh and does not imply watertightness or manifoldness.",
+    "No performance, energy, perceptual or SOTA superiority is claimed."
+  ]
+}
