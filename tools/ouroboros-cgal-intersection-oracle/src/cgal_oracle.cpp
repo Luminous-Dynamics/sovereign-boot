@@ -8,6 +8,8 @@
 #include <chrono>
 #include <iterator>
 #include <limits>
+#include <iterator>
+#include <stdexcept>
 #include <vector>
 
 namespace ourodc {
@@ -24,6 +26,31 @@ Exact exact_coordinate(std::int64_t nanounits) {
   // geometry remains on its declared 1e-9 coordinate lattice.
   return Exact(nanounits) / Exact(kPositionScale);
 }
+
+using FacePair = std::pair<Mesh::Face_index, Mesh::Face_index>;
+inline constexpr std::size_t kMaxIntersectionPairs = 1'000'000;
+
+struct PairLimitExceeded final {};
+
+struct BoundedPairOutputIterator {
+  using iterator_category = std::output_iterator_tag;
+  using difference_type = std::ptrdiff_t;
+  using value_type = void;
+  using pointer = void;
+  using reference = void;
+
+  std::vector<FacePair>* output{};
+  std::size_t maximum{};
+
+  BoundedPairOutputIterator& operator*() noexcept { return *this; }
+  BoundedPairOutputIterator& operator++() noexcept { return *this; }
+  BoundedPairOutputIterator operator++(int) noexcept { return *this; }
+  BoundedPairOutputIterator& operator=(const FacePair& pair) {
+    if (output->size() >= maximum) throw PairLimitExceeded{};
+    output->push_back(pair);
+    return *this;
+  }
+};
 
 }  // namespace
 
@@ -78,9 +105,25 @@ IntersectionResult inspect_self_intersections(const Artifact& artifact) {
   // Ask CGAL for both the fast predicate and the complete intersecting-face
   // pairs. The pair list is mapped back to original zero-based input indices.
   const bool predicate = PMP::does_self_intersect(mesh);
-  using FacePair = std::pair<Mesh::Face_index, Mesh::Face_index>;
   std::vector<FacePair> cgal_pairs;
-  PMP::self_intersections(faces(mesh), mesh, std::back_inserter(cgal_pairs));
+  cgal_pairs.reserve(std::min(artifact.triangles.size(), kMaxIntersectionPairs));
+  try {
+    PMP::self_intersections(
+        faces(mesh), mesh,
+        BoundedPairOutputIterator{&cgal_pairs, kMaxIntersectionPairs});
+  } catch (const PairLimitExceeded&) {
+    result.reason = "IntersectionPairBudgetExceeded";
+    result.elapsed_nanoseconds = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - start).count());
+    return result;
+  } catch (const std::exception&) {
+    result.reason = "CgalPairEnumerationException";
+    result.elapsed_nanoseconds = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - start).count());
+    return result;
+  }
 
   result.intersecting_triangle_pairs.reserve(cgal_pairs.size());
   for (const auto& pair : cgal_pairs) {
