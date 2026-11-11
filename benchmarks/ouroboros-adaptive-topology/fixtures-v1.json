@@ -182,6 +182,16 @@
         "readiness": "NoSurface",
         "notMeshCandidate": true
       }
+    },
+    {
+      "id": "exact-zero-isovalue-corner",
+      "precondition": "One or more SurfacePossible leaf corners are exactly equal to the isovalue after signed-int32 microunit quantization.",
+      "expected": {
+        "readiness": "SurfaceUnresolved",
+        "extractability": "Fail",
+        "notReady": true,
+        "reason": "The extractor must define an explicit exact-zero endpoint/tie-breaking policy before this leaf is contourable."
+      }
     }
   ],
   "reportedMetrics": [
@@ -197,6 +207,7 @@
     "surface_possible_leaf_count",
     "contourable_surface_leaf_count",
     "surface_possible_without_crossing_count",
+    "surface_possible_with_zero_corner_count",
     "surface_crossing_edge_count",
     "leaf_count",
     "partition_volume_ticks_cubed",

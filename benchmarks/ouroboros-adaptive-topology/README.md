@@ -30,7 +30,7 @@ A future transition mesher may only start from ReadyForTransitionTemplateEvaluat
 - complete prefix-free Morton partition with exact root-volume equality;
 - cached corner samples and 12-edge masks exactly reproduce the stored leaf classifications;
 - no source-tree budget or balance incompleteness;
-- no SurfacePossible leaf with zero crossing edge mask;
+- no SurfacePossible leaf with zero crossing edge mask or exact-zero corner ambiguity;
 - completed face, edge and corner neighborhood scan, with no depth gap greater than one.
 
 This is not a claim that a mesh exists, or that the future mesh will be crack-free, manifold, watertight or intersection-free. Those require separate transition-template proofs and independent mesh/geometric audits.
@@ -41,4 +41,4 @@ For each fixture, use a fixed host/build and repeat 25 measured audits after 3 w
 
 ## Current non-claims
 
-Ten Rust unit tests are authored. They have not been compiled/run in this environment, and no CI pass is claimed. No transition mesh, self-intersection, perceptual, renderer or energy result is claimed.
+Eleven Rust unit tests are authored. They have not been compiled/run in this environment, and no CI pass is claimed. No transition mesh, self-intersection, perceptual, renderer or energy result is claimed.

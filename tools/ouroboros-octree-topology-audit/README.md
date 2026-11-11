@@ -32,7 +32,7 @@ The example constructs the same exact sphere and coarse 2×2×2 source lattice a
 |---|---|
 | `AuditIncomplete` | The bounded pair scan could not complete. Neighbor counts/violations are `u64::MAX` (unknown), never zero. |
 | `TreeIncomplete` | Budget/balance stops, unresolved refinement or incomplete source-tree balancing remain. |
-| `SurfaceUnresolved` | A max-depth SurfacePossible leaf has no sign-changing edge, or the full 26-neighborhood scan finds a depth-gap violation. |
+| `SurfaceUnresolved` | A max-depth SurfacePossible leaf has no sign-changing edge, or the full 26-neighborhood scan finds a depth-gap violation, or an isovalue-zero corner remains ambiguous for the extractor. |
 | `ReadyForTransitionTemplateEvaluation` | Complete partition, exact cached-corner/classification parity, no unresolved surface leaf and no face/edge/corner 2:1 violations. |
 | `NoSurface` | The complete tree contains no SurfacePossible leaf. This is not a mesh candidate. |
 
@@ -52,11 +52,12 @@ The certificate uses fixed-width fields and exact canonical-length accounting. I
 
 ## Authored adversarial tests
 
-The 10 authored tests cover:
+The 11 authored tests cover:
 - independent leaf partition and cache/sign-mask verification on an exact sphere;
 - separate face/edge/corner contact classification;
 - a corner-only 2:1 violation that face-only balance would miss;
 - a maximum-depth SurfacePossible leaf with zero crossing mask;
+- exact-zero isovalue corners blocking transition readiness;
 - exact canonical receipt-length accounting;
 - pair-budget exhaustion as Unknown/Incomplete, not zero;
 - no-surface trees reported separately;
