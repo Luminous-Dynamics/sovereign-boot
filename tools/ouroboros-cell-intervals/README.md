@@ -64,8 +64,9 @@ The working estimate includes the input sample vector, canonical source bytes, i
 
 ## Tests authored
 
-The current source contains 11 authored tests:
+The current source contains 12 authored tests:
 - exact sphere returns inside/outside/surface-possible classes;
+- exact-zero lattice vertices remain SurfacePossible;
 - dense 4×4×4 interior probes find no false inside/outside certificate in every certified cell;
 - approximate source semantics never receive exact certificates;
 - forged exact semantics with modified samples are rejected;
@@ -76,7 +77,7 @@ The current source contains 11 authored tests:
 - first-axis-fastest cell order is deterministic;
 - cell-count, receipt and working-payload limits reject before classification allocation.
 
-These tests are authored, not run. The current environment has no Rust toolchain; no compilation or passing CI claim is made.
+These 12 tests are authored, not run. The current environment has no Rust toolchain; no compilation or passing CI claim is made.
 
 ## Current limitations
 
@@ -86,7 +87,7 @@ It is also not a proof for arbitrary external distance fields. To support mesh-d
 
 ## Next experiment
 
-Use the `SurfacePossible` set as the refinement frontier. For a future octree sampler:
+Use the `SurfacePossible` set as the refinement frontier. Four machine-readable cases live in `fixtures/cell-intervals-v1.json`: exact sphere, exact-zero plane, approximate-field and tampered-sample controls. For a future octree sampler:
 - cache canonical shared sample coordinates by field/coordinate-frame/point/policy key;
 - refine only cells whose conservative interval still contains zero or whose semantic features are at risk;
 - keep 2:1 balance as a topology precondition, not as an implicit guarantee of extraction;
