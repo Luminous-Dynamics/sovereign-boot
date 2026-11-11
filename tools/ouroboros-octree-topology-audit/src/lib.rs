@@ -335,16 +335,6 @@ pub fn audit_octree_topology(
 ) -> Result<OctreeTopologyAudit, TopologyAuditError> {
     config.validate()?;
     grid.validate()?;
-    // Validate the exact source grid against the sampler's own receipt before
-    // using its physical bounds to independently check leaf sample coordinates.
-    tree.verify(grid)?;
-    let source_tree_receipt = tree.canonical_bytes()?;
-    if source_tree_receipt.len() as u64 > MAX_TREE_RECEIPT_BYTES
-        || source_tree_receipt.len() as u64 > config.max_receipt_bytes
-    {
-        return Err(TopologyAuditError::TreeReceiptUnavailable);
-    }
-
     let leaves_count = usize::try_from(tree.metrics().leaf_count)
         .map_err(|_| TopologyAuditError::SizeOverflow)?;
     if leaves_count == 0 || leaves_count > MAX_LEAF_CELLS as usize {
@@ -366,6 +356,17 @@ pub fn audit_octree_topology(
     let receipt_preflight = canonical_receipt_estimate(tree_receipt_estimate)?;
     if receipt_preflight > config.max_receipt_bytes {
         return Err(TopologyAuditError::ReceiptBudgetExceeded);
+    }
+
+    if tree_receipt_estimate > MAX_TREE_RECEIPT_BYTES {
+        return Err(TopologyAuditError::ReceiptBudgetExceeded);
+    }
+    // Validate the source grid against the sampler's deterministic rebuild
+    // only after this audit's leaf, working and receipt budgets are known.
+    tree.verify(grid)?;
+    let source_tree_receipt = tree.canonical_bytes()?;
+    if source_tree_receipt.len() as u64 != tree_receipt_estimate {
+        return Err(TopologyAuditError::TreeReceiptUnavailable);
     }
     let mut leaves = Vec::new();
     leaves
@@ -452,8 +453,8 @@ pub fn audit_octree_topology(
         } else {
             CheckStatus::Fail
         },
-        surface_leaf_extractability: if leaf_metrics.surface_without_edges == 0
-            && leaf_metrics.surface_possible > 0
+        surface_leaf_extractability: if leaf_metrics.surface_possible > 0
+            && leaf_metrics.contourable_surface == leaf_metrics.surface_possible
         {
             CheckStatus::Pass
         } else if leaf_metrics.surface_without_edges > 0 {
