@@ -28,7 +28,7 @@ The example samples the source-derived `OUROLND1`/ `OUROFAC1` head+nose skin fie
 - Hermite normals are central finite differences at interior grid vertices and one-sided differences at the sample-grid boundary.
 - A zero/ill-conditioned interpolated normal uses the crossed grid edge's inside-to-outside axis direction. This fallback is counted separately from QEF centroid fallback.
 - One regularized 3×3 QEF is solved per active cell. Partial-pivot Gaussian elimination uses a deterministic pivot rule. Singular systems fall back to the Hermite intersection centroid. Solutions are clamped to their source cell and clamping is reported.
-- Every sign-changing interior grid edge connects its four adjacent active-cell vertices into one quad. Winding is oriented from negative/inside toward positive/outside.
+- Every sign-changing interior grid edge connects its four adjacent active-cell vertices into one quad. Before placing a single QEF vertex per active cell, a cell-boundary crossing graph must have exactly one connected component; checkerboard faces and multiple surface components are rejected rather than silently welded. The current preflight is intentionally conservative: it rejects all four-crossing face cases until a separately qualified asymptotic-decider policy is introduced. Winding is oriented from negative/inside toward positive/outside.
 - A deterministic triangle view splits each quad along diagonal (0,2). The quad mesh remains available and canonical.
 - A sign-changing edge that touches any grid boundary returns `SurfaceTouchesGridBoundary`; a missing adjacent cell vertex returns an explicit error instead of emitting a partial surface.
 - Exact-zero samples are treated as outside for sign classification, but a zero endpoint on a sign-changing edge returns `ExactZeroCrossing`. There is no hidden epsilon perturbation or symbolic tie-break in this first implementation.
@@ -58,12 +58,14 @@ The extractor invokes `ouroboros-mesh-audit` on its triangle view and stores the
 
 ## Tests authored
 
-The current source contains 15 authored unit tests:
+The current source contains 18 authored unit tests:
 - source-grounded 32³ face extraction produces vertices/quads/triangles;
 - repeat extraction emits identical canonical bytes;
 - fixed diagonal (0,2) triangulation;
+- per-cell surface-component classification: one planar sheet accepted, disconnected opposite-corner sheets rejected, and checkerboard face ambiguity rejected;
 - independent audit's individual dimension statuses and self-intersection NotEvaluated;
 - fixed 37-byte extractor policy serialization and threshold binding;
+- canonical receipt length accounting across collection counts, grid dimensions, metrics and audit payload;
 - the canonical result embeds the exact source-grid bytes;
 - output vertex hard-limit enforcement;
 - cuts on each of the six grid boundaries fail instead of yielding partial geometry;
@@ -71,7 +73,7 @@ The current source contains 15 authored unit tests:
 - singular QEF uses centroid fallback;
 - too-small grids reject before cell allocation.
 
-These 14 tests are authored, not run. The current execution environment did not provide `rustc`, `cargo` or `rustup`; no compile or passing CI claim is made.
+All 18 tests are authored, not run. The current execution environment did not provide `rustc`, `cargo` or `rustup`; no compile or passing CI claim is made.
 
 ## Comparison plan
 
