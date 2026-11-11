@@ -39,7 +39,7 @@ const CELL_EDGES: [[usize; 2]; 12] = [
     [4, 5], [5, 6], [6, 7], [7, 4],
     [0, 4], [1, 5], [2, 6], [3, 7],
 ];
-const METRIC_U64_FIELDS: usize = 21;
+const METRIC_U64_FIELDS: usize = 22;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TopologyAuditConfig {
@@ -134,6 +134,7 @@ pub struct TopologyAuditMetrics {
     pub surface_possible_leaf_count: u64,
     pub contourable_surface_leaf_count: u64,
     pub surface_possible_without_crossing_count: u64,
+    pub surface_possible_with_zero_corner_count: u64,
     pub surface_crossing_edge_count: u64,
     pub face_neighbor_pairs: u64,
     pub edge_neighbor_pairs: u64,
@@ -160,6 +161,7 @@ impl TopologyAuditMetrics {
             self.surface_possible_leaf_count,
             self.contourable_surface_leaf_count,
             self.surface_possible_without_crossing_count,
+            self.surface_possible_with_zero_corner_count,
             self.surface_crossing_edge_count,
             self.face_neighbor_pairs,
             self.edge_neighbor_pairs,
@@ -325,6 +327,7 @@ struct LeafMetrics {
     surface_possible: u64,
     contourable_surface: u64,
     surface_without_edges: u64,
+    surface_with_zero_corners: u64,
     crossing_edges: u64,
 }
 
@@ -421,7 +424,7 @@ pub fn audit_octree_topology(
         return Err(TopologyAuditError::IncompletePartition);
     }
 
-    let leaf_metrics = count_surface_leaves(&leaves, maximum_depth)?;
+    let leaf_metrics = count_surface_leaves(&leaves, maximum_depth, grid, tree, scale)?;
     let pair_scan_complete = total_pair_count <= config.max_pair_checks;
     let pair_metrics = if pair_scan_complete {
         scan_all_neighbor_pairs(&leaves)?
@@ -457,7 +460,8 @@ pub fn audit_octree_topology(
             && leaf_metrics.contourable_surface == leaf_metrics.surface_possible
         {
             CheckStatus::Pass
-        } else if leaf_metrics.surface_without_edges > 0 {
+        } else if leaf_metrics.surface_without_edges > 0
+            || leaf_metrics.surface_with_zero_corners > 0 {
             CheckStatus::Fail
         } else {
             CheckStatus::NotEvaluated
@@ -484,6 +488,7 @@ pub fn audit_octree_topology(
     } else if leaf_metrics.surface_possible == 0 {
         ReadinessStatus::NoSurface
     } else if leaf_metrics.surface_without_edges > 0
+        || leaf_metrics.surface_with_zero_corners > 0
         || pair_metrics.face_violations > 0
         || pair_metrics.edge_violations > 0
         || pair_metrics.corner_violations > 0
@@ -511,6 +516,7 @@ pub fn audit_octree_topology(
         surface_possible_leaf_count: leaf_metrics.surface_possible,
         contourable_surface_leaf_count: leaf_metrics.contourable_surface,
         surface_possible_without_crossing_count: leaf_metrics.surface_without_edges,
+        surface_possible_with_zero_corner_count: leaf_metrics.surface_with_zero_corners,
         surface_crossing_edge_count: leaf_metrics.crossing_edges,
         face_neighbor_pairs: if pair_scan_complete { pair_metrics.face_pairs } else { UNKNOWN_COUNT },
         edge_neighbor_pairs: if pair_scan_complete { pair_metrics.edge_pairs } else { UNKNOWN_COUNT },
@@ -709,11 +715,15 @@ fn tick_coordinate(
 fn count_surface_leaves(
     leaves: &[OctreeLeaf],
     maximum_depth: u8,
+    grid: &ScalarGrid,
+    tree: &AdaptiveOctreeReport,
+    scale: u32,
 ) -> Result<LeafMetrics, TopologyAuditError> {
     let mut metrics = LeafMetrics {
         surface_possible: 0,
         contourable_surface: 0,
         surface_without_edges: 0,
+        surface_with_zero_corners: 0,
         crossing_edges: 0,
     };
     for leaf in leaves {
@@ -725,18 +735,48 @@ fn count_surface_leaves(
         let edge_count = u64::from(leaf.classification.sign_changing_edge_mask.count_ones());
         metrics.crossing_edges = metrics.crossing_edges
             .checked_add(edge_count).ok_or(TopologyAuditError::SizeOverflow)?;
+        let zero_corner = leaf_has_zero_corner(*leaf, grid, tree, scale)?;
+        if zero_corner {
+            metrics.surface_with_zero_corners = metrics.surface_with_zero_corners
+                .checked_add(1).ok_or(TopologyAuditError::SizeOverflow)?;
+        }
         if leaf.key.level != maximum_depth || leaf.stop != LeafStop::SurfaceAtMaximumDepth {
             continue;
         }
         if edge_count == 0 {
             metrics.surface_without_edges = metrics.surface_without_edges
                 .checked_add(1).ok_or(TopologyAuditError::SizeOverflow)?;
-        } else {
+        } else if !zero_corner {
             metrics.contourable_surface = metrics.contourable_surface
                 .checked_add(1).ok_or(TopologyAuditError::SizeOverflow)?;
         }
     }
     Ok(metrics)
+}
+
+fn leaf_has_zero_corner(
+    leaf: OctreeLeaf,
+    grid: &ScalarGrid,
+    tree: &AdaptiveOctreeReport,
+    scale: u32,
+) -> Result<bool, TopologyAuditError> {
+    let spec = grid.spec();
+    for corner in CELL_CORNERS {
+        let tick = [
+            leaf.minimum_tick[0] + corner[0] * leaf.span_ticks,
+            leaf.minimum_tick[1] + corner[1] * leaf.span_ticks,
+            leaf.minimum_tick[2] + corner[2] * leaf.span_ticks,
+        ];
+        let point = [
+            tick_coordinate(spec.minimum_microunits[0], spec.maximum_microunits[0], tick[0], scale)?,
+            tick_coordinate(spec.minimum_microunits[1], spec.maximum_microunits[1], tick[1], scale)?,
+            tick_coordinate(spec.minimum_microunits[2], spec.maximum_microunits[2], tick[2], scale)?,
+        ];
+        if *tree.samples().get(&point).ok_or(TopologyAuditError::MissingCachedCorner)? == 0 {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn scan_all_neighbor_pairs(leaves: &[OctreeLeaf]) -> Result<PairMetrics, TopologyAuditError> {
@@ -822,7 +862,7 @@ fn estimate_working_payload(
 
 fn canonical_receipt_estimate(source_tree_receipt: u64) -> Result<u64, TopologyAuditError> {
     // Magic/schema/policy/config/source length + readiness/tree status/checks
-    // + 21 fixed-width u64 metrics + the complete OUROOCT1 source receipt.
+    // + 22 fixed-width u64 metrics + the complete OUROOCT1 source receipt.
     8_u64
         .checked_add(2 + 2 + 24 + 4 + 1 + 1 + 7 + (METRIC_U64_FIELDS as u64) * 8)
         .and_then(|value| value.checked_add(source_tree_receipt))
@@ -991,7 +1031,7 @@ mod tests {
 
     #[test]
     fn receipt_estimate_matches_fixed_layout() {
-        assert_eq!(canonical_receipt_estimate(0).unwrap(), 217);
+        assert_eq!(canonical_receipt_estimate(0).unwrap(), 225);
     }
 
     #[test]
@@ -1070,6 +1110,43 @@ mod tests {
             validate_leaf_path(forged, 3, 8),
             Err(TopologyAuditError::InvalidMortonPath)
         );
+    }
+
+    #[test]
+    fn exact_zero_isovalue_corner_blocks_transition_readiness() {
+        let grid = ScalarGrid::sample_exact(
+            GridSpec {
+                minimum_microunits: [-2_000_000; 3],
+                maximum_microunits: [2_000_000; 3],
+                dimensions: [2, 2, 2],
+                max_samples: MAX_SAMPLES,
+                max_descriptor_bytes: 1_048_576,
+                max_canonical_bytes: MAX_CANONICAL_BYTES,
+                max_working_payload_bytes: 32 * 1024 * 1024,
+            },
+            AnalyticField::Plane {
+                normal_q30: [0, 0, 1_i64 << 30],
+                offset_microunits: 0,
+            },
+            0,
+        )
+        .unwrap();
+        let tree = build_adaptive_octree(
+            &grid,
+            AdaptiveOctreeConfig {
+                max_depth: 3,
+                max_unique_samples: 32_768,
+                max_leaf_cells: 4_096,
+                max_working_payload_bytes: 64 * 1024 * 1024,
+                max_receipt_bytes: 32 * 1024 * 1024,
+                max_balance_pair_checks: MAX_BALANCE_PAIR_CHECKS,
+            },
+        )
+        .unwrap();
+        let audit = audit_octree_topology(&grid, &tree, TopologyAuditConfig::default()).unwrap();
+        assert!(audit.metrics().surface_possible_with_zero_corner_count > 0);
+        assert_eq!(audit.checks().surface_leaf_extractability, CheckStatus::Fail);
+        assert_eq!(audit.readiness(), ReadinessStatus::SurfaceUnresolved);
     }
 
     #[test]
