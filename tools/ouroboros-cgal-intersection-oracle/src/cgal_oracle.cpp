@@ -79,8 +79,29 @@ IntersectionResult inspect_self_intersections(const Artifact& artifact) {
   // pairs. The pair list is mapped back to original zero-based input indices.
   const bool predicate = PMP::does_self_intersect(mesh);
   using FacePair = std::pair<Mesh::Face_index, Mesh::Face_index>;
+  constexpr std::size_t max_pairs = 1'000'000;
   std::vector<FacePair> cgal_pairs;
-  PMP::self_intersections(faces(mesh), mesh, std::back_inserter(cgal_pairs));
+  cgal_pairs.reserve(std::min(artifact.triangles.size(), max_pairs + 1));
+  try {
+    // Sequential default + maximum_number(limit + 1) gives one sentinel item
+    // when the report would exceed the bounded receipt capacity.
+    PMP::self_intersections(
+        faces(mesh), mesh, std::back_inserter(cgal_pairs),
+        CGAL::parameters::maximum_number(static_cast<unsigned int>(max_pairs + 1)));
+  } catch (const std::exception&) {
+    result.reason = "CgalPairEnumerationException";
+    result.elapsed_nanoseconds = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - start).count());
+    return result;
+  }
+  if (cgal_pairs.size() > max_pairs) {
+    result.reason = "IntersectionPairBudgetExceeded";
+    result.elapsed_nanoseconds = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - start).count());
+    return result;
+  }
 
   result.intersecting_triangle_pairs.reserve(cgal_pairs.size());
   for (const auto& pair : cgal_pairs) {
