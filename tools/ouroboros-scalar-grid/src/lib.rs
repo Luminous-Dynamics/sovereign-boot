@@ -398,14 +398,15 @@ impl GridSpec {
         if u64::try_from(index).map_err(|_| ScalarGridError::SizeOverflow)? >= count {
             return Err(ScalarGridError::GridIndexOutOfBounds);
         }
-        let nx = self.dimensions[0] as usize;
-        let ny = self.dimensions[1] as usize;
-        let i = index % nx;
-        let j = (index / nx) % ny;
-        let k = index / (nx * ny);
+        let nx = u64::from(self.dimensions[0]);
+        let ny = u64::from(self.dimensions[1]);
+        let linear = u64::try_from(index).map_err(|_| ScalarGridError::SizeOverflow)?;
+        let i = usize::try_from(linear % nx).map_err(|_| ScalarGridError::SizeOverflow)?;
+        let j = usize::try_from((linear / nx) % ny).map_err(|_| ScalarGridError::SizeOverflow)?;
+        let k = usize::try_from(linear / (nx * ny)).map_err(|_| ScalarGridError::SizeOverflow)?;
         Ok([
-            interpolate_coordinate(self.minimum_microunits[0], self.maximum_microunits[0], i, nx),
-            interpolate_coordinate(self.minimum_microunits[1], self.maximum_microunits[1], j, ny),
+            interpolate_coordinate(self.minimum_microunits[0], self.maximum_microunits[0], i, self.dimensions[0] as usize),
+            interpolate_coordinate(self.minimum_microunits[1], self.maximum_microunits[1], j, self.dimensions[1] as usize),
             interpolate_coordinate(self.minimum_microunits[2], self.maximum_microunits[2], k, self.dimensions[2] as usize),
         ])
     }
@@ -536,11 +537,19 @@ fn validate_positive_extents(values: [i64; 3]) -> Result<(), ScalarGridError> {
     Ok(())
 }
 fn validate_unit_vector3(values: [i64; 3]) -> Result<(), ScalarGridError> {
-    let norm_squared = values.into_iter().map(|value| i128::from(value) * i128::from(value)).sum::<i128>();
+    let norm_squared = values.into_iter().try_fold(0_i128, |sum, value| {
+        let component = i128::from(value);
+        let square = component.checked_mul(component).ok_or(ScalarGridError::InvalidRotation)?;
+        sum.checked_add(square).ok_or(ScalarGridError::InvalidRotation)
+    })?;
     validate_unit_norm(norm_squared)
 }
 fn validate_unit_vector4(values: [i64; 4]) -> Result<(), ScalarGridError> {
-    let norm_squared = values.into_iter().map(|value| i128::from(value) * i128::from(value)).sum::<i128>();
+    let norm_squared = values.into_iter().try_fold(0_i128, |sum, value| {
+        let component = i128::from(value);
+        let square = component.checked_mul(component).ok_or(ScalarGridError::InvalidRotation)?;
+        sum.checked_add(square).ok_or(ScalarGridError::InvalidRotation)
+    })?;
     validate_unit_norm(norm_squared)
 }
 fn validate_unit_norm(norm_squared: i128) -> Result<(), ScalarGridError> {
@@ -696,6 +705,34 @@ mod tests {
         for (field, expected_len) in fields.into_iter().zip(expected) {
             assert_eq!(field.canonical_descriptor().unwrap().len(), expected_len);
         }
+    }
+
+    #[test]
+    fn unit_quaternion_and_plane_normal_reject_integer_overflow_without_panicking() {
+        let invalid_rotation = AnalyticField::OrientedBox {
+            center_microunits: [0; 3],
+            half_extents_microunits: [1_000_000; 3],
+            rotation_q30: [i64::MAX, i64::MAX, i64::MAX, i64::MAX],
+        };
+        assert_eq!(invalid_rotation.validate(), Err(ScalarGridError::InvalidRotation));
+        let invalid_plane = AnalyticField::Plane {
+            normal_q30: [i64::MAX, i64::MAX, i64::MAX],
+            offset_microunits: 0,
+        };
+        assert_eq!(invalid_plane.validate(), Err(ScalarGridError::InvalidRotation));
+    }
+
+    #[test]
+    fn nonzero_isovalue_is_subtracted_from_every_sample_and_bound() {
+        let grid = ScalarGrid::sample_exact(
+            spec([3, 3, 3]),
+            AnalyticField::Sphere { center_microunits: [0; 3], radius_microunits: 1_000_000 },
+            250_000,
+        ).unwrap();
+        assert_eq!(grid.isovalue_microunits(), 250_000);
+        assert_eq!(grid.value_at(1, 1, 1).unwrap(), -1_250_000);
+        let bytes = grid.canonical_bytes().unwrap();
+        assert!(bytes.windows(4).any(|window| window == 250_000_i32.to_le_bytes()));
     }
 
     #[test]
