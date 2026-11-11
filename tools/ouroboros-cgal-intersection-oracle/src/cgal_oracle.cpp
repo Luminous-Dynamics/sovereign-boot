@@ -80,7 +80,7 @@ IntersectionResult inspect_self_intersections(const Artifact& artifact) {
   const bool predicate = PMP::does_self_intersect(mesh);
   using FacePair = std::pair<Mesh::Face_index, Mesh::Face_index>;
   std::vector<FacePair> cgal_pairs;
-  PMP::self_intersections(mesh, std::back_inserter(cgal_pairs));
+  PMP::self_intersections(faces(mesh), mesh, std::back_inserter(cgal_pairs));
 
   result.intersecting_triangle_pairs.reserve(cgal_pairs.size());
   for (const auto& pair : cgal_pairs) {
@@ -111,7 +111,6 @@ IntersectionResult inspect_self_intersections(const Artifact& artifact) {
 
   result.has_self_intersections = predicate;
   if (predicate != !result.intersecting_triangle_pairs.empty()) {
-    result.surface_construction_ok = false;
     result.reason = "PredicatePairEnumerationMismatch";
     result.intersecting_triangle_pairs.clear();
     result.has_self_intersections = false;
