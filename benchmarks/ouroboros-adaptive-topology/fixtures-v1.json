@@ -1,0 +1,252 @@
+{
+  "schemaVersion": 1,
+  "benchmarkId": "ouroboros-adaptive-octree-topology-v1",
+  "auditContract": {
+    "crate": "tools/ouroboros-octree-topology-audit",
+    "receipt": "OUROTCF1",
+    "sourceTree": "OUROOCT1",
+    "sourceGrid": "OUROSGD1",
+    "neighborhood": "26-neighbor",
+    "contacts": [
+      "face",
+      "edge",
+      "corner"
+    ],
+    "balanceLimit": 1,
+    "unknownCounter": "u64::MAX",
+    "statusSemantics": [
+      "AuditIncomplete",
+      "TreeIncomplete",
+      "SurfaceUnresolved",
+      "ReadyForTransitionTemplateEvaluation",
+      "NoSurface"
+    ]
+  },
+  "sourceCorpus": {
+    "path": "benchmarks/ouroboros-adaptive/fixtures-v1.json",
+    "rule": "Use identical canonical OUROSGD1 bytes, field descriptor, isovalue, bounds, coordinate frame and quantization for all adaptive audits and uniform controls.",
+    "exactFieldCases": [
+      "sphere-enclosed-by-outside-root-corners",
+      "axis-aligned-box",
+      "oriented-box",
+      "capsule",
+      "ring-torus",
+      "capped-cylinder"
+    ],
+    "approximateAndMeshDerived": "Separate non-certified strata; never assign an exact-field readiness certificate without qualified Lipschitz authority."
+  },
+  "syntheticControls": [
+    {
+      "id": "contact-face-depth-gap-one",
+      "a": {
+        "minimumTick": [
+          0,
+          0,
+          0
+        ],
+        "spanTicks": 2,
+        "level": 2
+      },
+      "b": {
+        "minimumTick": [
+          2,
+          0,
+          0
+        ],
+        "spanTicks": 1,
+        "level": 3
+      },
+      "expected": {
+        "contact": "Face",
+        "depthGap": 1,
+        "violation": false
+      }
+    },
+    {
+      "id": "contact-edge-depth-gap-two",
+      "a": {
+        "minimumTick": [
+          0,
+          0,
+          0
+        ],
+        "spanTicks": 4,
+        "level": 2
+      },
+      "b": {
+        "minimumTick": [
+          4,
+          4,
+          0
+        ],
+        "spanTicks": 1,
+        "level": 4
+      },
+      "expected": {
+        "contact": "Edge",
+        "depthGap": 2,
+        "violation": true
+      }
+    },
+    {
+      "id": "contact-corner-depth-gap-two",
+      "a": {
+        "minimumTick": [
+          0,
+          0,
+          0
+        ],
+        "spanTicks": 4,
+        "level": 2
+      },
+      "b": {
+        "minimumTick": [
+          4,
+          4,
+          4
+        ],
+        "spanTicks": 1,
+        "level": 4
+      },
+      "expected": {
+        "contact": "Corner",
+        "depthGap": 2,
+        "violation": true
+      }
+    },
+    {
+      "id": "strictly-contained-overlap-not-neighbor",
+      "a": {
+        "minimumTick": [
+          0,
+          0,
+          0
+        ],
+        "spanTicks": 4,
+        "level": 2
+      },
+      "b": {
+        "minimumTick": [
+          1,
+          1,
+          1
+        ],
+        "spanTicks": 1,
+        "level": 4
+      },
+      "expected": {
+        "contact": null,
+        "violation": false,
+        "treeInvariant": "overlap rejection handled by partition validator"
+      }
+    }
+  ],
+  "readinessControls": [
+    {
+      "id": "budget-stopped-surface-leaf",
+      "precondition": "An adaptive tree contains a SurfacePossible leaf stopped by SampleBudget or LeafBudget.",
+      "expected": {
+        "readiness": "TreeIncomplete",
+        "notReady": true
+      }
+    },
+    {
+      "id": "max-depth-surface-with-crossing-edges",
+      "precondition": "Every SurfacePossible leaf is max-depth and has at least one sign-changing corner edge; partition and full 26-neighbor balance pass.",
+      "expected": {
+        "readiness": "ReadyForTransitionTemplateEvaluation",
+        "qualificationOnly": true
+      }
+    },
+    {
+      "id": "max-depth-surface-without-crossing-edges",
+      "precondition": "At least one max-depth SurfacePossible leaf has a zero sign-changing edge mask.",
+      "expected": {
+        "readiness": "SurfaceUnresolved",
+        "notReady": true
+      }
+    },
+    {
+      "id": "pair-budget-exhausted",
+      "precondition": "n*(n-1)/2 exceeds configured max_pair_checks.",
+      "expected": {
+        "readiness": "AuditIncomplete",
+        "unknownMetrics": "u64::MAX",
+        "completedComparisons": 0
+      }
+    },
+    {
+      "id": "complete-no-surface-domain",
+      "precondition": "Every leaf is CertifiedInside or CertifiedOutside and the complete partition/neighbor scan passes.",
+      "expected": {
+        "readiness": "NoSurface",
+        "notMeshCandidate": true
+      }
+    }
+  ],
+  "reportedMetrics": [
+    "face_neighbor_pairs",
+    "edge_neighbor_pairs",
+    "corner_neighbor_pairs",
+    "face_two_to_one_violations",
+    "edge_two_to_one_violations",
+    "corner_two_to_one_violations",
+    "maximum_face_level_gap",
+    "maximum_edge_level_gap",
+    "maximum_corner_level_gap",
+    "surface_possible_leaf_count",
+    "contourable_surface_leaf_count",
+    "surface_possible_without_crossing_count",
+    "surface_crossing_edge_count",
+    "leaf_count",
+    "partition_volume_ticks_cubed",
+    "root_volume_ticks_cubed",
+    "pair_comparisons_completed",
+    "pair_comparison_budget",
+    "working_payload_estimate_bytes",
+    "canonical_receipt_estimate_bytes"
+  ],
+  "trialSizes": [
+    64,
+    256,
+    512,
+    1024,
+    2048,
+    4096
+  ],
+  "trialPolicy": {
+    "warmupAudits": 3,
+    "measuredAudits": 25,
+    "report": [
+      "p50_ns",
+      "p95_ns",
+      "p99_ns",
+      "max_ns"
+    ],
+    "hostMetadata": [
+      "cpu",
+      "os",
+      "kernel",
+      "rustc",
+      "profile",
+      "logical_cpus",
+      "memory"
+    ]
+  },
+  "acceptanceTargets": {
+    "leafPartitionViolations": 0,
+    "sampleCacheOrSignMaskMismatches": 0,
+    "falseReadyStates": 0,
+    "unknownCountersOnBudgetExhaustion": "u64::MAX",
+    "faceEdgeCornerViolationsForReadyState": 0,
+    "surfacePossibleLeavesWithoutCrossingAllowedForReadyState": 0,
+    "requirement": "ReadyForTransitionTemplateEvaluation never implies a manifold, watertight or self-intersection-free mesh."
+  },
+  "currentStatus": {
+    "authoredRustUnitTests": 10,
+    "testsExecuted": false,
+    "measuredHostResults": false,
+    "meshExtractionImplemented": false,
+    "selfIntersectionOracle": "NotEvaluated"
+  }
+}
