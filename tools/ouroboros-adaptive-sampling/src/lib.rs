@@ -116,9 +116,10 @@ impl MortonKey {
 #[repr(u8)]
 pub enum LeafStop {
     Certified = 1,
-    SurfaceAtMaximumDepth = 2,
-    BudgetStopped = 3,
-    BalanceStopped = 4,
+    SurfacePending = 2,
+    SurfaceAtMaximumDepth = 3,
+    BudgetStopped = 4,
+    BalanceStopped = 5,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -446,6 +447,7 @@ pub fn build_adaptive_octree(
     let mut balance_pair_checks = 0_u64;
     let mut balance_status = BalanceStatus::Balanced;
     let mut tree_budget_stopped = false;
+    let mut balance_check_exhausted = false;
 
     // Surface refinement and balance are iterated together. A balance split
     // can create new surface-possible children, so they re-enter this loop.
@@ -456,7 +458,7 @@ pub fn build_adaptive_octree(
             .filter(|leaf| {
                 leaf.classification.status == CellStatus::SurfacePossible
                     && leaf.key.level < config.max_depth
-                    && leaf.stop == LeafStop::SurfaceAtMaximumDepth
+                    && leaf.stop == LeafStop::SurfacePending
             })
             .map(|leaf| leaf.key)
             .collect();
@@ -494,6 +496,7 @@ pub fn build_adaptive_octree(
             Err(AdaptiveOctreeError::BalanceCheckBudgetExceeded) => {
                 balance_status = BalanceStatus::BalanceIncomplete;
                 tree_budget_stopped = true;
+                balance_check_exhausted = true;
                 break;
             }
             Err(error) => return Err(error),
@@ -537,7 +540,13 @@ pub fn build_adaptive_octree(
         }
     }
 
-    let remaining_2_to_1_violations = count_2_to_1_violations(&leaves)?;
+    let remaining_2_to_1_violations = if balance_check_exhausted {
+        // u64::MAX is a sentinel meaning the pairwise check budget was exhausted;
+        // the exact remaining violation count is unknown, never implicitly zero.
+        u64::MAX
+    } else {
+        count_2_to_1_violations(&leaves)?
+    };
     if remaining_2_to_1_violations > 0 {
         balance_status = BalanceStatus::BalanceIncomplete;
     }
@@ -684,7 +693,12 @@ fn split_leaf(
             child_samples[index] = lookup_with_pending(samples, &pending, point)
                 .ok_or(SplitFailure::WorkingPayloadBudget)?;
         }
-        let classification = classify_corner_samples(child_samples, [half; 3])
+        let child_spans = [
+            span_micro[0] * i64::from(half) / i64::from(scale),
+            span_micro[1] * i64::from(half) / i64::from(scale),
+            span_micro[2] * i64::from(half) / i64::from(scale),
+        ];
+        let classification = classify_corner_samples(child_samples, child_spans)
             .map_err(|_| SplitFailure::WorkingPayloadBudget)?;
         children.push(OctreeLeaf {
             key: child_key,
@@ -790,7 +804,7 @@ fn stop_for_classification(classification: CellClassification, level: u8, maximu
     match classification.status {
         CellStatus::CertifiedInside | CellStatus::CertifiedOutside => LeafStop::Certified,
         CellStatus::SurfacePossible if level >= maximum_depth => LeafStop::SurfaceAtMaximumDepth,
-        CellStatus::SurfacePossible | CellStatus::UncertifiedField => LeafStop::SurfaceAtMaximumDepth,
+        CellStatus::SurfacePossible | CellStatus::UncertifiedField => LeafStop::SurfacePending,
     }
 }
 
@@ -1061,9 +1075,9 @@ fn canonical_receipt_estimate(
         .checked_add(2 + 1 + 8 + 4 + 8 + 8 + 8)
         .and_then(|value| value.checked_add(4 + source_bytes))
         .and_then(|value| value.checked_add(4 + descriptor_bytes))
-        .and_then(|value| value.checked_add(4 * 3 + 1 + 8 * 15))
+        .and_then(|value| value.checked_add(4 + 6 * 8 + 1 + 8 * 15))
         .and_then(|value| value.checked_add(sample_count.checked_mul(28)?))
-        .and_then(|value| value.checked_add(8 + leaf_count.checked_mul(53)?))
+        .and_then(|value| value.checked_add(8 + leaf_count.checked_mul(54)?))
         .ok_or(AdaptiveOctreeError::SizeOverflow)
 }
 
