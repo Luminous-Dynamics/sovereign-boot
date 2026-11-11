@@ -350,6 +350,23 @@ pub fn audit_octree_topology(
     if leaves_count == 0 || leaves_count > MAX_LEAF_CELLS as usize {
         return Err(TopologyAuditError::InvalidLeafCount);
     }
+    let total_pair_count = (leaves_count as u64)
+        .checked_mul(leaves_count.saturating_sub(1) as u64)
+        .and_then(|value| value.checked_div(2))
+        .ok_or(TopologyAuditError::SizeOverflow)?;
+    let tree_receipt_estimate = tree.metrics().canonical_receipt_estimate_bytes;
+    let working_preflight = estimate_working_payload(
+        tree.metrics().working_payload_estimate_bytes,
+        tree_receipt_estimate,
+        leaves_count as u64,
+    )?;
+    if working_preflight > config.max_working_payload_bytes {
+        return Err(TopologyAuditError::WorkingBudgetExceeded);
+    }
+    let receipt_preflight = canonical_receipt_estimate(tree_receipt_estimate)?;
+    if receipt_preflight > config.max_receipt_bytes {
+        return Err(TopologyAuditError::ReceiptBudgetExceeded);
+    }
     let mut leaves = Vec::new();
     leaves
         .try_reserve_exact(leaves_count)
@@ -404,10 +421,6 @@ pub fn audit_octree_topology(
     }
 
     let leaf_metrics = count_surface_leaves(&leaves, maximum_depth)?;
-    let total_pair_count = (leaves.len() as u64)
-        .checked_mul(leaves.len().saturating_sub(1) as u64)
-        .and_then(|value| value.checked_div(2))
-        .ok_or(TopologyAuditError::SizeOverflow)?;
     let pair_scan_complete = total_pair_count <= config.max_pair_checks;
     let pair_metrics = if pair_scan_complete {
         scan_all_neighbor_pairs(&leaves)?
@@ -461,6 +474,7 @@ pub fn audit_octree_topology(
     } else if source_metrics.leaves_budget_stopped > 0
         || source_metrics.leaves_balance_stopped > 0
         || source_metrics.remaining_2_to_1_violations != 0
+        || tree.balance_status() != BalanceStatus::Balanced
         || leaves.iter().any(|leaf| {
             matches!(leaf.stop, LeafStop::SurfacePending | LeafStop::BudgetStopped | LeafStop::BalanceStopped)
         })
@@ -482,7 +496,6 @@ pub fn audit_octree_topology(
         source_metrics.working_payload_estimate_bytes,
         source_tree_receipt.len() as u64,
         leaves.len() as u64,
-        total_pair_count,
     )?;
     if working > config.max_working_payload_bytes {
         return Err(TopologyAuditError::WorkingBudgetExceeded);
@@ -656,10 +669,13 @@ fn validate_leaf_samples_and_classification(
                 && leaf.key.level == maximum_depth
                 && leaf.stop_reason == BudgetStopReason::None
         }
-        LeafStop::BudgetStopped | LeafStop::BalanceStopped => {
+        LeafStop::BudgetStopped => {
             leaf.classification.status == CellStatus::SurfacePossible
                 && leaf.stop_reason != BudgetStopReason::None
         }
+        // Balancing may split a certified coarse neighbor as well as a
+        // surface leaf. Its field classification remains unchanged.
+        LeafStop::BalanceStopped => leaf.stop_reason != BudgetStopReason::None,
     };
     if !stop_valid {
         return Err(TopologyAuditError::InvalidLeafStopState);
@@ -752,9 +768,17 @@ fn scan_all_neighbor_pairs(leaves: &[OctreeLeaf]) -> Result<PairMetrics, Topolog
     Ok(metrics)
 }
 
+fn maximum_tick(leaf: OctreeLeaf) -> [u32; 3] {
+    [
+        leaf.minimum_tick[0].saturating_add(leaf.span_ticks),
+        leaf.minimum_tick[1].saturating_add(leaf.span_ticks),
+        leaf.minimum_tick[2].saturating_add(leaf.span_ticks),
+    ]
+}
+
 fn contact_kind(a: OctreeLeaf, b: OctreeLeaf) -> Option<ContactKind> {
-    let a_max = a.maximum_tick();
-    let b_max = b.maximum_tick();
+    let a_max = maximum_tick(a);
+    let b_max = maximum_tick(b);
     let mut touching_axes = 0_u8;
     for axis in 0..3 {
         if a_max[axis] < b.minimum_tick[axis] || b_max[axis] < a.minimum_tick[axis] {
@@ -780,7 +804,6 @@ fn estimate_working_payload(
     source_tree_working: u64,
     source_tree_receipt: u64,
     leaf_count: u64,
-    pair_count: u64,
 ) -> Result<u64, TopologyAuditError> {
     // The source report remains live, report.verify rebuilds an equivalent
     // report, and the audit keeps a leaf vector plus an ordering vector.
@@ -790,13 +813,9 @@ fn estimate_working_payload(
     let leaf_workspace = leaf_count
         .checked_mul((std::mem::size_of::<OctreeLeaf>() + std::mem::size_of::<(u8, u64)>()) as u64)
         .ok_or(TopologyAuditError::SizeOverflow)?;
-    let pair_work = pair_count.min(MAX_TOPOLOGY_PAIR_CHECKS)
-        .checked_mul(0)
-        .ok_or(TopologyAuditError::SizeOverflow)?;
     two_reports
         .checked_add(source_tree_receipt)
         .and_then(|value| value.checked_add(leaf_workspace))
-        .and_then(|value| value.checked_add(pair_work))
         .ok_or(TopologyAuditError::SizeOverflow)
 }
 
@@ -971,7 +990,7 @@ mod tests {
 
     #[test]
     fn receipt_estimate_matches_fixed_layout() {
-        assert_eq!(canonical_receipt_estimate(0).unwrap(), 207);
+        assert_eq!(canonical_receipt_estimate(0).unwrap(), 217);
     }
 
     #[test]
@@ -991,9 +1010,11 @@ mod tests {
         let first = audit_octree_topology(&grid, &tree, TopologyAuditConfig::default()).unwrap();
         let second = audit_octree_topology(&grid, &tree, TopologyAuditConfig::default()).unwrap();
         assert_eq!(first, second);
+        let first_bytes = first.canonical_bytes(&grid, &tree).unwrap();
+        assert_eq!(first_bytes, second.canonical_bytes(&grid, &tree).unwrap());
         assert_eq!(
-            first.canonical_bytes(&grid, &tree).unwrap(),
-            second.canonical_bytes(&grid, &tree).unwrap()
+            first_bytes.len() as u64,
+            first.metrics().canonical_receipt_estimate_bytes
         );
     }
 }
