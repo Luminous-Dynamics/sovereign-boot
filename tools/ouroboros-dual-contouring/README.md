@@ -58,7 +58,7 @@ The extractor invokes `ouroboros-mesh-audit` on its triangle view and stores the
 
 ## Tests authored
 
-The current source contains 14 authored unit tests:
+The current source contains 15 authored unit tests:
 - source-grounded 32³ face extraction produces vertices/quads/triangles;
 - repeat extraction emits identical canonical bytes;
 - fixed diagonal (0,2) triangulation;

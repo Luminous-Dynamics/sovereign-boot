@@ -26,7 +26,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let audit = mesh.audit_report();
 
     println!(
-        "{{\"schema\":\"OURODCQ1\",\"grid\":[32,32,32],\"active_cells\":{},\"crossing_edges\":{},\"vertices\":{},\"quads\":{},\"triangles\":{},\"qef_p50_residual_nano\":{},\"qef_p95_residual_nano\":{},\"geometry_bytes\":{},\"topology\":\"{:?}\",\"closed\":\"{:?}\",\"orientation\":\"{:?}\",\"self_intersections\":\"{:?}\",\"canonical_bytes\":{},\"output\":\"{}\"}}",
+        "{{\"schema\":\"OURODCQ1\",\"grid\":[32,32,32],\"active_cells\":{},\"crossing_edges\":{},\"vertices\":{},\"quads\":{},\"triangles\":{},\"qef_p50_residual_nano\":{},\"qef_p95_residual_nano\":{},\"geometry_bytes\":{},\"topology\":\"{:?}\",\"closed\":\"{:?}\",\"orientation\":\"{:?}\",\"self_intersections\":\"{:?}\",\"canonical_bytes\":{}}}",
         metrics.active_cell_count,
         metrics.sign_changing_edge_count,
         mesh.vertices().len(),
@@ -39,8 +39,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         audit.checks.closed_surface,
         audit.checks.orientation_consistency,
         audit.checks.self_intersections,
-        bytes.len(),
-        output.replace('\\', "\\\\").replace('"', "\\\"")
+        bytes.len()
     );
     Ok(())
 }
