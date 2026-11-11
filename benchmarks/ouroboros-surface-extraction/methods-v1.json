@@ -1,0 +1,356 @@
+{
+  "schema_version": 1,
+  "registry_id": "ouroboros-surface-extraction-methods-v1",
+  "checked_at": "2026-11-11",
+  "strata": {
+    "signed_sdf": [
+      "signed_exact_analytic",
+      "signed_mesh_derived",
+      "signed_approximate_analytic",
+      "signed_neural"
+    ],
+    "unsigned_distance": [
+      "unsigned_exact_analytic",
+      "unsigned_mesh_derived",
+      "unsigned_point_cloud",
+      "unsigned_neural"
+    ]
+  },
+  "methods": [
+    {
+      "id": "marching-cubes-uniform",
+      "family": "signed_sdf",
+      "status": "reference_baseline",
+      "input": {
+        "field_semantics": [
+          "signed_sdf"
+        ],
+        "source_mode": [
+          "frozen_canonical_samples"
+        ],
+        "grid": "uniform",
+        "gradient_required": false
+      },
+      "topology_class": [
+        "closed_oriented_surfaces_when_input_supports"
+      ],
+      "output": [
+        "triangles"
+      ],
+      "reference": "Lorensen and Cline 1987",
+      "implementation": {
+        "availability": "benchmark_harness_reference_required",
+        "repository": null,
+        "commit": null
+      },
+      "notes": "Use as uniform-grid control. Pin the exact implementation and ambiguity-resolution policy in each executed benchmark."
+    },
+    {
+      "id": "ouroboros-classical-hermite-qef",
+      "family": "signed_sdf",
+      "status": "prototype_authored_not_run",
+      "input": {
+        "field_semantics": [
+          "signed_sdf"
+        ],
+        "source_mode": [
+          "frozen_canonical_samples"
+        ],
+        "grid": "uniform",
+        "gradient_required": "finite_differences_from_samples"
+      },
+      "topology_class": [
+        "closed_oriented_surfaces_when_input_supports"
+      ],
+      "output": [
+        "quads",
+        "triangles"
+      ],
+      "reference": "Ouroboros draft PR #47",
+      "implementation": {
+        "availability": "public_draft",
+        "repository": "Luminous-Dynamics/sovereign-boot",
+        "path": "tools/ouroboros-dual-contouring",
+        "pr": 47,
+        "commit": null
+      },
+      "notes": "Classical one-pass Hermite/QEF baseline only. Not a DCSDFD implementation."
+    },
+    {
+      "id": "dcsdfd-gpytoolbox",
+      "family": "signed_sdf",
+      "status": "maintained_public_implementation",
+      "input": {
+        "field_semantics": [
+          "signed_sdf"
+        ],
+        "source_mode": [
+          "frozen_canonical_samples"
+        ],
+        "grid": "uniform",
+        "gradient_required": false,
+        "continuous_field_required": false
+      },
+      "topology_class": [
+        "sharp_feature_surfaces",
+        "closed_surfaces"
+      ],
+      "output": [
+        "quads"
+      ],
+      "paper": {
+        "title": "Dual Contouring of Signed Distance Data",
+        "venue": "SIGGRAPH 2026",
+        "doi": "10.1145/3799902.3811116"
+      },
+      "implementation": {
+        "availability": "public_maintained",
+        "repository": "https://github.com/sgsellan/gpytoolbox",
+        "commit": "d6e6ae3b5ff9200e687ca19c178ff35d65c1f810",
+        "path": "src/cpp/dual_contouring_of_signed_distance_data"
+      },
+      "parameters": [
+        "outer_iters",
+        "inner_iters",
+        "hermite_update",
+        "mu",
+        "dc_weight",
+        "svd_threshold",
+        "new_hermite_pos_weight",
+        "new_face_pos_weight",
+        "new_hermite_normal_weight"
+      ],
+      "notes": "Use the maintained Gpytoolbox implementation. The paper-reproduction repository explicitly directs new users to this implementation."
+    },
+    {
+      "id": "power-diagram-adaptive-sdf",
+      "family": "signed_sdf",
+      "status": "published_method_no_official_code_verified",
+      "input": {
+        "field_semantics": [
+          "signed_sdf"
+        ],
+        "source_mode": [
+          "continuous_evaluator",
+          "sampled_values"
+        ],
+        "grid": "incremental_sites_regular_delaunay",
+        "gradient_required": true,
+        "additional_sdf_queries": true
+      },
+      "topology_class": [
+        "complex_signed_zero_level_sets"
+      ],
+      "output": [
+        "triangles"
+      ],
+      "paper": {
+        "title": "Power Diagram Enhanced Adaptive Isosurface Extraction from Signed Distance Fields",
+        "venue": "IEEE TVCG 2026",
+        "doi": "10.1109/TVCG.2026.3685989",
+        "url": "https://pengfei.me/assets/papers/surfaceExtract.pdf"
+      },
+      "implementation": {
+        "availability": "paper_only_in_this_registry",
+        "repository": null,
+        "commit": null
+      },
+      "notes": "Adaptive discrepancy-driven point insertion; gradient and additional field-query costs must be counted separately. A strong adaptive signed-field comparator."
+    },
+    {
+      "id": "mcgrids",
+      "family": "signed_sdf",
+      "status": "official_public_implementation",
+      "input": {
+        "field_semantics": [
+          "signed_sdf"
+        ],
+        "source_mode": [
+          "continuous_evaluator"
+        ],
+        "grid": "monte_carlo_adaptive_grid",
+        "gradient_required": false,
+        "additional_sdf_queries": true
+      },
+      "topology_class": [
+        "signed_implicit_surfaces"
+      ],
+      "output": [
+        "triangles"
+      ],
+      "paper": {
+        "title": "McGrids: Monte Carlo-Driven Adaptive Grids for Iso-Surface Extraction",
+        "venue": "ECCV 2024",
+        "doi": "10.1007/978-3-031-72998-0_8"
+      },
+      "implementation": {
+        "availability": "public_official",
+        "repository": "https://github.com/zcblshz/McGrids",
+        "commit": "6c24f0968c82b00472130303a1a532b15626dbb1"
+      },
+      "dependencies": [
+        "Geogram",
+        "TBB",
+        "CUDA",
+        "PyTorch",
+        "Open3D",
+        "PyMCubes"
+      ],
+      "notes": "The public wrapper calls sdf_func directly inside its Monte-Carlo sampling loop, bypassing its __sdf__ query_count increment. Count evaluator calls at an external wrapper boundary."
+    },
+    {
+      "id": "ouroboros-certified-adaptive-octree",
+      "family": "signed_sdf",
+      "status": "sampling_and_audit_prototype_no_mesher",
+      "input": {
+        "field_semantics": [
+          "signed_exact_analytic"
+        ],
+        "source_mode": [
+          "OUROSGD1_canonical_grid",
+          "verified_exact_field_descriptor"
+        ],
+        "grid": "adaptive_octree",
+        "gradient_required": false,
+        "interval_authority": "verified_lipschitz_bounds"
+      },
+      "topology_class": [
+        "closed_signed_solids_only_for_current_exact_authority"
+      ],
+      "output": [],
+      "references": [
+        "Ouroboros PR #54",
+        "Ouroboros PR #55",
+        "Ouroboros PR #57",
+        "Ouroboros PR #61",
+        "Ouroboros Issue #62"
+      ],
+      "implementation": {
+        "availability": "public_draft",
+        "repository": "Luminous-Dynamics/sovereign-boot",
+        "prerequisite_prs": [
+          54,
+          55,
+          57,
+          61
+        ],
+        "transition_mesher_issue": 62
+      },
+      "notes": "Adaptive tree and readiness audit exist as draft code; no transition mesher yet. ReadyForTransitionTemplateEvaluation is not mesh validity."
+    },
+    {
+      "id": "dcx-expanded-cubes",
+      "family": "unsigned_distance",
+      "status": "official_public_implementation",
+      "input": {
+        "field_semantics": [
+          "unsigned_distance"
+        ],
+        "source_mode": [
+          "ground_truth_udf",
+          "neural_udf"
+        ],
+        "grid": "expanded_2x2x2_voxel_cubes",
+        "gradient_required": false,
+        "neural_inference_optional": true
+      },
+      "topology_class": [
+        "manifold",
+        "non_manifold",
+        "open_boundaries"
+      ],
+      "output": [
+        "triangles"
+      ],
+      "paper": {
+        "title": "Dual Contouring over Expanded Cubes (DCx) for Zero-Level Set Extraction from Neural Unsigned Distance Functions",
+        "venue": "ACM TOG/SIGGRAPH 2026",
+        "doi": "10.1145/3811388"
+      },
+      "implementation": {
+        "availability": "public_official",
+        "repository": "https://github.com/jjjkkyz/DCx",
+        "commit": "68ab8d8a60be93f8fa139f2a17721ba461bc297d"
+      },
+      "dependencies": [
+        "Python 3.9",
+        "PyTorch 2.2.1",
+        "CUDA 11.8",
+        "CAP-UDF or cubvh",
+        "C++/CUDA extensions"
+      ],
+      "notes": "Expanded-cube active-cell optimization and voxel-to-mesh lookup templates. Reference pipeline performs UDF generation, thinning and optional finetuning; report those phases separately."
+    },
+    {
+      "id": "voroudf",
+      "family": "unsigned_distance",
+      "status": "published_method_official_code_not_verified",
+      "input": {
+        "field_semantics": [
+          "unsigned_distance"
+        ],
+        "source_mode": [
+          "continuous_udf",
+          "point_samples"
+        ],
+        "grid": "movable_voronoi_seeds",
+        "gradient_required": true
+      },
+      "topology_class": [
+        "open_boundaries",
+        "non_manifold",
+        "sharp_features"
+      ],
+      "output": [
+        "triangles"
+      ],
+      "paper": {
+        "title": "VoroUDF: Meshing Unsigned Distance Fields with Voronoi Optimization",
+        "venue": "2026 arXiv",
+        "arxiv": "2602.02907"
+      },
+      "implementation": {
+        "availability": "paper_only_in_this_registry",
+        "repository": null,
+        "commit": null
+      },
+      "notes": "Joint tangent fitting and feature-aware repulsion over movable seeds, followed by approximate geodesic Voronoi extraction. Paper states code release upon acceptance; no official repository verified in this review."
+    },
+    {
+      "id": "spudd",
+      "family": "unsigned_distance",
+      "status": "published_method_official_code_not_verified",
+      "input": {
+        "field_semantics": [
+          "unsigned_distance"
+        ],
+        "source_mode": [
+          "discrete_unsigned_samples"
+        ],
+        "grid": "finite_sample_power_diagram_superpower_contour",
+        "gradient_required": false,
+        "continuous_field_required": false
+      },
+      "topology_class": [
+        "open_boundaries",
+        "non_orientable",
+        "non_manifold",
+        "closed_surfaces"
+      ],
+      "output": [
+        "polygon_mesh"
+      ],
+      "paper": {
+        "title": "SpUDD: Superpower Contouring of Unsigned Distance Data",
+        "venue": "2026 arXiv",
+        "arxiv": "2604.19568"
+      },
+      "implementation": {
+        "availability": "paper_only_in_this_registry",
+        "repository": null,
+        "commit": null
+      },
+      "notes": "Discrete unsigned-distance reference; do not infer a signed interior or require gradients/continuous field access."
+    }
+  ]
+}

@@ -1,0 +1,194 @@
+{
+  "schema_version": 1,
+  "note": "Published reference snapshots only. Datasets, metrics, normalizations, compute environments and implementation revisions differ across papers; these rows are not cross-paper comparable trials.",
+  "baselines": [
+    {
+      "method_id": "dcsdfd-gpytoolbox",
+      "source": "Carrera et al., Dual Contouring of Signed Distance Data, SIGGRAPH 2026",
+      "url": "https://doi.org/10.1145/3799902.3811116",
+      "dataset": "55 ABC sharp-feature shapes",
+      "grids": [
+        "50^3",
+        "100^3",
+        "150^3",
+        "200^3"
+      ],
+      "columns": {
+        "chamfer_multiplier": 0.001,
+        "hausdorff_multiplier": 0.01,
+        "edge_chamfer_multiplier": 1,
+        "sdf_energy_multiplier": 0.00001
+      },
+      "rows": [
+        {
+          "grid": "50^3",
+          "method": "Marching Cubes",
+          "chamfer": 7.586,
+          "hausdorff": 3.692,
+          "edge_chamfer": 0.3636,
+          "sdf_energy": 13.34,
+          "vertices": 3400
+        },
+        {
+          "grid": "50^3",
+          "method": "DCSDFD",
+          "chamfer": 2.958,
+          "hausdorff": 2.97,
+          "edge_chamfer": 0.03787,
+          "sdf_energy": 1.074,
+          "vertices": 3400
+        },
+        {
+          "grid": "100^3",
+          "method": "Marching Cubes",
+          "chamfer": 2.62,
+          "hausdorff": 1.81,
+          "edge_chamfer": 0.4171,
+          "sdf_energy": 3.061,
+          "vertices": 14000
+        },
+        {
+          "grid": "100^3",
+          "method": "DCSDFD",
+          "chamfer": 0.7788,
+          "hausdorff": 1.221,
+          "edge_chamfer": 0.02622,
+          "sdf_energy": 0.05776,
+          "vertices": 14000
+        },
+        {
+          "grid": "150^3",
+          "method": "Marching Cubes",
+          "chamfer": 1.329,
+          "hausdorff": 1.107,
+          "edge_chamfer": 0.3256,
+          "sdf_energy": 1.175,
+          "vertices": 32000
+        },
+        {
+          "grid": "150^3",
+          "method": "DCSDFD",
+          "chamfer": 0.4432,
+          "hausdorff": 0.7037,
+          "edge_chamfer": 0.01684,
+          "sdf_energy": 0.241,
+          "vertices": 32000
+        },
+        {
+          "grid": "200^3",
+          "method": "Marching Cubes",
+          "chamfer": 1.059,
+          "hausdorff": 0.9969,
+          "edge_chamfer": 0.3003,
+          "sdf_energy": 1.115,
+          "vertices": 57000
+        },
+        {
+          "grid": "200^3",
+          "method": "DCSDFD",
+          "chamfer": 0.4576,
+          "hausdorff": 0.6741,
+          "edge_chamfer": 0.01599,
+          "sdf_energy": 0.4359,
+          "vertices": 57000
+        }
+      ],
+      "caveat": "Values are copied as reported from Table 2; multipliers preserve the paper column scales. DCSDFD is a regular-grid method; adaptive octree is future work in the paper."
+    },
+    {
+      "method_id": "power-diagram-adaptive-sdf",
+      "source": "Wang et al., Power Diagram Enhanced Adaptive Isosurface Extraction from Signed Distance Fields, IEEE TVCG 2026",
+      "url": "https://doi.org/10.1109/TVCG.2026.3685989",
+      "dataset": "100-model SDF Chamfer suite",
+      "metric": "mean L2 Chamfer, paper-normalized units",
+      "rows": [
+        {
+          "method": "Marching Cubes",
+          "sampling": "uniform reference",
+          "mean_l2_chamfer": 0.0002143
+        },
+        {
+          "method": "RFTA",
+          "sampling": "paper reference",
+          "mean_l2_chamfer": 0.0000421
+        },
+        {
+          "method": "Power-Diagram uniform",
+          "sampling": "50^3",
+          "mean_l2_chamfer": 0.0000209
+        },
+        {
+          "method": "McGrids",
+          "sampling": "adaptive up to 50000 samples",
+          "mean_l2_chamfer": 0.00000949
+        },
+        {
+          "method": "Power-Diagram adaptive",
+          "sampling": "adaptive up to 50000 points including surface projections",
+          "mean_l2_chamfer": 0.00000847
+        }
+      ],
+      "host": "AMD Ryzen 9 5950X, 72 GB RAM",
+      "notes": "Uses SDF values and gradients; additional SDF queries for quality/discrepancy estimation. Do not treat gradient or projection queries as free. Source PDF reports runtime scaling examples around 1.75–15.81 s and 2.35–23.79 s from about 5k to 50k points."
+    },
+    {
+      "method_id": "voroudf",
+      "source": "Wang et al., VoroUDF: Meshing Unsigned Distance Fields with Voronoi Optimization, arXiv:2602.02907",
+      "url": "https://arxiv.org/abs/2602.02907",
+      "dataset": "50 intersecting SALS models, Table 2",
+      "metric_multipliers": {
+        "chamfer": 0.001,
+        "hausdorff": 0.001,
+        "edge_chamfer": 0.01,
+        "non_manifold_chamfer": 0.001
+      },
+      "rows": [
+        {
+          "method": "DualMeshUDF",
+          "vertices": 5100,
+          "chamfer": 14.56,
+          "hausdorff": 38.87,
+          "edge_chamfer": 1.41,
+          "triangle_quality": 0.52,
+          "topology_error": 822,
+          "non_manifold_chamfer": 146.63,
+          "time_seconds": 11.9
+        },
+        {
+          "method": "VoroUDF",
+          "vertices": 8200,
+          "chamfer": 5.02,
+          "hausdorff": 8.47,
+          "edge_chamfer": 0.59,
+          "triangle_quality": 0.8,
+          "topology_error": 3,
+          "non_manifold_chamfer": 34.55,
+          "time_seconds": 140.8
+        }
+      ],
+      "host": "Linux, 16-core AMD Ryzen processor, NVIDIA RTX 3090 GPU",
+      "notes": "VoroUDF uses unsigned distance data and gradients; movable seeds with tangent fitting/feature-aware repulsion and an approximate geodesic Voronoi extraction. This is a separate UDF stratum."
+    },
+    {
+      "method_id": "mcgrids",
+      "source": "Ren et al., McGrids: Monte Carlo-Driven Adaptive Grids for Iso-Surface Extraction, ECCV 2024",
+      "url": "https://doi.org/10.1007/978-3-031-72998-0_8",
+      "dataset": "Armadillo showcase in paper Figure 1",
+      "rows": [
+        {
+          "method": "Marching Cubes",
+          "grid": "1024^3",
+          "distance_queries": 1073741824,
+          "ram_gib_lower_bound": 150
+        },
+        {
+          "method": "McGrids",
+          "sampling": "adaptive",
+          "distance_queries": 62012058,
+          "ram_gib_upper_bound": 10
+        }
+      ],
+      "notes": "Paper figure values are a single example, not a general speedup guarantee. Public wrapper query_count bypasses one adaptive sampling call path; external function-boundary instrumentation is required for new trials."
+    }
+  ]
+}
