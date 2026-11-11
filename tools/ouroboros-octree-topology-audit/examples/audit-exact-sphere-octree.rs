@@ -46,7 +46,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     fs::write(&output, &bytes)?;
     let metrics = audit.metrics();
     println!(
-        "{{\"schema\":\"OUROTCF1\",\"readiness\":\"{:?}\",\"leaves\":{},\"surface_possible\":{},\"contourable_surface\":{},\"surface_without_crossings\":{},\"face_neighbors\":{},\"edge_neighbors\":{},\"corner_neighbors\":{},\"face_violations\":{},\"edge_violations\":{},\"corner_violations\":{},\"pair_comparisons\":{},\"canonical_bytes\":{},\"output\":\"{}\"}}",
+        "{{\"schema\":\"OUROTCF1\",\"readiness\":\"{:?}\",\"leaves\":{},\"surface_possible\":{},\"contourable_surface\":{},\"surface_without_crossings\":{},\"face_neighbors\":{},\"edge_neighbors\":{},\"corner_neighbors\":{},\"face_violations\":{},\"edge_violations\":{},\"corner_violations\":{},\"zero_corner_surface_leaves\":{},\"pair_comparisons\":{},\"canonical_bytes\":{},\"output\":\"{}\"}}",
         audit.readiness(),
         metrics.leaf_count,
         metrics.surface_possible_leaf_count,
@@ -58,6 +58,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         metrics.face_two_to_one_violations,
         metrics.edge_two_to_one_violations,
         metrics.corner_two_to_one_violations,
+        metrics.surface_possible_with_zero_corner_count,
         metrics.pair_comparisons_completed,
         bytes.len(),
         output.replace('\\', "\\\\").replace('"', "\\\"")

@@ -212,6 +212,7 @@
     "leaf_count",
     "partition_volume_ticks_cubed",
     "root_volume_ticks_cubed",
+    "total_pair_count",
     "pair_comparisons_completed",
     "pair_comparison_budget",
     "working_payload_estimate_bytes",
