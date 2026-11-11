@@ -1005,6 +1005,73 @@ mod tests {
     }
 
     #[test]
+    fn pair_budget_exhaustion_is_unknown_not_zero_violations() {
+        let (grid, tree) = sphere_fixture(3);
+        assert!(tree.metrics().leaf_count > 2);
+        let audit = audit_octree_topology(
+            &grid,
+            &tree,
+            TopologyAuditConfig {
+                max_pair_checks: 1,
+                ..TopologyAuditConfig::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(audit.readiness(), ReadinessStatus::AuditIncomplete);
+        assert_eq!(audit.checks().pair_scan, CheckStatus::NotEvaluated);
+        assert_eq!(audit.metrics().face_neighbor_pairs, UNKNOWN_COUNT);
+        assert_eq!(audit.metrics().face_two_to_one_violations, UNKNOWN_COUNT);
+        assert_eq!(audit.metrics().pair_comparisons_completed, 0);
+    }
+
+    #[test]
+    fn complete_tree_with_no_surface_is_not_a_mesh_candidate() {
+        let grid = ScalarGrid::sample_exact(
+            GridSpec {
+                minimum_microunits: [-2_000_000; 3],
+                maximum_microunits: [2_000_000; 3],
+                dimensions: [2, 2, 2],
+                max_samples: MAX_SAMPLES,
+                max_descriptor_bytes: 1_048_576,
+                max_canonical_bytes: MAX_CANONICAL_BYTES,
+                max_working_payload_bytes: 32 * 1024 * 1024,
+            },
+            AnalyticField::Sphere {
+                center_microunits: [12_000_000; 3],
+                radius_microunits: 1_000_000,
+            },
+            0,
+        )
+        .unwrap();
+        let tree = build_adaptive_octree(
+            &grid,
+            AdaptiveOctreeConfig {
+                max_depth: 3,
+                max_unique_samples: 128,
+                max_leaf_cells: 64,
+                max_working_payload_bytes: 16 * 1024 * 1024,
+                max_receipt_bytes: 8 * 1024 * 1024,
+                max_balance_pair_checks: MAX_BALANCE_PAIR_CHECKS,
+            },
+        )
+        .unwrap();
+        let audit = audit_octree_topology(&grid, &tree, TopologyAuditConfig::default()).unwrap();
+        assert_eq!(audit.metrics().surface_possible_leaf_count, 0);
+        assert_eq!(audit.readiness(), ReadinessStatus::NoSurface);
+    }
+
+    #[test]
+    fn morton_path_decode_rejects_a_forged_leaf_origin() {
+        let good = leaf(MortonKey::root().child(1).unwrap(), [4, 0, 0], 4);
+        validate_leaf_path(good, 3, 8).unwrap();
+        let forged = leaf(MortonKey::root().child(1).unwrap(), [0, 0, 0], 4);
+        assert_eq!(
+            validate_leaf_path(forged, 3, 8),
+            Err(TopologyAuditError::InvalidMortonPath)
+        );
+    }
+
+    #[test]
     fn repeated_exact_tree_audit_is_byte_deterministic() {
         let (grid, tree) = sphere_fixture(3);
         let first = audit_octree_topology(&grid, &tree, TopologyAuditConfig::default()).unwrap();
