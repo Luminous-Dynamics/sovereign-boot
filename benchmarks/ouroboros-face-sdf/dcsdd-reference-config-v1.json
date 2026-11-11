@@ -45,7 +45,8 @@
     ],
     "linuxX86_64Python313Wheel": {
       "filename": "gpytoolbox-0.3.8-cp313-cp313-manylinux_2_28_x86_64.whl",
-      "sha256": "5cd2dac58cf015bb1ab86a91efc063fcff3d5c6fbfc10ea7fcbce463e7dbaeec"
+      "sha256": "5cd2dac58cf015bb1ab86a91efc063fcff3d5c6fbfc10ea7fcbce463e7dbaeec",
+      "sha256VerifiedFrom": "PyPI gpytoolbox 0.3.8 release metadata (CPython 3.13 manylinux_2_28_x86_64 wheel)"
     }
   },
   "workload": {
@@ -85,7 +86,10 @@
       "isovalue": 0,
       "noExternalSdfFunction": true,
       "noExternalGradientFunction": true,
-      "preserveInt32SourceHash": true
+      "preserveInt32SourceHash": true,
+      "readsOurogrd1Container": false,
+      "sampleSource": "The comparison harness regenerates the deterministic fixture sample vector from the pinned analytic field definition, then checks its signed-int32 little-endian microunit payload SHA-256 against the previously recorded canonical sample digest. It does not yet parse an OUROGRD1 container.",
+      "futureDirectContainerIngestion": "Once the Rust sampler can emit an artifact in the benchmark environment, add a reader that parses OUROGRD1 and proves the extracted sample vector/grid coordinates match this reference input byte-for-byte before calling Gpytoolbox."
     }
   },
   "parameters": {
