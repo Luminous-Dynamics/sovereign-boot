@@ -19,15 +19,15 @@ std::string json_escape(const std::string& input) {
   output.reserve(input.size());
   for (const unsigned char c : input) {
     switch (c) {
-      case '"': output += "\\\\""; break;
-      case '\\\\': output += "\\\\\\\\"; break;
-      case '\\n': output += "\\\\n"; break;
-      case '\\r': output += "\\\\r"; break;
-      case '\\t': output += "\\\\t"; break;
+      case '"': output += "\\\""; break;
+      case '\\': output += "\\\\"; break;
+      case '\n': output += "\\n"; break;
+      case '\r': output += "\\r"; break;
+      case '\t': output += "\\t"; break;
       default:
         if (c < 0x20U) {
           constexpr char hex[] = "0123456789abcdef";
-          output += "\\\\u00";
+          output += "\\u00";
           output.push_back(hex[c >> 4U]);
           output.push_back(hex[c & 0x0fU]);
         } else {
@@ -96,7 +96,12 @@ int main(int argc, char** argv) {
               << (result.surface_construction_ok ? "Pass" : "NotEvaluated") << "\","
               << "\"self_intersection_status\":\"" << result.status << "\","
               << "\"reason\":\"" << json_escape(result.reason) << "\","
-              << "\"offending_triangle\":" << result.offending_triangle << ","
+              << "\"offending_triangle\":"
+              << ((result.reason == "DegenerateTriangle" ||
+                   result.reason == "SurfaceMeshConstructionRejected")
+                      ? std::to_string(result.offending_triangle)
+                      : "null")
+              << ","
               << "\"pair_count\":" << result.intersecting_triangle_pairs.size() << ","
               << "\"pairs\":[";
     for (std::size_t i = 0; i < result.intersecting_triangle_pairs.size(); ++i) {
