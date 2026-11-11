@@ -149,8 +149,8 @@
     "resolution": 100,
     "noiseLevels": [
       {
-        "label": "0%",
-        "noiseValue": 0,
+        "label": "0.1%",
+        "noiseValue": 0.001,
         "dcsdfd": {
           "chamfer": 2.683,
           "hausdorff": 2.651,
@@ -226,7 +226,8 @@
       "hausdorff": "x 10^-2",
       "edgeChamfer": "paper metric units"
     },
-    "noiseNormalization": "The table labels noise by values 0.001, 0.005 and 0.01 / 0.1%, 0.5% and 1.0%; exact scaling/normalization must be verified from the reproduction details before generating data. Do not infer a standard deviation from the labels alone."
+    "noiseNormalization": "The table labels noise by values 0.001, 0.005 and 0.01 / 0.1%, 0.5% and 1.0%; exact scaling/normalization must be verified from the reproduction details before generating data. Do not infer a standard deviation from the labels alone.",
+    "cleanNoNoiseBaseline": "not included in the transcribed Table 1 values; generate this separately for the reproduction"
   },
   "smoothShapeControl": {
     "shapeCount": 10,
