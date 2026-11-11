@@ -172,7 +172,8 @@ impl AnalyticField {
         self.validate()?;
         let descriptor_len = match self {
             Self::Sphere { .. } | Self::Plane { .. } => 44,
-            Self::Box { .. } | Self::Torus { .. } | Self::CappedCylinder { .. } => 60,
+            Self::Box { .. } => 60,
+            Self::Torus { .. } | Self::CappedCylinder { .. } => 52,
             Self::Capsule { .. } => 68,
             Self::OrientedBox { .. } => 92,
         };
@@ -383,7 +384,11 @@ impl GridSpec {
     }
 
     pub fn point_at_linear_index(self, index: usize) -> Result<[f64; 3], ScalarGridError> {
-        if self.dimensions.iter().any(|dimension| *dimension < 2) {
+        validate_coordinates(self.minimum_microunits)?;
+        validate_coordinates(self.maximum_microunits)?;
+        if self.dimensions.iter().any(|dimension| *dimension < 2)
+            || (0..3).any(|axis| self.maximum_microunits[axis] <= self.minimum_microunits[axis])
+        {
             return Err(ScalarGridError::InvalidGrid);
         }
         let count = u64::from(self.dimensions[0])
@@ -674,6 +679,23 @@ mod tests {
         assert_eq!(field.evaluate([0.0, 0.0, 2.0]).unwrap(), 1.5);
         let invalid = AnalyticField::Plane { normal_q30: [0, 0, 0], offset_microunits: 0 };
         assert_eq!(invalid.validate(), Err(ScalarGridError::InvalidRotation));
+    }
+
+    #[test]
+    fn every_analytic_descriptor_has_its_declared_canonical_length() {
+        let fields = [
+            AnalyticField::Sphere { center_microunits: [0; 3], radius_microunits: 1_000_000 },
+            AnalyticField::Box { center_microunits: [0; 3], half_extents_microunits: [1_000_000; 3] },
+            AnalyticField::OrientedBox { center_microunits: [0; 3], half_extents_microunits: [1_000_000; 3], rotation_q30: [0, 0, 0, 1_i64 << 30] },
+            AnalyticField::Capsule { endpoint_a_microunits: [0; 3], endpoint_b_microunits: [0, 0, 1_000_000], radius_microunits: 500_000 },
+            AnalyticField::Torus { center_microunits: [0; 3], major_radius_microunits: 2_000_000, minor_radius_microunits: 500_000 },
+            AnalyticField::CappedCylinder { center_microunits: [0; 3], radius_microunits: 1_000_000, half_length_microunits: 1_000_000 },
+            AnalyticField::Plane { normal_q30: [0, 0, 1_i64 << 30], offset_microunits: 0 },
+        ];
+        let expected = [44, 60, 92, 68, 52, 52, 44];
+        for (field, expected_len) in fields.into_iter().zip(expected) {
+            assert_eq!(field.canonical_descriptor().unwrap().len(), expected_len);
+        }
     }
 
     #[test]
