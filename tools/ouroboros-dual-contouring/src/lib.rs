@@ -738,7 +738,7 @@ fn semantic_triangle_mesh(
 const FACE_EDGE_CYCLES: [[usize; 4]; 6] = [
     [0, 5, 1, 4],   // z = 0
     [2, 7, 3, 6],   // z = 1
-    [0, 9, 4, 8],   // y = 0
+    [0, 9, 2, 8],   // y = 0
     [1, 11, 3, 10], // y = 1
     [4, 10, 6, 8],  // x = 0
     [5, 11, 7, 9],  // x = 1
@@ -751,24 +751,32 @@ fn cell_surface_component_count(values: [i32; 8]) -> Result<usize, ExtractError>
         crossing[edge_index] = (values[*a] < 0) != (values[*b] < 0);
     }
     for cycle in FACE_EDGE_CYCLES {
-        let crossed: Vec<usize> = cycle
-            .into_iter()
-            .filter(|edge| crossing[*edge])
-            .collect();
-        match crossed.len() {
+        let mut crossed = [0_usize; 4];
+        let mut crossing_count = 0_usize;
+        for edge in cycle {
+            if crossing[edge] {
+                crossed[crossing_count] = edge;
+                crossing_count += 1;
+            }
+        }
+        match crossing_count {
             0 => {}
             2 => union_crossing_edges(&mut parent, crossed[0], crossed[1]),
-            4 => return Err(ExtractError::AmbiguousCellTopology),
             _ => return Err(ExtractError::AmbiguousCellTopology),
         }
     }
-    let mut roots = std::collections::BTreeSet::new();
+    let mut roots = [false; 12];
+    let mut component_count = 0_usize;
     for edge in 0..12 {
         if crossing[edge] {
-            roots.insert(find_crossing_root(&mut parent, edge));
+            let root = find_crossing_root(&mut parent, edge);
+            if !roots[root] {
+                roots[root] = true;
+                component_count += 1;
+            }
         }
     }
-    Ok(roots.len())
+    Ok(component_count)
 }
 
 fn find_crossing_root(parent: &mut [usize; 12], item: usize) -> usize {
