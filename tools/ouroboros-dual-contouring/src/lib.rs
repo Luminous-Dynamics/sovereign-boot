@@ -1081,6 +1081,54 @@ mod tests {
     }
 
     #[test]
+    fn extractor_policy_bytes_are_fixed_length_and_bind_every_threshold() {
+        let baseline = DualContourConfig::default().canonical_bytes();
+        assert_eq!(baseline.len(), 37);
+        let mut changed = DualContourConfig::default();
+        changed.qef_regularization_nanounits += 1;
+        assert_ne!(baseline, changed.canonical_bytes());
+        let mut changed = DualContourConfig::default();
+        changed.gradient_epsilon_nanounits += 1;
+        assert_ne!(baseline, changed.canonical_bytes());
+    }
+
+    #[test]
+    fn sampled_surface_cut_by_each_of_six_grid_boundaries_is_rejected() {
+        let bounds = [
+            ([-0.035, -0.14, -0.16], [0.25, 0.14, 0.16]),
+            ([-0.18, -0.14, -0.16], [0.10, 0.14, 0.16]),
+            ([-0.18, -0.025, -0.16], [0.25, 0.14, 0.16]),
+            ([-0.18, -0.14, -0.16], [0.25, 0.025, 0.16]),
+            ([-0.18, -0.14, -0.03], [0.25, 0.14, 0.16]),
+            ([-0.18, -0.14, -0.16], [0.25, 0.14, 0.03]),
+        ];
+        for (minimum, maximum) in bounds {
+            let sampled = grid([24, 24, 24], [minimum, maximum])
+                .sample(FaceSkinField::source_fixture(UnionMode::Sharp).unwrap())
+                .unwrap();
+            assert_eq!(
+                extract(&sampled, DualContourConfig::default()),
+                Err(ExtractError::SurfaceTouchesGridBoundary)
+            );
+        }
+    }
+
+    #[test]
+    fn source_fixture_reports_each_implemented_audit_dimension_independently() {
+        let sampled = source_grid([32, 32, 32]);
+        let mesh = extract(&sampled, DualContourConfig::default()).unwrap();
+        let checks = mesh.audit_report().checks;
+        assert_eq!(checks.buffer_validity, CheckStatus::Pass);
+        assert_ne!(checks.topology_manifold, CheckStatus::NotEvaluated);
+        assert_ne!(checks.closed_surface, CheckStatus::NotEvaluated);
+        assert_ne!(checks.orientation_consistency, CheckStatus::NotEvaluated);
+        assert_ne!(checks.computed_zero_area, CheckStatus::NotEvaluated);
+        assert_ne!(checks.near_degeneracy, CheckStatus::NotEvaluated);
+        assert_ne!(checks.semantic_provenance, CheckStatus::NotEvaluated);
+        assert_eq!(checks.self_intersections, CheckStatus::NotEvaluated);
+    }
+
+    #[test]
     fn source_fixture_extracts_a_nonempty_candidate_mesh() {
         let sampled = source_grid([32, 32, 32]);
         let mesh = extract(&sampled, DualContourConfig::default()).unwrap();
