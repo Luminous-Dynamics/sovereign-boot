@@ -90,7 +90,7 @@ pub struct IntervalPolicy {
 
 impl IntervalPolicy {
     fn canonical_bytes(self) -> Vec<u8> {
-        let mut out = Vec::with_capacity(34);
+        let mut out = Vec::with_capacity(33);
         out.extend_from_slice(&POLICY_MAGIC);
         put_u16(&mut out, self.schema_version);
         put_u16(&mut out, self.policy_version);
@@ -289,7 +289,6 @@ pub fn classify(grid: &ScalarGrid, limits: IntervalLimits) -> Result<IntervalRep
         return Err(IntervalError::CellBudgetExceeded);
     }
 
-    let source_grid_canonical_bytes = grid.canonical_bytes()?;
     let (authority, verified_source_samples, lipschitz_q32) =
         if grid.semantics() == FieldSemantics::ExactAnalyticSdf {
             let field = decode_exact_analytic_descriptor(grid.descriptor_bytes())?;
@@ -329,7 +328,10 @@ pub fn classify(grid: &ScalarGrid, limits: IntervalLimits) -> Result<IntervalRep
     let record_bytes = total_cells
         .checked_mul(CELL_CLASSIFICATION_ENCODED_LEN)
         .ok_or(IntervalError::SizeOverflow)?;
-    let receipt_bytes = expected_receipt_len(source_grid_canonical_bytes.len() as u64, total_cells)?;
+    let in_memory_cell_bytes = total_cells
+        .checked_mul(std::mem::size_of::<CellClassification>() as u64)
+        .ok_or(IntervalError::SizeOverflow)?;
+    let receipt_bytes = expected_receipt_len(grid_limits.canonical_bytes, total_cells)?;
     if receipt_bytes > limits.max_receipt_bytes {
         return Err(IntervalError::ReceiptBudgetExceeded);
     }
@@ -337,7 +339,7 @@ pub fn classify(grid: &ScalarGrid, limits: IntervalLimits) -> Result<IntervalRep
     // records and a second copy of source+records while emitting the receipt.
     let working_payload_estimate_bytes = grid_limits.sample_bytes
         .checked_add(grid_limits.canonical_bytes)
-        .and_then(|value| value.checked_add(record_bytes))
+        .and_then(|value| value.checked_add(in_memory_cell_bytes))
         .and_then(|value| value.checked_add(receipt_bytes))
         .ok_or(IntervalError::SizeOverflow)?;
     if working_payload_estimate_bytes > limits.max_working_payload_bytes {
@@ -353,6 +355,7 @@ pub fn classify(grid: &ScalarGrid, limits: IntervalLimits) -> Result<IntervalRep
         0
     };
 
+    let source_grid_canonical_bytes = grid.canonical_bytes()?;
     let cell_count = usize::try_from(total_cells).map_err(|_| IntervalError::SizeOverflow)?;
     let mut cells = Vec::new();
     cells.try_reserve_exact(cell_count).map_err(|_| IntervalError::AllocationFailed)?;
@@ -517,8 +520,7 @@ fn decode_exact_analytic_descriptor(bytes: &[u8]) -> Result<AnalyticField, Inter
         7 => {
             let mut normal_q30 = [0_i64; 3];
             for value in &mut normal_q30 {
-                *value = read_i64(bytes, cursor)?;
-                cursor += 8;
+                *value = read_i64(bytes, &mut cursor)?;
             }
             AnalyticField::Plane {
                 normal_q30,
@@ -591,7 +593,7 @@ fn expected_receipt_len(source_len: u64, cell_count: u64) -> Result<u64, Interva
     8_u64
         .checked_add(2 + 4)
         .and_then(|value| value.checked_add(source_len))
-        .and_then(|value| value.checked_add(34))
+        .and_then(|value| value.checked_add(33))
         .and_then(|value| value.checked_add(3 * 4 + 8 * 9))
         .and_then(|value| value.checked_add(cell_count.checked_mul(CELL_CLASSIFICATION_ENCODED_LEN)?))
         .ok_or(IntervalError::SizeOverflow)
@@ -637,7 +639,7 @@ fn read_u16(bytes: &[u8], offset: usize) -> Result<u16, IntervalError> {
 }
 
 fn read_i64(bytes: &[u8], offset: &mut usize) -> Result<i64, IntervalError> {
-    let end = offset.checked_add(8).ok_or(IntervalError::SizeOverflow)?;
+    let end = (*offset).checked_add(8).ok_or(IntervalError::SizeOverflow)?;
     let slice = bytes.get(*offset..end).ok_or(IntervalError::ExactDescriptorMalformed)?;
     *offset = end;
     Ok(i64::from_le_bytes(slice.try_into().map_err(|_| IntervalError::ExactDescriptorMalformed)?))
