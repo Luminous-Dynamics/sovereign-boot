@@ -67,19 +67,20 @@ Limits are checked before allocating the sample buffer or canonical receipt. The
 
 ## Tests authored
 
-The source contains 16 authored unit tests covering:
+The source contains 18 authored unit tests covering:
 - sphere, box, oriented box, capsule, torus, capped cylinder and plane distance values;
 - unit quaternion/normal validation;
-- per-field descriptor byte lengths;
+- per-field descriptor byte lengths and exact canonical header/payload size;
 - negative-inside/positive-outside and nonzero isovalue binding;
 - first-axis-fastest sample ordering;
 - stable canonical bytes and field-parameter binding;
 - preserving mesh-derived and approximate semantic tags;
 - sample/descriptor budget rejection;
-- int32 distance-quantization overflow;
+- int32 distance-quantization overflow and checked Q30 norm accumulation;
+- nonzero-isovalue subtraction and receipt binding;
 - exact canonical header/payload length.
 
-These tests are authored, not compiled or executed. The current environment has no Rust toolchain; no test pass or performance result is claimed.
+All 18 tests are authored, not compiled or executed. The current environment has no Rust toolchain; no test pass or performance result is claimed.
 
 ## Benchmark protocol
 
