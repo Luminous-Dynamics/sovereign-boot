@@ -1175,7 +1175,7 @@ mod tests {
             max_leaf_cells: 512,
             max_working_payload_bytes: 32 * 1024 * 1024,
             max_receipt_bytes: 16 * 1024 * 1024,
-            max_balance_pair_checks: 4_000_000,
+            max_balance_pair_checks: 16_000_000,
         }
     }
 
@@ -1216,12 +1216,116 @@ mod tests {
     }
 
     #[test]
-    fn dyadic_domain_rejects_nondivisible_fixed_point_spans() {
+    fn nondivisible_fixed_point_spans_use_conservative_ceil_cell_widths() {
         let grid = grid([2, 2, 2], [-2_000_000; 3], [2_000_001; 3]);
+        let report = build_adaptive_octree(&grid, small_config()).unwrap();
+        assert!(report.metrics().split_count > 0);
+        assert!(report.samples().contains_key(&[-2_000_000; 3]));
+        assert!(report.samples().contains_key(&[2_000_001; 3]));
+        for leaf in report.leaves() {
+            assert!(leaf.classification.lower_bound_microunits
+                <= leaf.classification.upper_bound_microunits);
+        }
+    }
+
+    #[test]
+    fn domain_smaller_than_one_max_depth_tick_rejects() {
+        let grid = grid([2, 2, 2], [0; 3], [7; 3]);
         assert_eq!(
             build_adaptive_octree(&grid, small_config()),
             Err(AdaptiveOctreeError::NonDyadicDomain)
         );
+    }
+
+    #[test]
+    fn canonical_receipt_estimate_matches_actual_serialized_bytes() {
+        let grid = grid([2, 2, 2], [-2_000_000; 3], [2_000_000; 3]);
+        let report = build_adaptive_octree(&grid, small_config()).unwrap();
+        let bytes = report.canonical_bytes().unwrap();
+        assert_eq!(bytes.len() as u64, report.metrics().canonical_receipt_estimate_bytes);
+        assert!(bytes.starts_with(&ADAPTIVE_OCTREE_MAGIC));
+    }
+
+    #[test]
+    fn morton_keys_sort_spatially_across_different_depths() {
+        let root = MortonKey::root();
+        let early_subtree = root.child(0).unwrap().child(7).unwrap();
+        let later_sibling = root.child(1).unwrap();
+        assert!(early_subtree < later_sibling);
+    }
+
+    #[test]
+    fn balance_check_budget_exhaustion_is_explicit_and_not_zero_violations() {
+        let grid = grid([2, 2, 2], [-2_000_000; 3], [2_000_000; 3]);
+        let mut config = small_config();
+        config.max_balance_pair_checks = 1;
+        let report = build_adaptive_octree(&grid, config).unwrap();
+        assert_eq!(report.balance_status(), BalanceStatus::BalanceIncomplete);
+        assert_eq!(report.metrics().remaining_2_to_1_violations, u64::MAX);
+    }
+
+    #[test]
+    fn unresolved_surface_remains_visible_when_sample_budget_stops_refinement() {
+        let grid = grid([2, 2, 2], [-2_000_000; 3], [2_000_000; 3]);
+        let mut config = small_config();
+        config.max_unique_samples = 27;
+        let report = build_adaptive_octree(&grid, config).unwrap();
+        assert!(report.metrics().leaves_budget_stopped > 0);
+        assert!(report.leaves().any(|leaf| {
+            leaf.stop == LeafStop::BudgetStopped
+                && leaf.classification.status == CellStatus::SurfacePossible
+        }));
+    }
+
+    #[test]
+    fn approximate_field_label_cannot_authorize_adaptive_sampling() {
+        let spec = GridSpec {
+            minimum_microunits: [-2_000_000; 3],
+            maximum_microunits: [2_000_000; 3],
+            dimensions: [2, 2, 2],
+            max_samples: MAX_SAMPLES,
+            max_descriptor_bytes: 1_048_576,
+            max_canonical_bytes: MAX_CANONICAL_BYTES,
+            max_working_payload_bytes: 32 * 1024 * 1024,
+        };
+        let approximate = ScalarGrid::from_samples(
+            spec,
+            ouroboros_scalar_grid::FieldSemantics::ApproximateAnalyticField,
+            vec![1],
+            0,
+            vec![1; 8],
+        )
+        .unwrap();
+        assert_eq!(
+            build_adaptive_octree(&approximate, small_config()),
+            Err(AdaptiveOctreeError::Interval(IntervalError::FieldNotCertifiable))
+        );
+    }
+
+    #[test]
+    fn exact_zero_lattice_vertices_never_become_certified_empty_space() {
+        let spec = GridSpec {
+            minimum_microunits: [-2_000_000, -2_000_000, 0],
+            maximum_microunits: [2_000_000, 2_000_000, 2_000_000],
+            dimensions: [2, 2, 2],
+            max_samples: MAX_SAMPLES,
+            max_descriptor_bytes: 1_048_576,
+            max_canonical_bytes: MAX_CANONICAL_BYTES,
+            max_working_payload_bytes: 32 * 1024 * 1024,
+        };
+        let plane = ScalarGrid::sample_exact(
+            spec,
+            AnalyticField::Plane {
+                normal_q30: [0, 0, 1_i64 << 30],
+                offset_microunits: 0,
+            },
+            0,
+        )
+        .unwrap();
+        let report = build_adaptive_octree(&plane, small_config()).unwrap();
+        assert!(report.samples().values().any(|value| *value == 0));
+        assert!(report.leaves().any(|leaf| leaf.classification.status == CellStatus::SurfacePossible));
+        assert_eq!(report.metrics().leaves_certified_outside, 0);
     }
 
     #[test]
