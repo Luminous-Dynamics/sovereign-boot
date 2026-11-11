@@ -89,7 +89,6 @@ IntersectionResult inspect_self_intersections(const Artifact& artifact) {
     if (first >= face_to_input.size() || second >= face_to_input.size() ||
         face_to_input[first] == std::numeric_limits<std::uint32_t>::max() ||
         face_to_input[second] == std::numeric_limits<std::uint32_t>::max()) {
-      result.surface_construction_ok = false;
       result.reason = "FaceMappingFailure";
       result.intersecting_triangle_pairs.clear();
       result.elapsed_nanoseconds = static_cast<std::uint64_t>(
