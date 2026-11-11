@@ -144,6 +144,31 @@ void run() {
   // sign-changing edge count follows the three grid dimensions and active cell count.
   bad_metrics[metrics_section + 12 + 4] = 2;
   expect_error(std::move(bad_metrics), "InvalidMetrics");
+
+  const std::size_t source_start = 14;
+  const auto fixture_length = static_cast<std::size_t>(
+      static_cast<std::uint16_t>(bytes[source_start + 10]) |
+      (static_cast<std::uint16_t>(bytes[source_start + 11]) << 8U));
+  const std::size_t descriptor_start =
+      source_start + 8 + 2 + 2 + fixture_length + 4;
+
+  auto bad_field_magic = bytes;
+  bad_field_magic[descriptor_start] = 'X';
+  expect_error(std::move(bad_field_magic), "InvalidSourceGrid");
+
+  auto bad_field_tag = bytes;
+  bad_field_tag[descriptor_start + 10] = 9;
+  expect_error(std::move(bad_field_tag), "InvalidSourceGrid");
+
+  auto grid_metrics_mismatch = bytes;
+  grid_metrics_mismatch[metrics_section] = 4;
+  expect_error(std::move(grid_metrics_mismatch), "GridDimensionMismatch");
+
+  auto bad_sample_count = bytes;
+  const std::size_t source_sample_count =
+      source_start + 8 + 2 + 2 + fixture_length + 4 + 123 + 12 + 4 + 48 + 8;
+  bad_sample_count[source_sample_count] = 26;
+  expect_error(std::move(bad_sample_count), "InvalidSourceGrid");
 }
 
 }  // namespace
