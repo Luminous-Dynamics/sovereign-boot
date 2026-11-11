@@ -1,0 +1,128 @@
+{
+  "schema_version": 1,
+  "trial_id": "SYNTHETIC-EXAMPLE-ONLY",
+  "trial_index": 0,
+  "warmup": false,
+  "pairing_block_id": "EXAMPLE-NOT-A-REAL-PAIR",
+  "benchmark_id": "ouroboros-surface-extraction-v1",
+  "method": {
+    "method_id": "marching-cubes-uniform",
+    "method_version": "example-placeholder",
+    "implementation_commit": null,
+    "implementation_repository": null,
+    "binary_digest_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "parameter_digest_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "dependency_lock_digest_sha256": null,
+    "parameters": {
+      "resolution": [
+        32,
+        32,
+        32
+      ],
+      "isovalue_microunits": 0
+    }
+  },
+  "source": {
+    "stratum": "signed_exact_analytic",
+    "field_semantics": "signed_sdf",
+    "source_kind": "exact_analytic",
+    "source_geometry_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "field_descriptor_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "canonical_sample_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "coordinate_frame_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "distance_unit": "normalized_major_radius",
+    "isovalue": 0,
+    "bounds_min": [
+      -1,
+      -1,
+      -1
+    ],
+    "bounds_max": [
+      1,
+      1,
+      1
+    ],
+    "input_mode": "canonical_frozen_samples",
+    "sample_encoding": "OUROSGD1",
+    "sample_dimensions": [
+      32,
+      32,
+      32
+    ],
+    "field_evaluator_commit": null,
+    "source_dataset_id": "synthetic-example"
+  },
+  "information_budget": {
+    "wrapper_observed": {
+      "distance_value_evaluations": 32768,
+      "gradient_evaluations": 0,
+      "projection_evaluations": 0,
+      "neural_forward_passes": 0,
+      "ray_samples": 0,
+      "unique_distance_sample_count": 32768,
+      "source_samples_supplied": 32768,
+      "adaptive_site_insertions": 0,
+      "local_update_count": 0,
+      "query_accounting_complete": false
+    },
+    "method_reported": {
+      "distance_value_evaluations": null,
+      "gradient_evaluations": null,
+      "projection_evaluations": null,
+      "reported_query_time_ns": null
+    },
+    "accounting_notes": "SYNTHETIC EXAMPLE: hashes and counts are placeholders; this record is intentionally incomplete."
+  },
+  "host": {
+    "cpu_model": "SYNTHETIC-EXAMPLE",
+    "logical_cpu_count": 1,
+    "memory_bytes": 1,
+    "os": "not-measured",
+    "kernel": "not-measured",
+    "gpu_models": [],
+    "gpu_memory_bytes": null,
+    "graphics_driver": null,
+    "cuda_runtime": null,
+    "power_profile": null
+  },
+  "build": {
+    "compiler_or_runtime": "not-run",
+    "compiler_version": null,
+    "build_profile": "example",
+    "build_flags_digest_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "container_or_nix_digest_sha256": null
+  },
+  "execution": {
+    "total_wall_ns": 0,
+    "cpu_time_ns": 0,
+    "gpu_time_ns": null,
+    "peak_rss_bytes": 0,
+    "peak_gpu_memory_bytes": null,
+    "allocation_bytes": null,
+    "phase_wall_ns": {}
+  },
+  "output": {
+    "mesh_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "vertex_count": 0,
+    "face_count": 0,
+    "triangle_count": 0,
+    "quad_count": 0,
+    "mesh_bytes": 0,
+    "connected_component_count": null,
+    "boundary_loop_count": null
+  },
+  "quality_metrics": [],
+  "audits": {
+    "combinatorial_topology": "not_evaluated",
+    "closed_surface": "not_evaluated",
+    "orientation": "not_evaluated",
+    "degeneracy": "not_evaluated",
+    "self_intersection": "not_evaluated",
+    "non_manifold_edge_count": null,
+    "non_manifold_vertex_count": null,
+    "boundary_edge_count": null,
+    "intersecting_face_pair_count": null,
+    "audit_receipt_sha256": null
+  },
+  "trial_status": "incomplete"
+}

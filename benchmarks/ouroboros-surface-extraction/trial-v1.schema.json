@@ -1,0 +1,725 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Luminous-Dynamics/sovereign-boot/blob/research/ouroboros-surface-extraction-benchmark-v1/benchmarks/ouroboros-surface-extraction/trial-v1.schema.json",
+  "title": "Ouroboros surface-extraction trial v1",
+  "description": "One raw benchmark trial. Query counts observed at the outer source boundary are authoritative; method-reported counts are separate diagnostics.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "trial_id",
+    "trial_index",
+    "warmup",
+    "benchmark_id",
+    "method",
+    "source",
+    "information_budget",
+    "host",
+    "build",
+    "execution",
+    "output",
+    "quality_metrics",
+    "audits",
+    "trial_status"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "trial_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "trial_index": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "warmup": {
+      "type": "boolean"
+    },
+    "pairing_block_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "benchmark_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "method": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method_id",
+        "method_version",
+        "implementation_commit",
+        "parameter_digest_sha256"
+      ],
+      "properties": {
+        "method_id": {
+          "type": "string"
+        },
+        "method_version": {
+          "type": "string"
+        },
+        "implementation_commit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "implementation_repository": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uri"
+        },
+        "binary_digest_sha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "parameter_digest_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "dependency_lock_digest_sha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "parameters": {
+          "type": "object"
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stratum",
+        "field_semantics",
+        "source_kind",
+        "source_geometry_sha256",
+        "field_descriptor_sha256",
+        "coordinate_frame_sha256",
+        "distance_unit",
+        "isovalue",
+        "bounds_min",
+        "bounds_max",
+        "input_mode"
+      ],
+      "properties": {
+        "stratum": {
+          "enum": [
+            "signed_exact_analytic",
+            "signed_mesh_derived",
+            "signed_approximate_analytic",
+            "signed_neural",
+            "unsigned_exact_analytic",
+            "unsigned_mesh_derived",
+            "unsigned_point_cloud",
+            "unsigned_neural"
+          ]
+        },
+        "field_semantics": {
+          "enum": [
+            "signed_sdf",
+            "unsigned_distance",
+            "occupancy"
+          ]
+        },
+        "source_kind": {
+          "enum": [
+            "exact_analytic",
+            "mesh_derived",
+            "approximate_analytic",
+            "measured_scan",
+            "point_cloud",
+            "neural_implicit"
+          ]
+        },
+        "source_geometry_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "field_descriptor_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "canonical_sample_sha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "coordinate_frame_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "distance_unit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "isovalue": {
+          "type": "number"
+        },
+        "bounds_min": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "bounds_max": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "input_mode": {
+          "enum": [
+            "canonical_frozen_samples",
+            "continuous_evaluator",
+            "neural_model",
+            "mesh_to_distance",
+            "point_cloud_to_distance"
+          ]
+        },
+        "sample_encoding": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sample_dimensions": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "field_evaluator_commit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_dataset_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "information_budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "wrapper_observed",
+        "method_reported"
+      ],
+      "properties": {
+        "wrapper_observed": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "distance_value_evaluations",
+            "gradient_evaluations",
+            "projection_evaluations",
+            "neural_forward_passes",
+            "ray_samples"
+          ],
+          "properties": {
+            "distance_value_evaluations": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "gradient_evaluations": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "projection_evaluations": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "neural_forward_passes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "ray_samples": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "unique_distance_sample_count": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "source_samples_supplied": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "adaptive_site_insertions": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "local_update_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "query_accounting_complete": {
+              "type": "boolean"
+            }
+          }
+        },
+        "method_reported": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "distance_value_evaluations": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "gradient_evaluations": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "projection_evaluations": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "reported_query_time_ns": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            }
+          }
+        },
+        "accounting_notes": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "host": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cpu_model",
+        "logical_cpu_count",
+        "memory_bytes",
+        "os",
+        "kernel"
+      ],
+      "properties": {
+        "cpu_model": {
+          "type": "string"
+        },
+        "logical_cpu_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "memory_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "gpu_models": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "gpu_memory_bytes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "os": {
+          "type": "string"
+        },
+        "kernel": {
+          "type": "string"
+        },
+        "graphics_driver": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cuda_runtime": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "power_profile": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "compiler_or_runtime",
+        "build_profile",
+        "build_flags_digest_sha256"
+      ],
+      "properties": {
+        "compiler_or_runtime": {
+          "type": "string"
+        },
+        "compiler_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "build_profile": {
+          "type": "string"
+        },
+        "build_flags_digest_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "container_or_nix_digest_sha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total_wall_ns",
+        "cpu_time_ns",
+        "peak_rss_bytes",
+        "phase_wall_ns"
+      ],
+      "properties": {
+        "total_wall_ns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cpu_time_ns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "gpu_time_ns": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "peak_rss_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "peak_gpu_memory_bytes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "allocation_bytes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "phase_wall_ns": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mesh_sha256",
+        "vertex_count",
+        "face_count",
+        "triangle_count",
+        "quad_count",
+        "mesh_bytes"
+      ],
+      "properties": {
+        "mesh_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "vertex_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "face_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "triangle_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "quad_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "mesh_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "connected_component_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "boundary_loop_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        }
+      }
+    },
+    "quality_metrics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "metric_id",
+          "value",
+          "unit",
+          "normalization",
+          "sample_count",
+          "implementation_digest_sha256"
+        ],
+        "properties": {
+          "metric_id": {
+            "enum": [
+              "symmetric_l2_chamfer",
+              "hausdorff_bidirectional",
+              "hausdorff_max",
+              "edge_chamfer_l2",
+              "boundary_curve_chamfer",
+              "non_manifold_chamfer",
+              "normal_angle_degrees",
+              "landmark_error",
+              "source_field_residual",
+              "thin_sheet_recall",
+              "feature_line_displacement",
+              "triangle_quality",
+              "topology_euler_error"
+            ]
+          },
+          "value": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "status": {
+            "enum": [
+              "measured",
+              "not_applicable",
+              "not_available",
+              "incomplete"
+            ]
+          },
+          "unit": {
+            "type": "string"
+          },
+          "normalization": {
+            "type": "string"
+          },
+          "sample_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "random_seed": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "implementation_digest_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "audits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "combinatorial_topology",
+        "closed_surface",
+        "orientation",
+        "degeneracy",
+        "self_intersection"
+      ],
+      "properties": {
+        "combinatorial_topology": {
+          "enum": [
+            "pass",
+            "fail",
+            "not_evaluated",
+            "incomplete"
+          ]
+        },
+        "closed_surface": {
+          "enum": [
+            "pass",
+            "fail",
+            "not_evaluated",
+            "incomplete",
+            "not_applicable"
+          ]
+        },
+        "orientation": {
+          "enum": [
+            "pass",
+            "fail",
+            "not_evaluated",
+            "incomplete",
+            "not_applicable"
+          ]
+        },
+        "degeneracy": {
+          "enum": [
+            "pass",
+            "fail",
+            "not_evaluated",
+            "incomplete"
+          ]
+        },
+        "self_intersection": {
+          "enum": [
+            "no_self_intersection",
+            "self_intersection_found",
+            "not_evaluated",
+            "incomplete",
+            "invalid_input"
+          ]
+        },
+        "non_manifold_edge_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "non_manifold_vertex_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "boundary_edge_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "intersecting_face_pair_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "audit_receipt_sha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "trial_status": {
+      "enum": [
+        "completed",
+        "failed",
+        "incomplete",
+        "unsupported"
+      ]
+    }
+  }
+}
