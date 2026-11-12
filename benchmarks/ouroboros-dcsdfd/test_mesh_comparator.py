@@ -353,21 +353,46 @@ class DualContourReceiptTests(unittest.TestCase):
 
     def test_reference_run_rejects_artifact_path_escape(self):
         run_dir = Path(tempfile.mkdtemp())
-        self.addCleanup(lambda: __import__("shutil").rmtree(run_dir.parent, ignore_errors=True))
+        self.addCleanup(lambda: __import__("shutil").rmtree(run_dir, ignore_errors=True))
         vertices = np.array(
             [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
             dtype=np.float64,
         )
         quads = np.array([[0, 1, 2, 0]], dtype=np.int64)
         manifest = self.write_reference_run_fixture(run_dir, vertices, quads)
-        outside = run_dir.parent / "outside.npy"
+        outside = run_dir.parent / f"{run_dir.name}-outside.npy"
+        self.addCleanup(outside.unlink, missing_ok=True)
         np.save(outside, vertices)
-        manifest["result"]["vertices_file"] = "../outside.npy"
+        manifest["result"]["vertices_file"] = f"../{outside.name}"
         (run_dir / "run-v1.json").write_text(
             __import__("json").dumps(manifest), encoding="utf-8"
         )
         with self.assertRaisesRegex(compare.ComparisonError, "simple basename"):
             compare.load_reference_run(run_dir, np)
+
+    def test_reference_run_rejects_malformed_input_record_type(self):
+        run_dir = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(run_dir, ignore_errors=True))
+        vertices = np.array(
+            [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            dtype=np.float64,
+        )
+        quads = np.array([[0, 1, 2, 0]], dtype=np.int64)
+        manifest = self.write_reference_run_fixture(run_dir, vertices, quads)
+        manifest["input"] = []
+        (run_dir / "run-v1.json").write_text(
+            __import__("json").dumps(manifest), encoding="utf-8"
+        )
+        with self.assertRaisesRegex(compare.ComparisonError, "input record"):
+            compare.load_reference_run(run_dir, np)
+
+    def test_lightweight_topology_summary_has_a_preflight_work_limit(self):
+        vertices = np.zeros((3, 3), dtype=np.float64)
+        triangles = np.zeros(
+            (compare.MAX_TOPOLOGY_TRIANGLES + 1, 3), dtype=np.int64
+        )
+        with self.assertRaisesRegex(compare.ComparisonError, "work limit"):
+            compare.topology_summary(vertices, triangles, np, 0.0)
 
     def test_reference_input_binding_includes_descriptor_geometry_and_grid_metadata(self):
         grid_path = self.write_bytes(make_grid())
