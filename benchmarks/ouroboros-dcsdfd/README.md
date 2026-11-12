@@ -55,7 +55,7 @@ python benchmarks/ouroboros-dcsdfd/reference_adapter.py \\
 Fixed-seed-patched mode (working tree must still report the pinned commit):
 
 \`\`\`sh
-git apply benchmarks/ouroboros-dcsdfd/determinize-gpytoolbox.patch
+git -C /path/to/gpytoolbox apply /path/to/sovereign-boot/benchmarks/ouroboros-dcsdfd/determinize-gpytoolbox.patch
 python benchmarks/ouroboros-dcsdfd/reference_adapter.py \\
   --grid /path/to/face-smooth-32.ourogrid \\
   --gpytoolbox-root /path/to/gpytoolbox \\
