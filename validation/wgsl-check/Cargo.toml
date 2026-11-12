@@ -1,0 +1,13 @@
+[package]
+name = "visual-wgsl-check"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "AGPL-3.0-or-later"
+description = "Offline WGSL parser and validator for Luminous Visual Genome"
+
+[dependencies]
+naga = { version = "=27.0.3", features = ["wgsl-in"] }
+
+[lints.rust]
+unsafe_code = "forbid"

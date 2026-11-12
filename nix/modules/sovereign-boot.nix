@@ -6,6 +6,7 @@
   config,
   pkgs,
   lib,
+  utils,
   inputs ? null,
   ...
 }:
@@ -448,7 +449,13 @@ in
       serviceConfig = {
         Type = "simple";
         ExecCondition = rendererMayStart;
-        ExecStart = "${rendererPkg}/bin/quicken-fb --receipt ${runtimeDir}/boot-state.json --lineage ${runtimeDir}/lineage.json --handoff-path ${runtimeDir}/compositor-handoff --device ${lib.escapeShellArg cfg.drmDevice}";
+        ExecStart = utils.escapeSystemdExecArgs [
+          "${rendererPkg}/bin/quicken-fb"
+          "--receipt" (runtimeDir + "/boot-state.json")
+          "--lineage" (runtimeDir + "/lineage.json")
+          "--handoff-path" (runtimeDir + "/compositor-handoff")
+          "--device" cfg.drmDevice
+        ];
         User = "root";
         SupplementaryGroups = [
           "video"
@@ -463,6 +470,9 @@ in
         ProtectKernelModules = true;
         ProtectControlGroups = true;
         RestrictNamespaces = true;
+        # This renderer only uses local device and filesystem interfaces.
+        # It has no IP transport requirement during boot or recovery.
+        RestrictAddressFamilies = [ "AF_UNIX" ];
         LockPersonality = true;
         PrivateTmp = true;
       };

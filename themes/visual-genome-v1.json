@@ -1,0 +1,478 @@
+{
+  "schema_version": 1,
+  "status": "ten_theme_ids_palettes_growth_profiles_and_ten_distinct_cpu_scene_families_implemented; manifest_generates_typed_boot_contract_and_motion_budgets; exact_head_compilation_and_visual_capture_qualification_pending",
+  "description": "Visual Genome v1. Ten stable themes map to distinct CPU scene families and bounded growth profiles. Motion modes specify reduced, low-power, balanced and cinematic budgets. CI generates typed CPU contracts from the manifest; the boot renderer does not parse JSON at runtime. Validation tools read this manifest directly; desktop GPU and host integration remain separate milestones.",
+  "renderer_policy": {
+    "boot": "cpu-reference-only",
+    "desktop": "wgpu-vulkan-preferred",
+    "lockscreen": "desktop-background-adapter-only",
+    "universal_fallback": "static",
+    "remote_assets": false,
+    "executable_theme_scripts": false,
+    "network_access_from_renderer": false,
+    "full_screen_flash": false
+  },
+  "motion_profiles": {
+    "reduced": {
+      "motion_scale": 0,
+      "particle_budget_scale": 0,
+      "frame_interval_ms": 250,
+      "transition_durations_seconds": [
+        0,
+        0,
+        0.25
+      ],
+      "crossfade_ms": 250
+    },
+    "low-power": {
+      "motion_scale": 0.25,
+      "particle_budget_scale": 0.25,
+      "frame_interval_ms": 67,
+      "transition_durations_seconds": [
+        2,
+        0.2,
+        0.75
+      ],
+      "crossfade_ms": 400
+    },
+    "balanced": {
+      "motion_scale": 0.65,
+      "particle_budget_scale": 0.6,
+      "frame_interval_ms": 33,
+      "transition_durations_seconds": [
+        2.5,
+        0.35,
+        1
+      ],
+      "crossfade_ms": 550
+    },
+    "cinematic": {
+      "motion_scale": 1,
+      "particle_budget_scale": 1,
+      "frame_interval_ms": 33,
+      "transition_durations_seconds": [
+        3,
+        0.5,
+        1.5
+      ],
+      "crossfade_ms": 750
+    }
+  },
+  "themes": [
+    {
+      "id": "mycelial-genesis",
+      "name": "Mycelial Genesis",
+      "implementation_status": "cpu_scene_palette_and_growth_profile_implemented; compile_tests_and_visual_capture_pending",
+      "art_direction": "Procedural mycelium awakening from a dark substrate",
+      "palette": {
+        "background": "#10261E",
+        "primary": "#7EC8A0",
+        "secondary": "#5A6B5E",
+        "node": "#E8C547",
+        "convergence": "#C8EAD7"
+      },
+      "motion": {
+        "growth": 1,
+        "pulse": 0.8,
+        "parallax": 0
+      },
+      "density": {
+        "max_branches": 8192,
+        "max_particles": 0
+      },
+      "surfaces": [
+        "boot",
+        "desktop",
+        "lockscreen"
+      ],
+      "reduced_motion_variant": "static-network",
+      "live_data": false,
+      "growth_profile": {
+        "initial_branch_min": 4,
+        "initial_branch_variants": 5,
+        "branch_length_scale": 1,
+        "growth_speed": 30,
+        "min_fork_angle_degrees": 15,
+        "max_fork_angle_degrees": 45,
+        "min_children": 1,
+        "max_children": 3,
+        "pulse_gain": 0.8
+      },
+      "scene_family": "mycelial-network",
+      "shader_variant": 0
+    },
+    {
+      "id": "solar-commons",
+      "name": "Solar Commons",
+      "implementation_status": "cpu_scene_palette_and_growth_profile_implemented; compile_tests_and_visual_capture_pending",
+      "art_direction": "Solarpunk abundance, warm daylight, living green, terracotta",
+      "palette": {
+        "background": "#20180F",
+        "primary": "#F6BD60",
+        "secondary": "#84A98C",
+        "node": "#F28482",
+        "convergence": "#F7E9CE"
+      },
+      "motion": {
+        "growth": 0.87,
+        "pulse": 0.7,
+        "parallax": 0.1
+      },
+      "density": {
+        "max_branches": 8192,
+        "max_particles": 128
+      },
+      "surfaces": [
+        "boot",
+        "desktop",
+        "lockscreen"
+      ],
+      "reduced_motion_variant": "still-solar-horizon",
+      "live_data": false,
+      "growth_profile": {
+        "initial_branch_min": 6,
+        "initial_branch_variants": 3,
+        "branch_length_scale": 1.2,
+        "growth_speed": 26,
+        "min_fork_angle_degrees": 20,
+        "max_fork_angle_degrees": 55,
+        "min_children": 1,
+        "max_children": 2,
+        "pulse_gain": 0.7
+      },
+      "scene_family": "solar-canopy",
+      "shader_variant": 1
+    },
+    {
+      "id": "cosmic-atlas",
+      "name": "Cosmic Atlas",
+      "implementation_status": "cpu_scene_palette_and_growth_profile_implemented; compile_tests_and_visual_capture_pending",
+      "art_direction": "Deep-space cartography, orbital arcs, nebula layers, star fields",
+      "palette": {
+        "background": "#070B1E",
+        "primary": "#7AA2F7",
+        "secondary": "#A78BFA",
+        "node": "#F0ABFC",
+        "convergence": "#DCE7FF"
+      },
+      "motion": {
+        "growth": 0.57,
+        "pulse": 0.5,
+        "parallax": 0.15
+      },
+      "density": {
+        "max_branches": 8192,
+        "max_particles": 512
+      },
+      "surfaces": [
+        "desktop",
+        "lockscreen"
+      ],
+      "reduced_motion_variant": "static-star-map",
+      "live_data": false,
+      "growth_profile": {
+        "initial_branch_min": 4,
+        "initial_branch_variants": 3,
+        "branch_length_scale": 1,
+        "growth_speed": 17,
+        "min_fork_angle_degrees": 26,
+        "max_fork_angle_degrees": 70,
+        "min_children": 1,
+        "max_children": 2,
+        "pulse_gain": 0.5
+      },
+      "scene_family": "cosmic-cartography",
+      "shader_variant": 2
+    },
+    {
+      "id": "oceanic-intelligence",
+      "name": "Oceanic Intelligence",
+      "implementation_status": "cpu_scene_palette_and_growth_profile_implemented; compile_tests_and_visual_capture_pending",
+      "art_direction": "Bioluminescent deep sea, slow fluid fields, caustic light",
+      "palette": {
+        "background": "#031F2D",
+        "primary": "#4DD0E1",
+        "secondary": "#008A98",
+        "node": "#B2F7EF",
+        "convergence": "#D7FAF7"
+      },
+      "motion": {
+        "growth": 0.47,
+        "pulse": 0.65,
+        "parallax": 0.08
+      },
+      "density": {
+        "max_branches": 8192,
+        "max_particles": 768
+      },
+      "surfaces": [
+        "desktop",
+        "lockscreen"
+      ],
+      "reduced_motion_variant": "static-abyss",
+      "live_data": false,
+      "growth_profile": {
+        "initial_branch_min": 5,
+        "initial_branch_variants": 3,
+        "branch_length_scale": 0.75,
+        "growth_speed": 14,
+        "min_fork_angle_degrees": 8,
+        "max_fork_angle_degrees": 28,
+        "min_children": 1,
+        "max_children": 2,
+        "pulse_gain": 0.65
+      },
+      "scene_family": "ocean-waves",
+      "shader_variant": 3
+    },
+    {
+      "id": "prism-of-evidence",
+      "name": "Prism of Evidence",
+      "implementation_status": "cpu_scene_palette_and_growth_profile_implemented; compile_tests_and_visual_capture_pending",
+      "art_direction": "Precise graph lattice, provenance paths, spectral but restrained highlights",
+      "palette": {
+        "background": "#111827",
+        "primary": "#7DD3FC",
+        "secondary": "#C4B5FD",
+        "node": "#FDE68A",
+        "convergence": "#F1F5F9"
+      },
+      "motion": {
+        "growth": 0.53,
+        "pulse": 0.45,
+        "parallax": 0
+      },
+      "density": {
+        "max_branches": 8192,
+        "max_particles": 256
+      },
+      "surfaces": [
+        "desktop"
+      ],
+      "reduced_motion_variant": "static-provenance-lattice",
+      "live_data": false,
+      "growth_profile": {
+        "initial_branch_min": 6,
+        "initial_branch_variants": 2,
+        "branch_length_scale": 0.9,
+        "growth_speed": 16,
+        "min_fork_angle_degrees": 28,
+        "max_fork_angle_degrees": 42,
+        "min_children": 1,
+        "max_children": 2,
+        "pulse_gain": 0.45
+      },
+      "scene_family": "epistemic-lattice",
+      "shader_variant": 4
+    },
+    {
+      "id": "quantum-garden",
+      "name": "Quantum Garden",
+      "implementation_status": "cpu_scene_palette_and_growth_profile_implemented; compile_tests_and_visual_capture_pending",
+      "art_direction": "Abstract possibility fields and interference-like waves; artistic metaphor only",
+      "palette": {
+        "background": "#11131D",
+        "primary": "#80CBC4",
+        "secondary": "#B39DDB",
+        "node": "#FFCC80",
+        "convergence": "#E5E7EB"
+      },
+      "motion": {
+        "growth": 0.73,
+        "pulse": 0.95,
+        "parallax": 0.12
+      },
+      "density": {
+        "max_branches": 8192,
+        "max_particles": 384
+      },
+      "surfaces": [
+        "desktop",
+        "lockscreen"
+      ],
+      "reduced_motion_variant": "static-wave-field",
+      "live_data": false,
+      "growth_profile": {
+        "initial_branch_min": 5,
+        "initial_branch_variants": 4,
+        "branch_length_scale": 1.1,
+        "growth_speed": 22,
+        "min_fork_angle_degrees": 35,
+        "max_fork_angle_degrees": 72,
+        "min_children": 1,
+        "max_children": 3,
+        "pulse_gain": 0.95
+      },
+      "scene_family": "quantum-interference",
+      "shader_variant": 5
+    },
+    {
+      "id": "aurora-sanctuary",
+      "name": "Aurora Sanctuary",
+      "implementation_status": "cpu_scene_palette_and_growth_profile_implemented; compile_tests_and_visual_capture_pending",
+      "art_direction": "Quiet aurora sheets, ample dark space, very slow motion",
+      "palette": {
+        "background": "#111C2C",
+        "primary": "#9BD9CE",
+        "secondary": "#8BA9E8",
+        "node": "#D9C2FF",
+        "convergence": "#EAF5F5"
+      },
+      "motion": {
+        "growth": 0.27,
+        "pulse": 0.4,
+        "parallax": 0.03
+      },
+      "density": {
+        "max_branches": 8192,
+        "max_particles": 192
+      },
+      "surfaces": [
+        "boot",
+        "desktop",
+        "lockscreen"
+      ],
+      "reduced_motion_variant": "still-aurora",
+      "live_data": false,
+      "growth_profile": {
+        "initial_branch_min": 4,
+        "initial_branch_variants": 3,
+        "branch_length_scale": 0.85,
+        "growth_speed": 8,
+        "min_fork_angle_degrees": 8,
+        "max_fork_angle_degrees": 24,
+        "min_children": 1,
+        "max_children": 2,
+        "pulse_gain": 0.4
+      },
+      "scene_family": "aurora-ribbons",
+      "shader_variant": 6
+    },
+    {
+      "id": "graphite-focus",
+      "name": "Graphite Focus",
+      "implementation_status": "cpu_scene_palette_and_growth_profile_implemented; compile_tests_and_visual_capture_pending",
+      "art_direction": "Minimal charcoal, fine line work, barely moving accent",
+      "palette": {
+        "background": "#15171A",
+        "primary": "#B8C0CC",
+        "secondary": "#737B87",
+        "node": "#E6E9EF",
+        "convergence": "#F5F5F5"
+      },
+      "motion": {
+        "growth": 0.13,
+        "pulse": 0.2,
+        "parallax": 0
+      },
+      "density": {
+        "max_branches": 8192,
+        "max_particles": 0
+      },
+      "surfaces": [
+        "boot",
+        "desktop",
+        "lockscreen"
+      ],
+      "reduced_motion_variant": "static-graphite",
+      "live_data": false,
+      "growth_profile": {
+        "initial_branch_min": 4,
+        "initial_branch_variants": 2,
+        "branch_length_scale": 0.65,
+        "growth_speed": 4,
+        "min_fork_angle_degrees": 18,
+        "max_fork_angle_degrees": 32,
+        "min_children": 1,
+        "max_children": 1,
+        "pulse_gain": 0.2
+      },
+      "scene_family": "graphite-minimal",
+      "shader_variant": 7
+    },
+    {
+      "id": "verdant-recovery",
+      "name": "Verdant Recovery",
+      "implementation_status": "cpu_scene_palette_and_growth_profile_implemented; compile_tests_and_visual_capture_pending",
+      "art_direction": "Calm resilient geometry for recovery, diagnostics, and rollback",
+      "palette": {
+        "background": "#0C211E",
+        "primary": "#69B99F",
+        "secondary": "#688B87",
+        "node": "#D0E8C7",
+        "convergence": "#E7F2E9"
+      },
+      "motion": {
+        "growth": 0.2,
+        "pulse": 0.25,
+        "parallax": 0
+      },
+      "density": {
+        "max_branches": 8192,
+        "max_particles": 0
+      },
+      "surfaces": [
+        "boot",
+        "desktop",
+        "lockscreen"
+      ],
+      "reduced_motion_variant": "static-recovery-mark",
+      "live_data": false,
+      "growth_profile": {
+        "initial_branch_min": 3,
+        "initial_branch_variants": 3,
+        "branch_length_scale": 0.7,
+        "growth_speed": 6,
+        "min_fork_angle_degrees": 12,
+        "max_fork_angle_degrees": 28,
+        "min_children": 1,
+        "max_children": 2,
+        "pulse_gain": 0.25
+      },
+      "scene_family": "verdant-recovery",
+      "shader_variant": 8
+    },
+    {
+      "id": "civic-dawn",
+      "name": "Civic Dawn",
+      "implementation_status": "cpu_scene_palette_and_growth_profile_implemented; compile_tests_and_visual_capture_pending",
+      "art_direction": "Plural organic clusters connected without a central ruler node",
+      "palette": {
+        "background": "#172536",
+        "primary": "#6FC7B6",
+        "secondary": "#84A1CD",
+        "node": "#F6C177",
+        "convergence": "#F4F4E9"
+      },
+      "motion": {
+        "growth": 0.53,
+        "pulse": 0.5,
+        "parallax": 0.04
+      },
+      "density": {
+        "max_branches": 8192,
+        "max_particles": 192
+      },
+      "surfaces": [
+        "boot",
+        "desktop",
+        "lockscreen"
+      ],
+      "reduced_motion_variant": "static-civic-network",
+      "live_data": false,
+      "growth_profile": {
+        "initial_branch_min": 7,
+        "initial_branch_variants": 3,
+        "branch_length_scale": 1,
+        "growth_speed": 16,
+        "min_fork_angle_degrees": 18,
+        "max_fork_angle_degrees": 48,
+        "min_children": 1,
+        "max_children": 2,
+        "pulse_gain": 0.5
+      },
+      "scene_family": "civic-commons",
+      "shader_variant": 9
+    }
+  ]
+}

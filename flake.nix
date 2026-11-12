@@ -1,5 +1,5 @@
 {
-  description = "Sovereign Boot Ecology — DRM/KMS framebuffer renderer, fail-open state machine, and Linux recovery executor for NixOS";
+  description = "Sovereign Boot Ecology — deterministic DRM/KMS boot-renderer prototype and optional NixOS lifecycle-integration module";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -27,7 +27,11 @@
             version = "0.3.4";
             src = ./crates/quicken-fb;
             cargoLock.lockFile = ./crates/quicken-fb/Cargo.lock;
-            doCheck = false;
+            # The renderer is intentionally packaged as an isolated CPU/DRM crate.
+            # Exercise its library tests and the self-contained benchmark example;
+            # neither requires a DRM device or a live desktop.
+            doCheck = true;
+            cargoTestFlags = [ "--all-targets" ];
             meta = with pkgs.lib; {
               description = "DRM/KMS bare-metal boot animation renderer";
               license = licenses.agpl3Plus;
@@ -36,7 +40,6 @@
           };
 
           default = quicken-fb;
-          spore-boot-tools = quicken-fb;
         };
 
         devShells.default = pkgs.mkShell {

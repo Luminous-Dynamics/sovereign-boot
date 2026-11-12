@@ -1,0 +1,1064 @@
+name: CPU renderer qualification
+
+on:
+  pull_request:
+    paths:
+      - "crates/quicken-fb/**"
+      - "themes/visual-genome-v1.json"
+      - "flake.nix"
+      - "Cargo.toml"
+      - "renderers/wgpu/**"
+      - "validation/wgsl-check/**"
+      - "validation/frame-audit/**"
+      - "validation/capture-audit.sh"
+      - "docs/VISUAL_BENCHMARKS.md"
+      - "docs/CAPTURE_EVIDENCE.md"
+      - "validation/wgpu-reference/**"
+      - ".github/workflows/cpu-renderer-qualification.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Pull-request GITHUB_SHA points at GitHub's synthetic merge commit. Receipts
+# must identify the reviewed PR head itself.
+env:
+  VISUAL_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+  VISUAL_BUILD_COMMIT: ${{ github.sha }}
+
+jobs:
+  isolated-cpu-renderer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Exercise capture provenance wrapper on synthetic frames
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n validation/capture-audit.sh
+
+          # Reject overlong frame lists before touching any listed path or output.
+          too_many_frames=()
+          for ((index = 0; index < 1801; index++)); do
+            too_many_frames+=("not-opened.ppm")
+          done
+          set +e
+          validation/capture-audit.sh \
+            --output-dir "$RUNNER_TEMP/frame-count-overflow" \
+            --frames "${too_many_frames[@]}" \
+            > "$RUNNER_TEMP/frame-count-overflow.log" 2>&1
+          frame_limit_status=$?
+          set -e
+          test "$frame_limit_status" -eq 2
+          grep -q "exceeds the auditor's 1,800-frame limit" "$RUNNER_TEMP/frame-count-overflow.log"
+          test ! -e "$RUNNER_TEMP/frame-count-overflow"
+          capture_dir="$RUNNER_TEMP/capture-audit-wrapper-input"
+          evidence_dir="$RUNNER_TEMP/capture-audit-wrapper-evidence"
+          mkdir -p "$capture_dir"
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/capture-audit-target"
+          printf '0\n500000000\n1000000000\n' > "$capture_dir/timestamps-ns.txt"
+          printf 'P6\n2 1\n255\n\000\000\000\000\000\000' > "$capture_dir/frame-000001.ppm"
+          printf 'P6\n2 1\n255\n\377\377\377\377\377\377' > "$capture_dir/frame-000002.ppm"
+          printf 'P6\n2 1\n255\n\000\000\000\000\000\000' > "$capture_dir/frame-000003.ppm"
+          validation/capture-audit.sh \
+            --output-dir "$evidence_dir" --fps 2 --max-gap-ms 500 \
+            --timestamps "$capture_dir/timestamps-ns.txt" \
+            --frames "$capture_dir/frame-000001.ppm" \
+                     "$capture_dir/frame-000002.ppm" \
+                     "$capture_dir/frame-000003.ppm"
+          jq -e --arg source "$VISUAL_SOURCE_COMMIT" --arg build "$VISUAL_BUILD_COMMIT" '
+            .schema == "visual-capture-provenance-v1"
+            and .source_commit == $source
+            and .build_commit == $build
+            and .input_kind == "frames"
+            and .sample_fps_assumed == null
+            and .temporal_basis == "presentation_timestamp_ns"
+            and (.timestamp_sidecar_sha256 | type == "string" and length == 64)
+            and .frame_count == 3
+            and .resolution.width == 2 and .resolution.height == 1
+            and (.frame_hash_manifest_sha256 | length == 64)
+            and (.audit_receipt_sha256 | length == 64)
+            and .source_paths_recorded == false
+            and .timestamp_timeline_analyzed == true
+            and .source_media_pts_preserved == false
+            and .normative_wcag_conformance == false
+          ' "$evidence_dir/capture-manifest.json"
+          jq -e --arg source "$VISUAL_SOURCE_COMMIT" --arg build "$VISUAL_BUILD_COMMIT" '
+            .schema == "captured-frame-audit-v4-timestamped"
+            and .source_commit == $source and .build_commit == $build
+            and .frames_examined == 3 and .normative_wcag_conformance == false
+          ' "$evidence_dir/audit.json"
+          jq -e '.timeline.sampling_gap_gate_passed == true and .timeline.max_sample_gap_ns == 500000000' "$evidence_dir/audit.json"
+          test -f "$evidence_dir/presentation-timestamps-ns.txt"
+          (cd "$evidence_dir" && sha256sum --check evidence.sha256 && sha256sum --check frames.sha256)
+          sha256sum "$evidence_dir/capture-manifest.json" "$evidence_dir/audit.json" \
+            > "$RUNNER_TEMP/capture-audit-wrapper-checksums.txt"
+
+          # Reject oversized PPM input before copying it into the evidence bundle.
+          truncate -s 25000001 "$capture_dir/oversized.ppm"
+          oversized_output="$RUNNER_TEMP/oversized-frame-output"
+          set +e
+          validation/capture-audit.sh \
+            --output-dir "$oversized_output" \
+            --frames "$capture_dir/oversized.ppm" \
+                     "$capture_dir/frame-000001.ppm" \
+                     "$capture_dir/frame-000002.ppm" \
+            > "$RUNNER_TEMP/oversized-frame.log" 2>&1
+          oversized_status=$?
+          set -e
+          test "$oversized_status" -eq 2
+          grep -q "input frame exceeds 25,000,000-byte limit" "$RUNNER_TEMP/oversized-frame.log"
+          rm -rf -- "$oversized_output"
+          # Exercise source-PTS extraction on a synthetic encoded video.
+          if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          fi
+          video_file="$RUNNER_TEMP/capture-audit-synthetic.mkv"
+          video_evidence="$RUNNER_TEMP/capture-audit-video-evidence"
+          ffmpeg -nostdin -hide_banner -loglevel error \
+            -f lavfi -i "color=c=black:s=32x32:r=10:d=0.5" \
+            -f lavfi -i "color=c=white:s=32x32:r=10:d=0.5" \
+            -f lavfi -i "color=c=black:s=32x32:r=10:d=0.5" \
+            -filter_complex "[0:v][1:v][2:v]concat=n=3:v=1:a=0,select='not(eq(n\,5))',format=yuv444p" \
+            -fps_mode vfr -c:v ffv1 "$video_file"
+          validation/capture-audit.sh \
+            --video "$video_file" --fps 10 --max-gap-ms 250 \
+            --output-dir "$video_evidence"
+          jq -e --arg source "$VISUAL_SOURCE_COMMIT" --arg build "$VISUAL_BUILD_COMMIT" '
+            .schema == "visual-capture-provenance-v1"
+            and .source_commit == $source and .build_commit == $build
+            and .input_kind == "video"
+            and .sample_fps_assumed == null
+            and .temporal_basis == "presentation_timestamp_ns"
+            and .timestamp_timeline_analyzed == true
+            and .source_media_pts_preserved == true
+            and (.source_video_sha256 | type == "string" and length == 64)
+            and (.timestamp_sidecar_sha256 | type == "string" and length == 64)
+            and (.source_pts_origin_ns | type == "number")
+            and (.source_pts_origin_ns_exact | type == "string")
+            and (.source_pts_origin_ns_exact | test("^-?[0-9]+$"))
+            and (.source_pts_origin_ticks_exact | type == "string")
+            and (.source_pts_origin_ticks_exact | test("^-?[0-9]+$"))
+            and (.source_pts_time_base | test("^[0-9]+/[0-9]+$"))
+            and .frame_count == 14
+            and .normative_wcag_conformance == false
+          ' "$video_evidence/capture-manifest.json"
+          jq -e '
+            .schema == "captured-frame-audit-v4-timestamped"
+            and .temporal_basis == "monotonic_presentation_timestamps_ns"
+            and .timeline.sampling_gap_gate_passed == true
+            and .timeline.max_sample_gap_ns >= 200000000
+            and .timeline.max_sample_gap_ns <= 250000000
+            and .normative_wcag_conformance == false
+          ' "$video_evidence/audit.json"
+          (cd "$video_evidence" && sha256sum --check evidence.sha256 && sha256sum --check frames.sha256)
+
+      - name: Qualify chunked audit against a monolithic timestamped reference
+        shell: bash
+        run: |
+          set -euo pipefail
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/chunked-frame-audit-target"
+          bash -n validation/chunked-frame-audit.sh
+          cargo build --manifest-path validation/frame-audit/Cargo.toml --locked --release
+          printf '9007199254740993\n9007199254740994\n9007199254740995\n' \
+            | "$CARGO_TARGET_DIR/release/pts-to-ns" \
+                --time-base 1/1000000000 \
+                --timestamps-out "$RUNNER_TEMP/pts-exact-ns.txt" \
+                --origin-ns-out "$RUNNER_TEMP/pts-origin-ns.txt" \
+                --origin-ticks-out "$RUNNER_TEMP/pts-origin-ticks.txt"
+          printf '0\n1\n2\n' > "$RUNNER_TEMP/pts-exact-expected.txt"
+          cmp "$RUNNER_TEMP/pts-exact-expected.txt" "$RUNNER_TEMP/pts-exact-ns.txt"
+          test "$(cat "$RUNNER_TEMP/pts-origin-ns.txt")" = "9007199254740993"
+          test "$(cat "$RUNNER_TEMP/pts-origin-ticks.txt")" = "9007199254740993"
+          corpus="$RUNNER_TEMP/chunked-audit-corpus"
+          output="$RUNNER_TEMP/chunked-audit-evidence"
+          mkdir -p "$corpus"
+          timestamps="$corpus/timestamps-ns.txt"
+          : > "$timestamps"
+          for ((index = 0; index < 45; index++)); do
+            printf -v frame_name 'frame-%06d.ppm' "$((index + 1))"
+            phase=$((index % 8))
+            if ((phase >= 2 && phase <= 5)); then
+              printf 'P6\n2 1\n255\n\377\377\377\377\377\377' > "$corpus/$frame_name"
+            else
+              printf 'P6\n2 1\n255\n\000\000\000\000\000\000' > "$corpus/$frame_name"
+            fi
+            printf '%s\n' "$((index * 100000000))" >> "$timestamps"
+          done
+          frames=("$corpus"/frame-*.ppm)
+          cargo run --manifest-path validation/frame-audit/Cargo.toml --locked --release -- \
+            --timestamps "$timestamps" --max-gap-ms 150 "${frames[@]}" \
+            > "$RUNNER_TEMP/chunked-audit-monolithic.json"
+          validation/chunked-frame-audit.sh \
+            --output-dir "$output" \
+            --timestamps "$timestamps" --max-gap-ms 150 --chunk-frames 15 \
+            --frames "${frames[@]}"
+          jq -en \
+            --slurpfile mono "$RUNNER_TEMP/chunked-audit-monolithic.json" \
+            --slurpfile chunked "$output/audit.json" \
+            --slurpfile bench "$output/benchmark.json" '
+            ($mono[0]) as $m | ($chunked[0]) as $c | ($bench[0]) as $b |
+            $c.schema == "captured-frame-audit-v5-chunked"
+            and $c.frames_examined == $m.frames_examined
+            and $c.frame_transitions_examined == $m.frame_transitions_examined
+            and $c.unique_source_sampled_pixels == ($m.frames_examined * $m.resolution.width * $m.resolution.height)
+            and $c.audit_sampled_pixels_processed >= $c.unique_source_sampled_pixels
+            and $c.redundant_overlap_pixels == ($c.audit_sampled_pixels_processed - $c.unique_source_sampled_pixels)
+            and $b.schema == "chunked-capture-benchmark-v1"
+            and $b.elapsed_wall_ms >= 0
+            and $b.unique_source_sampled_pixels == $c.unique_source_sampled_pixels
+            and $b.audit_sampled_pixels_processed == $c.audit_sampled_pixels_processed
+            and $b.redundant_overlap_pixels == $c.redundant_overlap_pixels
+            and $c.resolution == $m.resolution
+            and $c.timeline.start_ns == $m.timeline.start_ns
+            and $c.timeline.end_ns == $m.timeline.end_ns
+            and $c.timeline.observed_span_ns == $m.timeline.observed_span_ns
+            and $c.timeline.max_sample_gap_ns == $m.timeline.max_sample_gap_ns
+            and $c.timeline.allowed_sample_gap_ns == $m.timeline.allowed_sample_gap_ns
+            and $m.large_local_area_general_flash_transitions == 10
+            and $c.large_local_area_general_flash_transitions == $m.large_local_area_general_flash_transitions
+            and $c.large_local_area_red_flash_transitions == $m.large_local_area_red_flash_transitions
+            and $m.one_second_window_summary.max_general_large_area_flash_events == 3
+            and $m.one_second_window_summary.general_windows_over_three_flash_events == 0
+            and $c.max_general_flash_area_ratio == $m.max_general_flash_area_ratio
+            and $c.max_red_flash_area_ratio == $m.max_red_flash_area_ratio
+            and $c.local_visual_field_proxy.max_general_flash_area_ratio == $m.local_visual_field_proxy.max_general_flash_area_ratio
+            and $c.local_visual_field_proxy.max_red_flash_area_ratio == $m.local_visual_field_proxy.max_red_flash_area_ratio
+            and $c.one_second_window_summary == $m.one_second_window_summary
+            and $c.timeline.sampling_gap_gate_passed == true
+            and $c.chunked_accounting.transition_count_matches_full_sequence == true
+            and $c.chunked_accounting.all_prefix_deltas_nonnegative == true
+            and $c.normative_wcag_conformance == false
+          ' > "$RUNNER_TEMP/chunked-audit-equivalence.json"
+          jq -e '. == true' "$RUNNER_TEMP/chunked-audit-equivalence.json"
+          test "$(sha256sum "$output/audit.json" | cut -c1-64)" = "$(jq -r .audit_receipt_sha256 "$output/benchmark.json")"
+          test "$(sha256sum "$output/benchmark.json" | cut -c1-64)" = "$(jq -r .benchmark_receipt_sha256 "$output/capture-manifest.json")"
+          (cd "$output" && sha256sum --check evidence.sha256)
+
+          # Correctness receipt is deterministic; runtime belongs only in benchmark.json.
+          repeat_output="$RUNNER_TEMP/chunked-audit-evidence-repeat"
+          validation/chunked-frame-audit.sh \
+            --output-dir "$repeat_output" \
+            --timestamps "$timestamps" --max-gap-ms 150 --chunk-frames 15 \
+            --frames "${frames[@]}"
+          cmp "$output/audit.json" "$repeat_output/audit.json"
+          test "$(sha256sum "$output/audit.json" | cut -c1-64)" = "$(sha256sum "$repeat_output/audit.json" | cut -c1-64)"
+
+          # Shift this timestamp and every later sample by 200 ms: a 300 ms
+          # adjacent gap must be reported incomplete against a 150 ms limit.
+          awk 'NR < 21 { print; next } { printf "%.0f\n", $1 + 200000000 }' \
+            "$timestamps" > "$corpus/timestamps-gap-ns.txt"
+          gap_output="$RUNNER_TEMP/chunked-audit-gap-evidence"
+          validation/chunked-frame-audit.sh \
+            --output-dir "$gap_output" \
+            --timestamps "$corpus/timestamps-gap-ns.txt" --max-gap-ms 150 --chunk-frames 15 \
+            --frames "${frames[@]}"
+          jq -e '
+            .schema == "captured-frame-audit-v5-chunked"
+            and .timeline.sampling_gap_gate_passed == false
+            and .timeline.coverage_status == "incomplete_sampling_due_to_gap"
+            and .normative_wcag_conformance == false
+          ' "$gap_output/audit.json"
+
+          # Duplicate timestamps must be rejected, not normalized into a clean receipt.
+          sed '21s/.*/1900000000/' "$timestamps" > "$corpus/timestamps-duplicate-ns.txt"
+          duplicate_output="$RUNNER_TEMP/chunked-audit-duplicate-evidence"
+          set +e
+          validation/chunked-frame-audit.sh \
+            --output-dir "$duplicate_output" \
+            --timestamps "$corpus/timestamps-duplicate-ns.txt" --max-gap-ms 150 --chunk-frames 15 \
+            --frames "${frames[@]}" > "$RUNNER_TEMP/chunked-audit-duplicate.stdout" 2>&1
+          duplicate_status=$?
+          set -e
+          test "$duplicate_status" -eq 2
+          grep -q "timestamps must be strictly increasing" "$RUNNER_TEMP/chunked-audit-duplicate.stdout"
+          test ! -e "$duplicate_output/audit.json"
+
+      - name: Test independent external-frame audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/external-frame-audit-test-target"
+          cargo test --manifest-path validation/frame-audit/Cargo.toml --locked --all-targets
+
+      - name: Exercise external capture-audit CLI with a synthetic flash
+        run: |
+          set -euo pipefail
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/external-frame-audit-smoke-target"
+          capture_dir="$RUNNER_TEMP/frame-audit-smoke"
+          mkdir -p "$capture_dir"
+          printf 'P6\n2 1\n255\n\000\000\000\000\000\000' > "$capture_dir/frame-000001.ppm"
+          printf 'P6\n2 1\n255\n\377\377\377\377\377\377' > "$capture_dir/frame-000002.ppm"
+          printf 'P6\n2 1\n255\n\000\000\000\000\000\000' > "$capture_dir/frame-000003.ppm"
+          cargo run --manifest-path validation/frame-audit/Cargo.toml --locked --release -- \
+            --fps 2 \
+            "$capture_dir/frame-000001.ppm" \
+            "$capture_dir/frame-000002.ppm" \
+            "$capture_dir/frame-000003.ppm" \
+            > "$RUNNER_TEMP/captured-frame-audit-smoke.json"
+          jq -e --arg commit "$VISUAL_SOURCE_COMMIT" --arg build "$VISUAL_BUILD_COMMIT" '
+            .schema == "captured-frame-audit-v3"
+            and .source_commit == $commit
+            and .build_commit == $build
+            and .source == "external_p6_ppm_frame_sequence"
+            and .frames_examined == 3
+            and .resolution.width == 2 and .resolution.height == 1
+            and .frame_transitions_examined == 2
+            and .max_general_flash_area_ratio == 1
+            and .local_visual_field_proxy.width == 1
+            and .local_visual_field_proxy.height == 1
+            and .local_visual_field_proxy.max_general_flash_area_ratio == 1
+            and .large_local_area_general_flash_transitions == 1
+            and .area_model == "sliding_one_third_local_raster_window_proxy"
+            and .normative_wcag_conformance == false
+          ' "$RUNNER_TEMP/captured-frame-audit-smoke.json"
+          sha256sum "$RUNNER_TEMP/captured-frame-audit-smoke.json" > "$RUNNER_TEMP/captured-frame-audit-smoke.sha256"
+          printf '0\n500000000\n1000000000\n' > "$capture_dir/timestamps-inside.txt"
+          cargo run --manifest-path validation/frame-audit/Cargo.toml --locked --release -- \
+            --timestamps "$capture_dir/timestamps-inside.txt" --max-gap-ms 500 \
+            "$capture_dir/frame-000001.ppm" \
+            "$capture_dir/frame-000002.ppm" \
+            "$capture_dir/frame-000003.ppm" \
+            > "$RUNNER_TEMP/captured-frame-audit-timestamped.json"
+          jq -e --arg commit "$VISUAL_SOURCE_COMMIT" --arg build "$VISUAL_BUILD_COMMIT" '
+            .schema == "captured-frame-audit-v4-timestamped"
+            and .source_commit == $commit and .build_commit == $build
+            and .temporal_basis == "monotonic_presentation_timestamps_ns"
+            and .frames_examined == 3
+            and .timeline.start_ns == 0
+            and .timeline.end_ns == 1000000000
+            and .timeline.max_sample_gap_ns == 500000000
+            and .timeline.allowed_sample_gap_ns == 500000000
+            and .timeline.sampling_gap_gate_passed == true
+            and .timeline.coverage_status == "within_declared_gap_limit"
+            and .one_second_window_summary.windows_examined == 1
+            and .one_second_window_summary.max_general_large_area_flash_events == 1
+            and .normative_wcag_conformance == false
+          ' "$RUNNER_TEMP/captured-frame-audit-timestamped.json"
+
+          # Long sampling gaps are surfaced as incomplete evidence, even when
+          # no flash pair is observed inside the one-second edge-pair interval.
+          printf '0\n500000000\n2000000000\n' > "$capture_dir/timestamps-gap.txt"
+          cargo run --manifest-path validation/frame-audit/Cargo.toml --locked --release -- \
+            --timestamps "$capture_dir/timestamps-gap.txt" --max-gap-ms 100 \
+            "$capture_dir/frame-000001.ppm" \
+            "$capture_dir/frame-000002.ppm" \
+            "$capture_dir/frame-000003.ppm" \
+            > "$RUNNER_TEMP/captured-frame-audit-gap.json"
+          jq -e '
+            .schema == "captured-frame-audit-v4-timestamped"
+            and .timeline.sampling_gap_gate_passed == false
+            and .timeline.coverage_status == "incomplete_sampling_due_to_gap"
+            and .normative_wcag_conformance == false
+          ' "$RUNNER_TEMP/captured-frame-audit-gap.json"
+          sha256sum "$RUNNER_TEMP/captured-frame-audit-timestamped.json" "$RUNNER_TEMP/captured-frame-audit-gap.json" \
+            > "$RUNNER_TEMP/captured-frame-audit-timestamped.sha256"
+
+      - name: Validate visual theme manifest
+        run: |
+          set -euo pipefail
+          jq -e '
+            .schema_version == 1
+            and (.themes | length) == 10
+            and ([.themes[].id] | unique | length) == 10
+            and ([.themes[].scene_family] | unique | length) == 10
+            and ([.themes[].shader_variant] | unique | length) == 10
+            and ([.themes[].shader_variant] | sort) == [0,1,2,3,4,5,6,7,8,9]
+            and all(.themes[]; (.shader_variant | type == "number") and (.shader_variant >= 0 and .shader_variant <= 9) and ((.shader_variant | floor) == .shader_variant))
+            and ((.motion_profiles | keys | sort) == ["balanced", "cinematic", "low-power", "reduced"])
+            and all(.motion_profiles | to_entries[];
+              (.value.motion_scale >= 0 and .value.motion_scale <= 1)
+              and (.value.frame_interval_ms >= 33 and .value.frame_interval_ms <= 250)
+              and (.value.transition_durations_seconds | length) == 3
+              and (.value.transition_durations_seconds[0] >= 0)
+              and (.value.transition_durations_seconds[1] >= 0)
+              and (.value.transition_durations_seconds[2] > 0 and .value.transition_durations_seconds[2] <= 1.5)
+            )
+            and all(.themes[];
+              (.id | test("^[a-z]+(-[a-z]+)*$"))
+              and (.scene_family | test("^[a-z]+(-[a-z]+)*$"))
+              and all(.palette[]; test("^#[0-9A-Fa-f]{6}$"))
+              and (.growth_profile.initial_branch_min >= 1)
+              and (.growth_profile.initial_branch_variants >= 1)
+              and (.growth_profile.initial_branch_min + .growth_profile.initial_branch_variants - 1 <= 9)
+              and (.growth_profile.branch_length_scale > 0 and .growth_profile.branch_length_scale <= 2)
+              and (.growth_profile.growth_speed > 0 and .growth_profile.growth_speed <= 30)
+              and (.growth_profile.min_fork_angle_degrees >= 0)
+              and (.growth_profile.max_fork_angle_degrees > .growth_profile.min_fork_angle_degrees)
+              and (.growth_profile.max_fork_angle_degrees <= 90)
+              and (.growth_profile.min_children >= 1)
+              and (.growth_profile.max_children >= .growth_profile.min_children and .growth_profile.max_children <= 3)
+              and (.growth_profile.pulse_gain >= 0 and .growth_profile.pulse_gain <= 1)
+              and (.density.max_branches >= 1 and .density.max_branches <= 8192)
+              and (.density.max_particles >= 0 and .density.max_particles <= 1024)
+              and all(.motion[]; . >= 0 and . <= 1)
+            )' themes/visual-genome-v1.json
+          # The checked-in Rust data is generated from the manifest. Re-generation must be byte-identical.
+          generated="$RUNNER_TEMP/visual-genome-generated.rs"
+          jq -r -f validation/visual-genome-rust.jq themes/visual-genome-v1.json > "$generated"
+          diff -u crates/quicken-fb/src/visual_genome_generated.rs "$generated"
+          jq '.themes[0].palette.background = "#12ZZ45"' themes/visual-genome-v1.json > "$RUNNER_TEMP/visual-genome-invalid-color.json"
+          if jq -r -f validation/visual-genome-rust.jq "$RUNNER_TEMP/visual-genome-invalid-color.json" > "$RUNNER_TEMP/visual-genome-invalid-color.rs" 2> "$RUNNER_TEMP/visual-genome-invalid-color.log"; then
+            echo "generator accepted a malformed palette color"
+            exit 1
+          fi
+          jq '.themes[1].id = .themes[0].id' themes/visual-genome-v1.json > "$RUNNER_TEMP/visual-genome-duplicate-id.json"
+          if jq -r -f validation/visual-genome-rust.jq "$RUNNER_TEMP/visual-genome-duplicate-id.json" > "$RUNNER_TEMP/visual-genome-duplicate-id.rs" 2> "$RUNNER_TEMP/visual-genome-duplicate-id.log"; then
+            echo "generator accepted a duplicate theme ID"
+            exit 1
+          fi
+          jq '.themes[0].growth_profile.pulse_gain = 1.5' themes/visual-genome-v1.json > "$RUNNER_TEMP/visual-genome-invalid-growth.json"
+          if jq -r -f validation/visual-genome-rust.jq "$RUNNER_TEMP/visual-genome-invalid-growth.json" > "$RUNNER_TEMP/visual-genome-invalid-growth.rs" 2> "$RUNNER_TEMP/visual-genome-invalid-growth.log"; then
+            echo "generator accepted an out-of-range growth parameter"
+            exit 1
+          fi
+          jq '.motion_profiles.reduced.motion_scale = 1.5' themes/visual-genome-v1.json > "$RUNNER_TEMP/visual-genome-invalid-motion.json"
+          if jq -r -f validation/visual-genome-rust.jq "$RUNNER_TEMP/visual-genome-invalid-motion.json" > "$RUNNER_TEMP/visual-genome-invalid-motion.rs" 2> "$RUNNER_TEMP/visual-genome-invalid-motion.log"; then
+            echo "generator accepted an out-of-range motion scale"
+            exit 1
+          fi
+          jq '.themes[0].motion.undeclared = 0.5' themes/visual-genome-v1.json > "$RUNNER_TEMP/visual-genome-extra-field.json"
+          if jq -r -f validation/visual-genome-rust.jq "$RUNNER_TEMP/visual-genome-extra-field.json" > "$RUNNER_TEMP/visual-genome-extra-field.rs" 2> "$RUNNER_TEMP/visual-genome-extra-field.log"; then
+            echo "generator accepted an undeclared theme field"
+            exit 1
+          fi
+          jq '.themes[0].shader_variant = 42' themes/visual-genome-v1.json > "$RUNNER_TEMP/visual-genome-invalid-shader-variant.json"
+          if jq -r -f validation/visual-genome-rust.jq "$RUNNER_TEMP/visual-genome-invalid-shader-variant.json" > "$RUNNER_TEMP/visual-genome-invalid-shader-variant.rs" 2> "$RUNNER_TEMP/visual-genome-invalid-shader-variant.log"; then
+            echo "generator accepted an out-of-range shader variant"
+            exit 1
+          fi
+          jq '.themes[0].palette |= del(.primary)' themes/visual-genome-v1.json > "$RUNNER_TEMP/visual-genome-missing-palette-role.json"
+          if jq -r -f validation/visual-genome-rust.jq "$RUNNER_TEMP/visual-genome-missing-palette-role.json" > "$RUNNER_TEMP/visual-genome-missing-palette-role.rs" 2> "$RUNNER_TEMP/visual-genome-missing-palette-role.log"; then
+            echo "generator accepted a missing required palette role"
+            exit 1
+          fi
+          jq '.renderer_policy.remote_assets = true' themes/visual-genome-v1.json > "$RUNNER_TEMP/visual-genome-unsafe-renderer-policy.json"
+          if jq -r -f validation/visual-genome-rust.jq "$RUNNER_TEMP/visual-genome-unsafe-renderer-policy.json" > "$RUNNER_TEMP/visual-genome-unsafe-renderer-policy.rs" 2> "$RUNNER_TEMP/visual-genome-unsafe-renderer-policy.log"; then
+            echo "generator accepted an unsafe renderer policy"
+            exit 1
+          fi
+          jq '.motion_profiles["low-power"].particle_budget_scale = 0.9' themes/visual-genome-v1.json > "$RUNNER_TEMP/visual-genome-nonmonotonic-budget.json"
+          if jq -r -f validation/visual-genome-rust.jq "$RUNNER_TEMP/visual-genome-nonmonotonic-budget.json" > "$RUNNER_TEMP/visual-genome-nonmonotonic-budget.rs" 2> "$RUNNER_TEMP/visual-genome-nonmonotonic-budget.log"; then
+            echo "generator accepted a non-monotonic motion/particle budget ladder"
+            exit 1
+          fi
+
+      - name: Materialize isolated renderer source
+        run: |
+          set -euo pipefail
+          isolated="$RUNNER_TEMP/quicken-fb"
+          mkdir -p "$isolated"
+          cp -a crates/quicken-fb/. "$isolated/"
+          test -f "$isolated/Cargo.toml"
+          test -f "$isolated/Cargo.lock"
+          # Cargo.lock in the crate was resolved in the root workspace. Resolve
+          # a standalone lock for this copied package, then freeze that exact
+          # resolution for every subsequent command in this workflow run.
+          cargo generate-lockfile --manifest-path "$isolated/Cargo.toml"
+          cp "$isolated/Cargo.lock" "$RUNNER_TEMP/standalone-renderer-Cargo.lock"
+          sha256sum "$isolated/Cargo.lock" > "$RUNNER_TEMP/standalone-renderer-Cargo.lock.sha256"
+          if grep -q 'workspace[[:space:]]*=[[:space:]]*true' "$isolated/Cargo.toml"; then
+            echo "renderer still inherits workspace settings; isolated build is not valid"
+            exit 1
+          fi
+
+      - name: Run all renderer tests and compile examples
+        run: cargo test --manifest-path "$RUNNER_TEMP/quicken-fb/Cargo.toml" --locked --all-targets
+
+      - name: Check renderer CLI theme inventory and state-evidence fail-open path
+        run: |
+          set -euo pipefail
+          cargo run --manifest-path "$RUNNER_TEMP/quicken-fb/Cargo.toml" --locked -- --list-themes \
+            > "$RUNNER_TEMP/cli-theme-ids.txt"
+          diff -u \
+            <(jq -r '.themes[].id' themes/visual-genome-v1.json | sort) \
+            <(sort "$RUNNER_TEMP/cli-theme-ids.txt")
+
+          cargo run --manifest-path "$RUNNER_TEMP/quicken-fb/Cargo.toml" --locked -- --list-theme-scenes \
+            > "$RUNNER_TEMP/cli-theme-scenes.txt"
+          diff -u \
+            <(jq -r '.themes[] | "\(.id) \(.scene_family)"' themes/visual-genome-v1.json | sort) \
+            <(sort "$RUNNER_TEMP/cli-theme-scenes.txt")
+
+          # Verify the complete design contract, not just theme IDs or scene names.
+          cargo run --manifest-path "$RUNNER_TEMP/quicken-fb/Cargo.toml" --locked -- --list-theme-contracts \
+            | sort > "$RUNNER_TEMP/rust-theme-contracts.tsv"
+          jq -r -f validation/visual-genome-contract.tsv.jq themes/visual-genome-v1.json \
+            | sort > "$RUNNER_TEMP/manifest-theme-contracts.tsv"
+          for contract_file in "$RUNNER_TEMP/manifest-theme-contracts.tsv" "$RUNNER_TEMP/rust-theme-contracts.tsv"; do
+            awk -F '\t' 'NF != 24 { exit 1 } END { if (NR != 10) exit 1 }' "$contract_file"
+          done
+          diff -u "$RUNNER_TEMP/manifest-theme-contracts.tsv" "$RUNNER_TEMP/rust-theme-contracts.tsv"
+
+          # Mutation controls: the gate must detect palette and growth drift separately.
+          jq '.themes[0].palette.primary = "#000000"' themes/visual-genome-v1.json \
+            > "$RUNNER_TEMP/manifest-mutated-palette.json"
+          jq -r -f validation/visual-genome-contract.tsv.jq "$RUNNER_TEMP/manifest-mutated-palette.json" \
+            | sort > "$RUNNER_TEMP/manifest-mutated-palette.tsv"
+          if cmp -s "$RUNNER_TEMP/manifest-mutated-palette.tsv" "$RUNNER_TEMP/rust-theme-contracts.tsv"; then
+            echo "theme contract gate missed a deliberately changed palette value"
+            exit 1
+          fi
+          jq '.themes[0].growth_profile.growth_speed += 1' themes/visual-genome-v1.json \
+            > "$RUNNER_TEMP/manifest-mutated-growth.json"
+          jq -r -f validation/visual-genome-contract.tsv.jq "$RUNNER_TEMP/manifest-mutated-growth.json" \
+            | sort > "$RUNNER_TEMP/manifest-mutated-growth.tsv"
+          if cmp -s "$RUNNER_TEMP/manifest-mutated-growth.tsv" "$RUNNER_TEMP/rust-theme-contracts.tsv"; then
+            echo "theme contract gate missed a deliberately changed growth parameter"
+            exit 1
+          fi
+          jq '.themes[0].density.max_particles += 1' themes/visual-genome-v1.json \
+            > "$RUNNER_TEMP/manifest-mutated-density.json"
+          jq -r -f validation/visual-genome-contract.tsv.jq "$RUNNER_TEMP/manifest-mutated-density.json" \
+            | sort > "$RUNNER_TEMP/manifest-mutated-density.tsv"
+          if cmp -s "$RUNNER_TEMP/manifest-mutated-density.tsv" "$RUNNER_TEMP/rust-theme-contracts.tsv"; then
+            echo "theme contract gate missed a deliberately changed density cap"
+            exit 1
+          fi
+          jq '.themes[0].motion.growth *= 0.5' themes/visual-genome-v1.json \
+            > "$RUNNER_TEMP/manifest-mutated-theme-motion.json"
+          jq -r -f validation/visual-genome-contract.tsv.jq "$RUNNER_TEMP/manifest-mutated-theme-motion.json" \
+            | sort > "$RUNNER_TEMP/manifest-mutated-theme-motion.tsv"
+          if cmp -s "$RUNNER_TEMP/manifest-mutated-theme-motion.tsv" "$RUNNER_TEMP/rust-theme-contracts.tsv"; then
+            echo "theme contract gate missed a deliberately changed per-theme motion value"
+            exit 1
+          fi
+
+          jq '.themes[0].surfaces |= map(select(. != "boot"))' themes/visual-genome-v1.json \
+            > "$RUNNER_TEMP/manifest-mutated-surfaces.json"
+          jq -r -f validation/visual-genome-contract.tsv.jq "$RUNNER_TEMP/manifest-mutated-surfaces.json" \
+            | sort > "$RUNNER_TEMP/manifest-mutated-surfaces.tsv"
+          if cmp -s "$RUNNER_TEMP/manifest-mutated-surfaces.tsv" "$RUNNER_TEMP/rust-theme-contracts.tsv"; then
+            echo "theme contract gate missed a deliberately changed surface permission"
+            exit 1
+          fi
+
+          cargo run --manifest-path "$RUNNER_TEMP/quicken-fb/Cargo.toml" --locked -- --list-motion-modes \
+            > "$RUNNER_TEMP/cli-motion-modes.txt"
+          awk 'NF != 8 { exit 1 } END { if (NR != 4) exit 1 }' "$RUNNER_TEMP/cli-motion-modes.txt"
+          diff -u \
+            <(jq -r '.motion_profiles | to_entries[] | "\(.key) \(.value.motion_scale) \(.value.particle_budget_scale) \(.value.frame_interval_ms) \(.value.transition_durations_seconds[0]) \(.value.transition_durations_seconds[1]) \(.value.transition_durations_seconds[2]) \(.value.crossfade_ms)"' themes/visual-genome-v1.json | sort) \
+            <(sort "$RUNNER_TEMP/cli-motion-modes.txt")
+
+          # Missing boot-state artifacts must skip decoration before DRM is opened.
+          cargo run --manifest-path "$RUNNER_TEMP/quicken-fb/Cargo.toml" --locked -- \
+            --receipt "$RUNNER_TEMP/missing-receipt.json" \
+            --lineage "$RUNNER_TEMP/missing-lineage.json" \
+            --handoff-path "$RUNNER_TEMP/compositor-handoff" \
+            --motion reduced \
+            --device "$RUNNER_TEMP/nonexistent-drm-device" \
+            > "$RUNNER_TEMP/fail-open.stdout" 2> "$RUNNER_TEMP/fail-open.stderr"
+          grep -q "skipping decorative renderer" "$RUNNER_TEMP/fail-open.stderr"
+
+          # Receipt and lineage must be paired; a partial state contract is rejected.
+          set +e
+          cargo run --manifest-path "$RUNNER_TEMP/quicken-fb/Cargo.toml" --locked -- \
+            --receipt "$RUNNER_TEMP/missing-receipt.json" \
+            --device "$RUNNER_TEMP/nonexistent-drm-device" \
+            > /dev/null 2> "$RUNNER_TEMP/unpaired-evidence.stderr"
+          status=$?
+          set -e
+          test "$status" -eq 2
+          grep -q "must be supplied together" "$RUNNER_TEMP/unpaired-evidence.stderr"
+
+          # Unknown motion policy must be rejected before any DRM access.
+          set +e
+          cargo run --manifest-path "$RUNNER_TEMP/quicken-fb/Cargo.toml" --locked -- \
+            --motion unrecognized --device "$RUNNER_TEMP/nonexistent-drm-device" \
+            > /dev/null 2> "$RUNNER_TEMP/unknown-motion.stderr"
+          status=$?
+          set -e
+          test "$status" -eq 2
+          grep -q "unknown motion mode" "$RUNNER_TEMP/unknown-motion.stderr"
+
+          # The manifest's boot surface allowlist must reject desktop-only themes
+          # before the renderer attempts to open the requested DRM device.
+          set +e
+          cargo run --manifest-path "$RUNNER_TEMP/quicken-fb/Cargo.toml" --locked -- \
+            --theme cosmic-atlas --device "$RUNNER_TEMP/nonexistent-drm-device" \
+            > /dev/null 2> "$RUNNER_TEMP/desktop-theme-on-boot.stderr"
+          status=$?
+          set -e
+          test "$status" -eq 2
+          grep -q "not permitted on the boot surface" "$RUNNER_TEMP/desktop-theme-on-boot.stderr"
+
+      - name: Parse and semantically validate WGSL without a GPU
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Temporary bootstrap while refreshing the dedicated validator lock.
+          # Capture the exact regenerated lock in logs so it can be committed;
+          # the steady-state gate must return to a plain --locked invocation.
+          if cargo run --manifest-path validation/wgsl-check/Cargo.toml --locked -- renderers/wgpu/shaders/mycelial_field.wgsl; then
+            exit 0
+          fi
+          echo "wgsl-check lockfile bootstrap: initial --locked invocation failed; regenerating the dedicated lock for diagnosis"
+          cp validation/wgsl-check/Cargo.lock "$RUNNER_TEMP/wgsl-check-Cargo.lock.before"
+          cargo generate-lockfile --manifest-path validation/wgsl-check/Cargo.toml
+          echo "=== WGSL_CHECK_LOCKFILE_BEGIN ==="
+          base64 -w0 validation/wgsl-check/Cargo.lock
+          echo
+          echo "=== WGSL_CHECK_LOCKFILE_END ==="
+          echo "=== WGSL_CHECK_LOCKFILE_DIFF_BEGIN ==="
+          diff -u "$RUNNER_TEMP/wgsl-check-Cargo.lock.before" validation/wgsl-check/Cargo.lock || true
+          echo "=== WGSL_CHECK_LOCKFILE_DIFF_END ==="
+          cargo run --manifest-path validation/wgsl-check/Cargo.toml --locked -- renderers/wgpu/shaders/mycelial_field.wgsl
+
+      - name: Smoke benchmark all 40 theme–motion combinations
+        run: |
+          set -euo pipefail
+          : > "$RUNNER_TEMP/visual-artifact-sha256.txt"
+          : > "$RUNNER_TEMP/visual-frame-hashes.txt"
+          for motion in reduced low-power balanced cinematic; do
+            for theme in $(jq -r '.themes[].id' themes/visual-genome-v1.json | sort); do
+              receipt="$RUNNER_TEMP/cpu-render-benchmark-$motion-$theme.json"
+              capture="$RUNNER_TEMP/cpu-scene-$motion-$theme.ppm"
+              repeat_receipt="$RUNNER_TEMP/cpu-render-benchmark-repeat-$motion-$theme.json"
+              repeat_capture="$RUNNER_TEMP/cpu-scene-repeat-$motion-$theme.ppm"
+
+              cargo run --manifest-path "$RUNNER_TEMP/quicken-fb/Cargo.toml" --locked --release --example render_bench -- \
+                --width 640 --height 360 --frames 30 --theme "$theme" --motion "$motion" --snapshot "$capture" > "$receipt"
+              cargo run --manifest-path "$RUNNER_TEMP/quicken-fb/Cargo.toml" --locked --release --example render_bench -- \
+                --width 640 --height 360 --frames 30 --theme "$theme" --motion "$motion" --snapshot "$repeat_capture" > "$repeat_receipt"
+
+              jq -e --arg theme "$theme" --arg motion "$motion" --arg commit "$VISUAL_SOURCE_COMMIT" --arg build "$VISUAL_BUILD_COMMIT" \
+                '.schema == "cpu-render-bench-v1" and .source_commit == $commit
+            and .build_commit == $build and .theme == $theme and .motion_mode == $motion and .includes_gpu == false and .measured_frames == 30 and (.framebuffer_blake3 | length == 64) and (.visual_quality.quantized_color_bins >= 2) and (.visual_quality.luminance_max > .visual_quality.luminance_min) and (.visual_quality.luminance_stddev > 0)' \
+                "$receipt"
+              jq -e --arg theme "$theme" --arg motion "$motion" --arg commit "$VISUAL_SOURCE_COMMIT" --arg build "$VISUAL_BUILD_COMMIT" \
+                '.schema == "cpu-render-bench-v1" and .source_commit == $commit
+            and .build_commit == $build and .theme == $theme and .motion_mode == $motion and .includes_gpu == false and .measured_frames == 30 and (.framebuffer_blake3 | length == 64) and (.visual_quality.quantized_color_bins >= 2) and (.visual_quality.luminance_max > .visual_quality.luminance_min) and (.visual_quality.luminance_stddev > 0)' \
+                "$repeat_receipt"
+
+              # Same theme/motion/seed/steps must yield identical pixels across runs.
+              test "$(jq -r '.framebuffer_blake3' "$receipt")" = "$(jq -r '.framebuffer_blake3' "$repeat_receipt")"
+              cmp "$capture" "$repeat_capture"
+              test "$(head -c 2 "$capture")" = "P6"
+              # P6 header is 15 bytes for fixed 640×360 smoke captures.
+              test "$(stat -c '%s' "$capture")" -eq "$((15 + 640 * 360 * 3))"
+              printf '%s %s %s\n' "$motion" "$theme" "$(jq -r '.framebuffer_blake3' "$receipt")" >> "$RUNNER_TEMP/visual-frame-hashes.txt"
+              sha256sum "$receipt" "$capture" "$repeat_receipt" "$repeat_capture" >> "$RUNNER_TEMP/visual-artifact-sha256.txt"
+            done
+
+            # Every theme must have distinct pixels within each motion profile.
+            test "$(awk -v motion="$motion" '$1 == motion {print $3}' "$RUNNER_TEMP/visual-frame-hashes.txt" | sort -u | wc -l)" -eq 10
+          done
+          # Fail closed if any profile/theme pair was skipped.
+          test "$(wc -l < "$RUNNER_TEMP/visual-frame-hashes.txt")" -eq 40
+          test "$(awk '{print $1 " " $2}' "$RUNNER_TEMP/visual-frame-hashes.txt" | sort -u | wc -l)" -eq 40
+
+          # Isolate simulation-update cost from pixel rendering and exercise the
+          # spatial index at each intended node-count scale.
+          cargo run --manifest-path "$RUNNER_TEMP/quicken-fb/Cargo.toml" --locked --release --example growth_bench -- --steps 3000 --theme mycelial-genesis > "$RUNNER_TEMP/cpu-growth-benchmark.json"
+          jq -e --arg commit "$VISUAL_SOURCE_COMMIT" --arg build "$VISUAL_BUILD_COMMIT" '.schema == "cpu-growth-bench-v1" and .source_commit == $commit
+            and .build_commit == $build and .measurement == "simulation_update_only" and .all_targets_reached == true and ([.checkpoints[].checkpoint_branches] == [512, 2048, 4096, 8192]) and all(.checkpoints[]; .sample_count > 0 and .update_time_ms.p95 >= 0 and .actual_branches >= .checkpoint_branches) and (.cap_steady_state.sample_count == 128) and (.cap_steady_state.update_time_ms.p95 >= 0) and .includes_pixel_rendering == false and .includes_gpu == false' "$RUNNER_TEMP/cpu-growth-benchmark.json"
+          sha256sum "$RUNNER_TEMP/cpu-growth-benchmark.json" >> "$RUNNER_TEMP/visual-artifact-sha256.txt"
+
+          # Reduced mode must be still even when more simulation steps are requested.
+          # Every animated profile must advance; this negative control prevents a
+          # renderer that silently freezes a theme or drops its motion budget.
+          for theme in $(jq -r '.themes[].id' themes/visual-genome-v1.json | sort); do
+            for motion in reduced low-power balanced cinematic; do
+              for frames in 10 30; do
+                receipt="$RUNNER_TEMP/motion-check-$motion-$theme-$frames.json"
+                capture="$RUNNER_TEMP/motion-check-$motion-$theme-$frames.ppm"
+                cargo run --manifest-path "$RUNNER_TEMP/quicken-fb/Cargo.toml" --locked --release --example render_bench -- \
+                  --width 160 --height 90 --frames "$frames" --theme "$theme" --motion "$motion" --snapshot "$capture" > "$receipt"
+              done
+
+              short_hash="$(jq -r '.framebuffer_blake3' "$RUNNER_TEMP/motion-check-$motion-$theme-10.json")"
+              long_hash="$(jq -r '.framebuffer_blake3' "$RUNNER_TEMP/motion-check-$motion-$theme-30.json")"
+              if [ "$motion" = "reduced" ]; then
+                test "$short_hash" = "$long_hash"
+                cmp "$RUNNER_TEMP/motion-check-reduced-$theme-10.ppm" "$RUNNER_TEMP/motion-check-reduced-$theme-30.ppm"
+              else
+                test "$short_hash" != "$long_hash"
+              fi
+              sha256sum "$RUNNER_TEMP/motion-check-$motion-$theme-"*.json "$RUNNER_TEMP/motion-check-$motion-$theme-"*.ppm >> "$RUNNER_TEMP/visual-artifact-sha256.txt"
+            done
+          done
+
+          # Audit complete sampled frame sequences, not just the final image.
+          # The area-change gate is a conservative heuristic; the receipt itself
+          # explicitly disclaims normative WCAG flash conformance.
+          for motion in reduced low-power balanced cinematic; do
+            for theme in $(jq -r '.themes[].id' themes/visual-genome-v1.json | sort); do
+              receipt="$RUNNER_TEMP/motion-audit-$motion-$theme.json"
+              cargo run --manifest-path "$RUNNER_TEMP/quicken-fb/Cargo.toml" --locked --release --example motion_audit -- \
+                --width 160 --height 90 --frames 60 --theme "$theme" --motion "$motion" > "$receipt"
+
+              jq -e --arg theme "$theme" --arg motion "$motion" --arg commit "$VISUAL_SOURCE_COMMIT" --arg build "$VISUAL_BUILD_COMMIT" '
+                .schema == "motion-audit-v1"
+                and .source_commit == $commit
+            and .build_commit == $build
+                and .measurement == "cpu_reference_frame_sequence"
+                and .theme == $theme
+                and .motion_mode == $motion
+                and .frames_requested == 60
+                and .frame_transitions == 59
+                and (.sequence_blake3 | length == 64)
+                and .normative_flash_conformance == false
+                and .large_area_high_change_transitions == 0
+                and all(.transitions[]; .large_area_high_change == false)
+                and (if $motion == "reduced"
+                  then .motion_observed == false and .zero_change_transitions == 59
+                  else .motion_observed == true
+                  end)
+              ' "$receipt"
+              sha256sum "$receipt" >> "$RUNNER_TEMP/visual-artifact-sha256.txt"
+            done
+          done
+
+          # Pair-aware flash-screen proxy: both transitions in a three-frame window
+          # must oppose before an area event is counted. This is not WCAG certification.
+          for motion in reduced low-power balanced cinematic; do
+            for theme in $(jq -r '.themes[].id' themes/visual-genome-v1.json | sort); do
+              receipt="$RUNNER_TEMP/opposing-transition-audit-$motion-$theme.json"
+              cargo run --manifest-path "$RUNNER_TEMP/quicken-fb/Cargo.toml" --locked --release --example opposing_transition_audit -- --width 160 --height 90 --frames 60 --theme "$theme" --motion "$motion" > "$receipt"
+              jq -e --arg theme "$theme" --arg motion "$motion" --arg commit "$VISUAL_SOURCE_COMMIT" --arg build "$VISUAL_BUILD_COMMIT" '
+                .schema == "opposing-transition-audit-v1"
+                and .source_commit == $commit
+            and .build_commit == $build
+                and .measurement == "cpu_reference_frame_triplets"
+                and .theme == $theme and .motion_mode == $motion
+                and .frames_requested == 60 and .frame_triplets_examined == 58
+                and .normative_wcag_conformance == false
+                and .one_second_window_summary.sample_points_per_window == 31
+                and .one_second_window_summary.windows_examined == 28
+                and .one_second_window_summary.max_general_large_area_flash_events <= 3
+                and .one_second_window_summary.max_red_large_area_flash_events <= 3
+                and .one_second_window_summary.general_windows_over_three_flash_events == 0
+                and .one_second_window_summary.red_windows_over_three_flash_events == 0
+                and .large_area_general_flash_pairs == 0
+                and .large_area_red_flash_pairs == 0
+                and (if $motion == "reduced"
+                  then .max_general_flash_area_ratio == 0 and .max_red_flash_area_ratio == 0
+                  else true
+                  end)
+              ' "$receipt"
+              sha256sum "$receipt" >> "$RUNNER_TEMP/visual-artifact-sha256.txt"
+            done
+          done
+
+          # Determinism control for sequence-level output (two themes/modes).
+          for motion in reduced low-power balanced cinematic; do
+            first="$RUNNER_TEMP/motion-audit-$motion-mycelial-genesis.json"
+            repeat="$RUNNER_TEMP/motion-audit-repeat-$motion-mycelial-genesis.json"
+            cargo run --manifest-path "$RUNNER_TEMP/quicken-fb/Cargo.toml" --locked --release --example motion_audit -- \
+              --width 160 --height 90 --frames 60 --theme mycelial-genesis --motion "$motion" > "$repeat"
+            test "$(jq -r '.sequence_blake3' "$first")" = "$(jq -r '.sequence_blake3' "$repeat")"
+            sha256sum "$repeat" >> "$RUNNER_TEMP/visual-artifact-sha256.txt"
+          done
+
+          jq -n \
+            --arg commit "$VISUAL_SOURCE_COMMIT" --arg build "$VISUAL_BUILD_COMMIT" \
+            --arg kernel "$(uname -sr)" \
+            --arg arch "$(uname -m)" \
+            --arg rustc "$(rustc --version)" \
+            --arg os "$(cat /etc/os-release | sed -n 's/^PRETTY_NAME=//p' | tr -d '\\"')" \
+            --arg build_commit "$VISUAL_BUILD_COMMIT" \
+            '{schema:"visual-qualification-environment-v1",source_head_commit:$commit,build_commit:$build_commit,kernel:$kernel,architecture:$arch,rustc:$rustc,os:$os}' \
+            > "$RUNNER_TEMP/visual-environment.json"
+
+      - name: Preserve benchmark receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpu-renderer-benchmarks
+          path: |
+            ${{ runner.temp }}/cpu-render-benchmark-*.json
+            ${{ runner.temp }}/cpu-growth-benchmark.json
+            ${{ runner.temp }}/cpu-scene-*.ppm
+            ${{ runner.temp }}/visual-artifact-sha256.txt
+            ${{ runner.temp }}/visual-frame-hashes.txt
+            ${{ runner.temp }}/motion-audit-*.json
+            ${{ runner.temp }}/opposing-transition-audit-*.json
+            ${{ runner.temp }}/captured-frame-audit-smoke.json
+            ${{ runner.temp }}/captured-frame-audit-smoke.sha256
+            ${{ runner.temp }}/standalone-renderer-Cargo.lock
+            ${{ runner.temp }}/standalone-renderer-Cargo.lock.sha256
+            ${{ runner.temp }}/visual-environment.json
+          if-no-files-found: ignore
+          retention-days: 14
+  headless-wgpu-reference:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install headless Vulkan software adapter
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y libvulkan1 mesa-vulkan-drivers
+
+      - name: Resolve and preserve isolated wgpu reference dependencies
+        run: |
+          set -euo pipefail
+          cargo generate-lockfile --manifest-path validation/wgpu-reference/Cargo.toml
+          cp validation/wgpu-reference/Cargo.lock "$RUNNER_TEMP/wgpu-reference-Cargo.lock"
+          sha256sum validation/wgpu-reference/Cargo.lock > "$RUNNER_TEMP/wgpu-reference-Cargo.lock.sha256"
+
+      - name: Test CLI, palette conversion, uniform packing, and percentile logic
+        run: cargo test --manifest-path validation/wgpu-reference/Cargo.toml --locked --all-targets
+
+      - name: Render every Visual Genome palette through headless Vulkan
+        run: |
+          set -euo pipefail
+          : > "$RUNNER_TEMP/wgpu-reference-theme-hashes.txt"
+          for theme in $(jq -r '.themes[].id' themes/visual-genome-v1.json | sort); do
+            family="$(jq -r --arg theme "$theme" '.themes[] | select(.id == $theme) | .scene_family' themes/visual-genome-v1.json)"
+            variant="$(jq -r --arg theme "$theme" '.themes[] | select(.id == $theme) | .shader_variant' themes/visual-genome-v1.json)"
+            receipt="$RUNNER_TEMP/wgpu-reference-$theme.json"
+            capture="$RUNNER_TEMP/wgpu-reference-$theme.ppm"
+            cargo run --manifest-path validation/wgpu-reference/Cargo.toml --locked --release -- \
+              --backend vulkan --force-fallback --theme "$theme" --motion reduced --time 0 \
+              --width 96 --height 54 --frames 8 --output "$capture" > "$receipt"
+            jq -e --arg theme "$theme" --arg family "$family" --argjson variant "$variant" --arg commit "$VISUAL_SOURCE_COMMIT" --arg build "$VISUAL_BUILD_COMMIT" '
+              .schema == "wgpu-offscreen-reference-v2"
+              and .source_commit == $commit
+            and .build_commit == $build
+              and .measurement == "replayed_offscreen_passes_one_command_submission"
+              and .shader_profile == "specialized-family-work"
+              and .scene_state_is_replayed_identically == true
+              and .normative_wcag_conformance == false
+              and .theme == $theme
+              and .scene_family == $family
+              and .scene_family_index == $variant
+              and (.scene_family_index >= 0 and .scene_family_index <= 9)
+              and .frames_requested == 8
+              and .resolution.width == 96 and .resolution.height == 54
+              and (.adapter.name | length > 0)
+              and (.capture_structure.quantized_color_bins >= 2)
+              and (.capture_structure.luminance_max > .capture_structure.luminance_min)
+              and (.capture_structure.luminance_stddev > 0)
+              and (.capture_structure.measurement == "captured_srgb_rgb_raster_structure_not_perceptual_quality")
+              and (.cpu_record_and_submit_ms >= 0)
+              and (.end_to_end_render_and_readback_ms >= .cpu_record_and_submit_ms)
+              and (if .timestamp_query_supported
+                then .timestamp_query_samples > 0 and .gpu_execution_ms.samples == .timestamp_query_samples and .gpu_execution_ms.p95_ms >= 0
+                else .timestamp_query_samples == 0 and .gpu_execution_ms.samples == 0 and .gpu_execution_ms.p95_ms == null
+                end)
+            ' "$receipt"
+            test "$(head -c 2 "$capture")" = "P6"
+            printf '%s %s\n' "$theme" "$(sha256sum "$capture" | cut -d' ' -f1)" >> "$RUNNER_TEMP/wgpu-reference-theme-hashes.txt"
+          done
+
+          # Every manifest theme must map to distinct GPU reference pixels. This
+          # catches a shader that ignores theme/family selection while remaining
+          # structurally nonblank. Color and geometry still require human review.
+          test "$(wc -l < "$RUNNER_TEMP/wgpu-reference-theme-hashes.txt")" -eq 10
+          test "$(awk '{print $2}' "$RUNNER_TEMP/wgpu-reference-theme-hashes.txt" | sort -u | wc -l)" -eq 10
+
+          # Hold colors constant to prove scene-family variants change geometry.
+          : > "$RUNNER_TEMP/wgpu-reference-family-neutral-hashes.txt"
+          for theme in $(jq -r '.themes[].id' themes/visual-genome-v1.json | sort); do
+            family="$(jq -r --arg theme "$theme" '.themes[] | select(.id == $theme) | .scene_family' themes/visual-genome-v1.json)"
+            variant="$(jq -r --arg theme "$theme" '.themes[] | select(.id == $theme) | .shader_variant' themes/visual-genome-v1.json)"
+            receipt="$RUNNER_TEMP/wgpu-reference-family-neutral-$theme.json"
+            capture="$RUNNER_TEMP/wgpu-reference-family-neutral-$theme.ppm"
+            cargo run --manifest-path validation/wgpu-reference/Cargo.toml --locked --release -- \
+              --backend vulkan --force-fallback --neutral-palette --theme "$theme" --motion reduced --time 0 \
+              --width 160 --height 90 --frames 1 --output "$capture" > "$receipt"
+            jq -e --arg theme "$theme" --arg family "$family" --argjson variant "$variant" --arg commit "$VISUAL_SOURCE_COMMIT" --arg build "$VISUAL_BUILD_COMMIT" '
+              .schema == "wgpu-offscreen-reference-v2"
+              and .source_commit == $commit and .build_commit == $build
+              and .theme == $theme and .scene_family == $family
+              and .scene_family_index == $variant
+              and .neutral_palette == true
+              and .shader_profile == "specialized-family-work"
+              and .motion_mode == "reduced" and .time_seconds == 0
+              and .resolution.width == 160 and .resolution.height == 90
+              and (.capture_structure.quantized_color_bins >= 2)
+              and (.capture_structure.luminance_max > .capture_structure.luminance_min)
+            ' "$receipt"
+            test "$(head -c 2 "$capture")" = "P6"
+            printf '%s %s\n' "$theme" "$(sha256sum "$capture" | cut -d' ' -f1)" >> "$RUNNER_TEMP/wgpu-reference-family-neutral-hashes.txt"
+          done
+          test "$(wc -l < "$RUNNER_TEMP/wgpu-reference-family-neutral-hashes.txt")" -eq 10
+          test "$(awk '{print $2}' "$RUNNER_TEMP/wgpu-reference-family-neutral-hashes.txt" | sort -u | wc -l)" -eq 10
+
+          # Same-adapter A/B comparison: the fixture is the pre-specialization shader,
+          # and the production shader is the family-specialized implementation.
+          # Exact pixel equality is the primary gate; timings are observations only.
+          : > "$RUNNER_TEMP/wgpu-reference-shader-ab-hashes.txt"
+          for theme in $(jq -r '.themes[].id' themes/visual-genome-v1.json | sort); do
+            for profile in baseline specialized; do
+              receipt="$RUNNER_TEMP/wgpu-reference-ab-$profile-$theme.json"
+              capture="$RUNNER_TEMP/wgpu-reference-ab-$profile-$theme.ppm"
+              cargo run --manifest-path validation/wgpu-reference/Cargo.toml --locked --release -- \
+                --backend vulkan --force-fallback --neutral-palette --shader-profile "$profile" \
+                --theme "$theme" --motion cinematic --time 12.5 \
+                --width 160 --height 90 --frames 60 --output "$capture" > "$receipt"
+              jq -e --arg theme "$theme" --arg profile "$profile" \
+                --arg commit "$VISUAL_SOURCE_COMMIT" --arg build "$VISUAL_BUILD_COMMIT" '
+                .schema == "wgpu-offscreen-reference-v2"
+                and .source_commit == $commit and .build_commit == $build
+                and .shader_profile == (if $profile == "baseline" then "baseline-pre-specialization" else "specialized-family-work" end)
+                and .theme == $theme
+                and .neutral_palette == true
+                and .motion_mode == "cinematic" and .time_seconds == 12.5
+                and .frames_requested == 60
+                and .resolution.width == 160 and .resolution.height == 90
+                and (.capture_structure.quantized_color_bins >= 2)
+                and (.capture_structure.luminance_max > .capture_structure.luminance_min)
+                and (if .timestamp_query_supported
+                  then .timestamp_query_samples == 60 and .gpu_execution_ms.samples == 60 and .gpu_execution_ms.p95_ms >= 0
+                  else .timestamp_query_samples == 0 and .gpu_execution_ms.samples == 0 and .gpu_execution_ms.p95_ms == null
+                  end)
+              ' "$receipt"
+              test "$(head -c 2 "$capture")" = "P6"
+              printf '%s %s %s\n' "$theme" "$profile" "$(sha256sum "$capture" | cut -d' ' -f1)" >> "$RUNNER_TEMP/wgpu-reference-shader-ab-hashes.txt"
+            done
+
+            baseline="$RUNNER_TEMP/wgpu-reference-ab-baseline-$theme.ppm"
+            specialized="$RUNNER_TEMP/wgpu-reference-ab-specialized-$theme.ppm"
+            cmp "$baseline" "$specialized"
+            baseline_receipt="$RUNNER_TEMP/wgpu-reference-ab-baseline-$theme.json"
+            specialized_receipt="$RUNNER_TEMP/wgpu-reference-ab-specialized-$theme.json"
+            jq -n \
+              --arg theme "$theme" \
+              --arg source "$VISUAL_SOURCE_COMMIT" \
+              --arg build "$VISUAL_BUILD_COMMIT" \
+              --slurpfile baseline "$baseline_receipt" \
+              --slurpfile specialized "$specialized_receipt" \
+              '{
+                schema:"shader-specialization-ab-v1",
+                source_commit:$source, build_commit:$build, theme:$theme,
+                baseline_gpu_p95_ms:$baseline[0].gpu_execution_ms.p95_ms,
+                specialized_gpu_p95_ms:$specialized[0].gpu_execution_ms.p95_ms,
+                baseline_timing_samples:$baseline[0].gpu_execution_ms.samples,
+                specialized_timing_samples:$specialized[0].gpu_execution_ms.samples,
+                pixels_identical:true,
+                speedup_claimed:false,
+                timing_comparable:(
+                  $baseline[0].timestamp_query_supported == true
+                  and $specialized[0].timestamp_query_supported == true
+                  and $baseline[0].gpu_execution_ms.samples == 60
+                  and $specialized[0].gpu_execution_ms.samples == 60
+                  and ($baseline[0].gpu_execution_ms.p95_ms | type == "number")
+                  and ($specialized[0].gpu_execution_ms.p95_ms | type == "number")
+                ),
+                p95_reduction_percent:(
+                  if ($baseline[0].gpu_execution_ms.p95_ms | type == "number")
+                    and ($specialized[0].gpu_execution_ms.p95_ms | type == "number")
+                    and $baseline[0].gpu_execution_ms.p95_ms > 0
+                  then 100 * ($baseline[0].gpu_execution_ms.p95_ms - $specialized[0].gpu_execution_ms.p95_ms) / $baseline[0].gpu_execution_ms.p95_ms
+                  else null end
+                ),
+                measurement:"same_adapter_neutral_palette_160x90_60_replayed_passes",
+                normative_wcag_conformance:false
+              }' > "$RUNNER_TEMP/wgpu-reference-shader-ab-$theme.json"
+          done
+          test "$(wc -l < "$RUNNER_TEMP/wgpu-reference-shader-ab-hashes.txt")" -eq 20
+          sha256sum "$RUNNER_TEMP/wgpu-reference-ab-"*.json "$RUNNER_TEMP/wgpu-reference-ab-"*.ppm "$RUNNER_TEMP/wgpu-reference-shader-ab-"*.json "$RUNNER_TEMP/wgpu-reference-shader-ab-hashes.txt" \
+            > "$RUNNER_TEMP/wgpu-reference-shader-ab-sha256.txt"
+
+          # Verify identical pixels across repeated renders of one fixed scene state.
+          cargo run --manifest-path validation/wgpu-reference/Cargo.toml --locked --release -- \
+            --backend vulkan --force-fallback --theme mycelial-genesis --motion reduced --time 0 \
+            --width 96 --height 54 --frames 1 --output "$RUNNER_TEMP/wgpu-reference-repeat.ppm" \
+            > "$RUNNER_TEMP/wgpu-reference-repeat.json"
+          cmp "$RUNNER_TEMP/wgpu-reference-mycelial-genesis.ppm" "$RUNNER_TEMP/wgpu-reference-repeat.ppm"
+
+          # GPU-level motion-policy controls: Reduced ignores scene time, while
+          # Cinematic responds to it. These are reference captures, not display
+          # refresh/presentation-latency tests.
+          cargo run --manifest-path validation/wgpu-reference/Cargo.toml --locked --release -- \
+            --backend vulkan --force-fallback --theme mycelial-genesis --motion reduced --time 60 \
+            --width 96 --height 54 --frames 1 --output "$RUNNER_TEMP/wgpu-reference-reduced-time-60.ppm" \
+            > "$RUNNER_TEMP/wgpu-reference-reduced-time-60.json"
+          cmp "$RUNNER_TEMP/wgpu-reference-mycelial-genesis.ppm" "$RUNNER_TEMP/wgpu-reference-reduced-time-60.ppm"
+
+          cargo run --manifest-path validation/wgpu-reference/Cargo.toml --locked --release -- \
+            --backend vulkan --force-fallback --theme mycelial-genesis --motion cinematic --time 0 \
+            --width 96 --height 54 --frames 1 --output "$RUNNER_TEMP/wgpu-reference-cinematic-time-0.ppm" \
+            > "$RUNNER_TEMP/wgpu-reference-cinematic-time-0.json"
+          cargo run --manifest-path validation/wgpu-reference/Cargo.toml --locked --release -- \
+            --backend vulkan --force-fallback --theme mycelial-genesis --motion cinematic --time 60 \
+            --width 96 --height 54 --frames 1 --output "$RUNNER_TEMP/wgpu-reference-cinematic-time-60.ppm" \
+            > "$RUNNER_TEMP/wgpu-reference-cinematic-time-60.json"
+          jq -e --arg commit "$VISUAL_SOURCE_COMMIT" --arg build "$VISUAL_BUILD_COMMIT" '.schema == "wgpu-offscreen-reference-v2" and .source_commit == $commit
+            and .build_commit == $build and .motion_mode == "reduced" and .time_seconds == 60' "$RUNNER_TEMP/wgpu-reference-reduced-time-60.json"
+          jq -e --arg commit "$VISUAL_SOURCE_COMMIT" --arg build "$VISUAL_BUILD_COMMIT" '.schema == "wgpu-offscreen-reference-v2" and .source_commit == $commit
+            and .build_commit == $build and .motion_mode == "cinematic" and .time_seconds == 0' "$RUNNER_TEMP/wgpu-reference-cinematic-time-0.json"
+          jq -e --arg commit "$VISUAL_SOURCE_COMMIT" --arg build "$VISUAL_BUILD_COMMIT" '.schema == "wgpu-offscreen-reference-v2" and .source_commit == $commit
+            and .build_commit == $build and .motion_mode == "cinematic" and .time_seconds == 60' "$RUNNER_TEMP/wgpu-reference-cinematic-time-60.json"
+          if cmp -s "$RUNNER_TEMP/wgpu-reference-cinematic-time-0.ppm" "$RUNNER_TEMP/wgpu-reference-cinematic-time-60.ppm"; then
+            echo "Cinematic shader did not respond to a large scene-time change"
+            exit 1
+          fi
+
+          # Neutralize time-driven motion. 320x180 covers the shader's full 160x90
+          # cell grid so each declared particle budget has a fair chance to change pixels.
+          : > "$RUNNER_TEMP/wgpu-particle-budget-hashes.txt"
+          for motion in low-power balanced cinematic; do
+            capture="$RUNNER_TEMP/wgpu-particle-budget-$motion.ppm"
+            receipt="$RUNNER_TEMP/wgpu-particle-budget-$motion.json"
+            expected_budget="$(jq -r --arg motion "$motion" '.motion_profiles[$motion].particle_budget_scale' themes/visual-genome-v1.json)"
+            cargo run --manifest-path validation/wgpu-reference/Cargo.toml --locked --release -- \
+              --backend vulkan --force-fallback --theme cosmic-atlas --motion "$motion" --time 0 \
+              --width 320 --height 180 --frames 1 --output "$capture" > "$receipt"
+            jq -e --arg motion "$motion" --argjson budget "$expected_budget" \
+              '.motion_mode == $motion and .time_seconds == 0 and ((.particle_budget_scale - $budget) < 0.00001 and (.particle_budget_scale - $budget) > -0.00001) and .crossfade_applied == false' "$receipt"
+            printf '%s %s %s\n' "$motion" "$expected_budget" "$(sha256sum "$capture" | awk '{print $1}')" >> "$RUNNER_TEMP/wgpu-particle-budget-hashes.txt"
+          done
+          test "$(wc -l < "$RUNNER_TEMP/wgpu-particle-budget-hashes.txt")" -eq 3
+          test "$(awk '{print $3}' "$RUNNER_TEMP/wgpu-particle-budget-hashes.txt" | sort -u | wc -l)" -eq 3
+          sha256sum "$RUNNER_TEMP/wgpu-particle-budget-"*.json "$RUNNER_TEMP/wgpu-particle-budget-"*.ppm >> "$RUNNER_TEMP/wgpu-reference-shader-ab-sha256.txt"
+
+          # Higher-workload software-adapter throughput sample; this is not a
+          # substitute for the same protocol on the laptop's discrete GPU.
+          cargo run --manifest-path validation/wgpu-reference/Cargo.toml --locked --release -- \
+            --backend vulkan --force-fallback --theme oceanic-intelligence --motion cinematic --time 3.0 \
+            --width 320 --height 180 --frames 60 --output "$RUNNER_TEMP/wgpu-reference-throughput.ppm" \
+            > "$RUNNER_TEMP/wgpu-reference-throughput.json"
+          jq -e --arg commit "$VISUAL_SOURCE_COMMIT" --arg build "$VISUAL_BUILD_COMMIT" '
+            .schema == "wgpu-offscreen-reference-v2"
+            and .source_commit == $commit and .build_commit == $build
+            and .measurement == "replayed_offscreen_passes_one_command_submission"
+            and .shader_profile == "specialized-family-work"
+            and .theme == "oceanic-intelligence"
+            and .resolution.width == 320 and .resolution.height == 180
+            and .frames_requested == 60
+            and (.adapter.name | length > 0)
+            and (.cpu_record_and_submit_ms >= 0)
+            and (.end_to_end_render_and_readback_ms >= .cpu_record_and_submit_ms)
+            and (.capture_structure.quantized_color_bins >= 2)
+            and (if .timestamp_query_supported
+              then .timestamp_query_samples == 60 and .gpu_execution_ms.samples == 60 and .gpu_execution_ms.p95_ms >= 0
+              else .timestamp_query_samples == 0 and .gpu_execution_ms.samples == 0 and .gpu_execution_ms.p95_ms == null
+              end)
+          ' "$RUNNER_TEMP/wgpu-reference-throughput.json"
+          test "$(head -c 2 "$RUNNER_TEMP/wgpu-reference-throughput.ppm")" = "P6"
+          sha256sum "$RUNNER_TEMP"/wgpu-reference-*.ppm "$RUNNER_TEMP"/wgpu-reference-*.json > "$RUNNER_TEMP/wgpu-reference-capture-sha256.txt"
+      - name: Preserve GPU reference evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: headless-wgpu-reference
+          path: |
+            ${{ runner.temp }}/wgpu-reference-*.json
+            ${{ runner.temp }}/wgpu-reference-*.ppm
+            ${{ runner.temp }}/wgpu-reference-capture-sha256.txt
+            ${{ runner.temp }}/wgpu-reference-theme-hashes.txt
+            ${{ runner.temp }}/wgpu-reference-family-neutral-hashes.txt
+            ${{ runner.temp }}/wgpu-reference-shader-ab-hashes.txt
+            ${{ runner.temp }}/wgpu-reference-shader-ab-sha256.txt
+            ${{ runner.temp }}/wgpu-reference-throughput.json
+            ${{ runner.temp }}/wgpu-reference-throughput.ppm
+            ${{ runner.temp }}/wgpu-reference-Cargo.lock
+            ${{ runner.temp }}/wgpu-reference-Cargo.lock.sha256
+          if-no-files-found: ignore
+          retention-days: 14
