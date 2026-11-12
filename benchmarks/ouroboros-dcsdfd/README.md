@@ -102,4 +102,8 @@ The comparator now:
 
 The surface sampler excludes zero-area triangles from its sampling distribution and reports how many were excluded. The independent Rust mesh auditor remains the full topology/vertex-link audit; this Python summary does not replace it.
 
-Current source contains 12 authored reference-adapter tests and 10 authored comparator tests. They are source-inspected but have **not** been run in this environment. No reference extraction, mesh comparison or performance trial is claimed.
+The reference-run loader now requires float64 vertex storage and signed-int64 quad-index storage before any dtype conversion, rejects archive/symlink/path-escape artifacts, caps individual NPY payload sizes and verifies the descriptor digest, bounds, dimensions, scale and first-axis-fastest metadata against the exact input grid. This prevents a float32 vertex file or fractional quad index array from being silently normalized and accepted.
+
+The lightweight Python edge-incidence topology summary has an explicit maximum of 1,000,000 vertices and 200,000 triangles. Larger meshes fail with a clear limit error rather than creating an unbounded Python dictionary/union-find workspace. This summary is not the full Rust audit; the aggregation must mark this diagnostic incomplete/unsupported when the limit is exceeded.
+
+Current source contains 12 authored reference-adapter tests and 17 authored comparator tests. They are source-inspected but have **not** been run in this environment. No reference extraction, mesh comparison or performance trial is claimed.
