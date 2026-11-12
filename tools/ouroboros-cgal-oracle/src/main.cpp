@@ -214,6 +214,49 @@ Result inspect(const Input& input, std::uint32_t max_pairs) {
   return result;
 }
 
+template <typename T>
+void append_little_endian(std::vector<std::uint8_t>& bytes, T value) {
+  static_assert(std::is_integral_v<T>);
+  using U = std::make_unsigned_t<T>;
+  const U raw = [&]() {
+    if constexpr (std::is_signed_v<T>) return std::bit_cast<U>(value);
+    else return static_cast<U>(value);
+  }();
+  for (std::size_t i = 0; i < sizeof(T); ++i) {
+    bytes.push_back(static_cast<std::uint8_t>(
+        (raw >> (8U * static_cast<unsigned>(i))) & static_cast<U>(0xffU)));
+  }
+}
+
+std::vector<std::uint8_t> make_triangle_soup_fixture(
+    const std::vector<std::array<std::int64_t, 3>>& points,
+    const std::vector<Triangle>& triangles,
+    std::uint16_t schema = kSchemaVersion) {
+  std::vector<std::uint8_t> bytes;
+  bytes.insert(bytes.end(), kMagic.begin(), kMagic.end());
+  append_little_endian(bytes, schema);
+  append_little_endian(bytes, static_cast<std::uint32_t>(points.size()));
+  append_little_endian(bytes, static_cast<std::uint32_t>(triangles.size()));
+  for (const auto& point : points) {
+    for (const auto coordinate : point) append_little_endian(bytes, coordinate);
+  }
+  for (const auto& triangle : triangles) {
+    for (const auto index : triangle) {
+      append_little_endian(bytes, static_cast<std::uint32_t>(index));
+    }
+  }
+  return bytes;
+}
+
+bool parser_rejects(const std::vector<std::uint8_t>& bytes) {
+  try {
+    (void)parse_input(bytes);
+    return false;
+  } catch (const std::exception&) {
+    return true;
+  }
+}
+
 std::vector<std::uint8_t> read_file(const std::string& path) {
   std::ifstream file(path, std::ios::binary | std::ios::ate);
   if (!file) {
@@ -319,6 +362,26 @@ bool self_test() {
   if (!capped_result.pair_list_truncated
       || capped_result.intersecting_face_pairs.size() != 1
       || !capped_result.has_intersections()) return false;
+
+  // 7. The binary contract round-trips exact integer nanounits and topology.
+  const auto wire = make_triangle_soup_fixture(
+      {{0,0,0}, {1'000'000'000,0,0}, {0,1'000'000'000,0}},
+      {{{0,1,2}}});
+  const auto parsed = parse_input(wire);
+  if (parsed.points.size() != 3 || parsed.triangles.size() != 1
+      || parsed.triangles[0] != Triangle{0,1,2}) return false;
+  if (Kernel::FT(parsed.points[1].x()) != Kernel::FT(1)) return false;
+
+  // 8. Malformed length, unknown schema, and invalid indices reject.
+  auto truncated = wire;
+  truncated.pop_back();
+  if (!parser_rejects(truncated)) return false;
+  auto unknown_schema = make_triangle_soup_fixture(
+      {{0,0,0}, {1,0,0}, {0,1,0}}, {{{0,1,2}}}, 99);
+  if (!parser_rejects(unknown_schema)) return false;
+  auto invalid_index = make_triangle_soup_fixture(
+      {{0,0,0}, {1,0,0}, {0,1,0}}, {{{0,1,3}}});
+  if (!parser_rejects(invalid_index)) return false;
 
   return true;
 }
