@@ -12,7 +12,6 @@ import json
 import math
 import struct
 import sys
-import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -260,6 +259,119 @@ def symmetric_vertex_site_distance(reference: Any, candidate: Any, np: Any) -> d
     }
 
 
+def halton_values(count: int, base: int, np: Any):
+    if count < 1 or base < 2:
+        raise ComparisonError("Halton count/base must be positive")
+    indices = np.arange(1, count + 1, dtype=np.int64)
+    values = np.zeros(count, dtype=np.float64)
+    factor = 1.0
+    remaining = indices.copy()
+    while np.any(remaining):
+        factor /= base
+        values += factor * (remaining % base)
+        remaining //= base
+    return values
+
+
+def deterministic_surface_samples(
+    vertices: Any,
+    triangles: Any,
+    sample_count: int,
+    np: Any,
+) -> tuple[Any, int]:
+    vertices = np.asarray(vertices, dtype=np.float64)
+    triangles = np.asarray(triangles, dtype=np.int64)
+    if sample_count < 1:
+        raise ComparisonError("surface sample count must be positive")
+    if vertices.ndim != 2 or vertices.shape[1] != 3:
+        raise ComparisonError("surface vertices must have shape (n,3)")
+    if triangles.ndim != 2 or triangles.shape[1] != 3 or len(triangles) == 0:
+        raise ComparisonError("surface triangles must have shape (m,3) with m > 0")
+    if not np.isfinite(vertices).all():
+        raise ComparisonError("surface contains non-finite vertices")
+    if triangles.min() < 0 or triangles.max() >= len(vertices):
+        raise ComparisonError("surface triangle index out of range")
+
+    tri_points = vertices[triangles]
+    cross = np.cross(
+        tri_points[:, 1] - tri_points[:, 0],
+        tri_points[:, 2] - tri_points[:, 0],
+    )
+    twice_area = np.linalg.norm(cross, axis=1)
+    if not np.isfinite(twice_area).all():
+        raise ComparisonError("surface triangle area is non-finite")
+    valid = twice_area > 0.0
+    degenerate_count = int((~valid).sum())
+    if not np.any(valid):
+        raise ComparisonError("surface has no positive-area triangles")
+    valid_triangles = triangles[valid]
+    valid_areas = twice_area[valid] * 0.5
+    cumulative_area = np.cumsum(valid_areas, dtype=np.float64)
+    total_area = float(cumulative_area[-1])
+    if not math.isfinite(total_area) or total_area <= 0.0:
+        raise ComparisonError("surface has invalid total area")
+
+    face_selector = halton_values(sample_count, 2, np) * total_area
+    face_ids = np.searchsorted(cumulative_area, face_selector, side="right")
+    face_ids = np.minimum(face_ids, len(valid_triangles) - 1)
+    selected = vertices[valid_triangles[face_ids]]
+
+    # Uniform area measure inside each selected triangle:
+    # (1-sqrt(u), sqrt(u)*(1-v), sqrt(u)*v).
+    root_u = np.sqrt(halton_values(sample_count, 3, np))
+    v = halton_values(sample_count, 5, np)
+    w0 = 1.0 - root_u
+    w1 = root_u * (1.0 - v)
+    w2 = root_u * v
+    samples = (
+        selected[:, 0] * w0[:, None]
+        + selected[:, 1] * w1[:, None]
+        + selected[:, 2] * w2[:, None]
+    )
+    if not np.isfinite(samples).all():
+        raise ComparisonError("deterministic surface sampler generated non-finite points")
+    return samples, degenerate_count
+
+
+def symmetric_surface_sampled_distance(
+    reference_vertices: Any,
+    reference_triangles: Any,
+    candidate_vertices: Any,
+    candidate_triangles: Any,
+    sample_count: int,
+    np: Any,
+) -> dict[str, Any]:
+    try:
+        from scipy.spatial import cKDTree
+    except ImportError as exc:
+        raise ComparisonError("SciPy is required for surface-sample nearest-neighbour comparisons") from exc
+    reference_samples, reference_degenerate = deterministic_surface_samples(
+        reference_vertices, reference_triangles, sample_count, np
+    )
+    candidate_samples, candidate_degenerate = deterministic_surface_samples(
+        candidate_vertices, candidate_triangles, sample_count, np
+    )
+    reference_tree = cKDTree(reference_samples)
+    candidate_tree = cKDTree(candidate_samples)
+    candidate_to_reference = reference_tree.query(candidate_samples, k=1, workers=1)[0]
+    reference_to_candidate = candidate_tree.query(reference_samples, k=1, workers=1)[0]
+    return {
+        "definition": (
+            "symmetric nearest-neighbour distance between deterministic Halton, "
+            "area-weighted triangle-surface samples; an estimator, not exact Chamfer or Hausdorff"
+        ),
+        "sampling": "Halton bases 2/3/5; area-weighted face selection; uniform barycentric samples",
+        "sample_count_per_surface": int(sample_count),
+        "reference_degenerate_triangles_excluded": reference_degenerate,
+        "candidate_degenerate_triangles_excluded": candidate_degenerate,
+        "candidate_to_reference": distance_summary(candidate_to_reference, np),
+        "reference_to_candidate": distance_summary(reference_to_candidate, np),
+        "symmetric_max_sample_distance": float(
+            max(candidate_to_reference.max(), reference_to_candidate.max())
+        ),
+    }
+
+
 def sampled_grid_residual(vertices: Any, grid: dict[str, Any], np: Any) -> dict[str, Any]:
     nx, ny, nz = grid["dimensions"]
     minimum = np.asarray(grid["minimum"], dtype=np.float64)
@@ -320,14 +432,47 @@ def load_reference_run(run_dir: Path, np: Any):
     if not manifest_path.is_file():
         raise ComparisonError(f"missing reference manifest {manifest_path}")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    vertices = np.load(run_dir / manifest["result"]["vertices_file"], allow_pickle=False)
-    quads = np.load(run_dir / manifest["result"]["quads_file"], allow_pickle=False)
+    if manifest.get("schema_version") != 1:
+        raise ComparisonError("unsupported DCSDFD reference manifest schema")
+    reference = manifest.get("reference", {})
+    if reference.get("commit") != "d6e6ae3b5ff9200e687ca19c178ff35d65c1f810":
+        raise ComparisonError("reference manifest is not pinned to the declared Gpytoolbox commit")
+    if reference.get("source_mode") not in ("upstream-unmodified", "fixed-seed-patched"):
+        raise ComparisonError("reference manifest has an unknown source mode")
+    parameters = manifest.get("parameters", {})
+    isovalue = parameters.get("isovalue")
+    if not isinstance(isovalue, (int, float)) or not math.isfinite(float(isovalue)):
+        raise ComparisonError("reference manifest is missing a finite isovalue")
+    if float(isovalue) != 0.0:
+        raise ComparisonError("classical OURODCQ1 comparison requires the zero isovalue")
+    input_record = manifest.get("input", {})
+    if input_record.get("magic") != "OUROGRD1":
+        raise ComparisonError("reference manifest does not identify OUROGRD1 input")
+    if input_record.get("resampled") is not False or input_record.get("field_reevaluated") is not False:
+        raise ComparisonError("reference manifest does not attest frozen, non-resampled input")
+
+    vertices_path = run_dir / manifest["result"]["vertices_file"]
+    quads_path = run_dir / manifest["result"]["quads_file"]
+    vertices = np.load(vertices_path, allow_pickle=False)
+    quads = np.load(quads_path, allow_pickle=False)
     vertices = np.asarray(vertices, dtype=np.float64)
     quads = np.asarray(quads, dtype=np.int64)
+    if vertices.ndim != 2 or vertices.shape[1] != 3 or len(vertices) == 0:
+        raise ComparisonError("reference vertex array has an invalid shape or is empty")
+    if quads.ndim != 2 or quads.shape[1] != 4 or len(quads) == 0:
+        raise ComparisonError("reference quad array has an invalid shape or is empty")
+    if not np.isfinite(vertices).all():
+        raise ComparisonError("reference mesh contains non-finite vertices")
+    if quads.min() < 0 or quads.max() >= len(vertices):
+        raise ComparisonError("reference quad index out of range")
     if stable_array_hash(vertices, np) != manifest["result"]["vertices_sha256"]:
         raise ComparisonError("reference vertex-array digest does not match run manifest")
     if stable_array_hash(quads, np) != manifest["result"]["quads_sha256"]:
         raise ComparisonError("reference quad-array digest does not match run manifest")
+    if len(vertices) != manifest["result"].get("vertex_count"):
+        raise ComparisonError("reference vertex count does not match run manifest")
+    if len(quads) != manifest["result"].get("quad_count"):
+        raise ComparisonError("reference quad count does not match run manifest")
     return manifest, vertices, quads
 
 
@@ -338,6 +483,7 @@ def main() -> int:
     parser.add_argument("--grid", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--area-epsilon", type=float, default=1e-20)
+    parser.add_argument("--surface-samples", type=int, default=16384)
     args = parser.parse_args()
 
     import numpy as np
@@ -346,23 +492,20 @@ def main() -> int:
     candidate = parse_ourodcq1(args.candidate_ourodcq1, np)
     if not math.isfinite(args.area_epsilon) or args.area_epsilon < 0:
         raise ComparisonError("area-epsilon must be finite and nonnegative")
+    if args.surface_samples < 256 or args.surface_samples > 1_000_000:
+        raise ComparisonError("surface-samples must be in [256, 1000000]")
 
-    grid_bytes = args.grid.read_bytes()
-    grid_sha = sha256_bytes(grid_bytes)
+    grid = parse_ourogrd1(args.grid, np)
+    grid_sha = grid["grid_sha256"]
     if grid_sha != reference_manifest["input"]["grid_sha256"]:
         raise ComparisonError("reference run and requested grid have different SHA-256")
     if candidate["embedded_grid_sha256"] != grid_sha:
         raise ComparisonError("OURODCQ1 embedded grid differs from reference input")
 
-    with tempfile.NamedTemporaryFile(delete=False) as temp:
-        temp.write(grid_bytes)
-        grid_path = Path(temp.name)
-    try:
-        grid = parse_ourogrd1(grid_path, np)
-    finally:
-        grid_path.unlink(missing_ok=True)
-
     ref_triangles = triangulate_quads(ref_quads, np)
+    candidate_expected_triangles = triangulate_quads(candidate["quads"], np)
+    if not np.array_equal(candidate["triangles"], candidate_expected_triangles):
+        raise ComparisonError("OURODCQ1 triangle view differs from its declared fixed (0,2) quad diagonal")
     ref_topology = topology_summary(ref_vertices, ref_triangles, np, args.area_epsilon)
     cand_topology = topology_summary(
         candidate["vertices"], candidate["triangles"], np, args.area_epsilon
@@ -394,11 +537,19 @@ def main() -> int:
             "topology_indicators": cand_topology,
             "sampled_grid_vertex_residual": sampled_grid_residual(candidate["vertices"], grid, np),
         },
-        "geometry_comparison": symmetric_vertex_site_distance(
-            ref_vertices, candidate["vertices"], np
-        ),
+        "geometry_comparison": {
+            "symmetric_vertex_site_distance": symmetric_vertex_site_distance(
+                ref_vertices, candidate["vertices"], np
+            ),
+            "symmetric_surface_sampled_distance": symmetric_surface_sampled_distance(
+                ref_vertices, ref_triangles,
+                candidate["vertices"], candidate["triangles"],
+                args.surface_samples, np,
+            ),
+        },
         "limitations": [
             "nearest vertex-site distance is not surface-to-surface Chamfer or Hausdorff distance",
+            "surface-sampled distance is a deterministic area-weighted Monte Carlo/quasi-Monte-Carlo estimate, not exact Hausdorff distance",
             "topology metrics count edge incidences and do not replace vertex-link/manifold audit",
             "self-intersection remains NotEvaluated until matching CGAL evidence is attached",
             "sampled-grid residual is an interpolated residual to the quantized grid, not exact geometric ground truth",
@@ -410,7 +561,8 @@ def main() -> int:
     print(json.dumps({
         "output": str(args.output),
         "grid_sha256": grid_sha,
-        "vertex_site_distance": comparison["geometry_comparison"]["symmetric_max"],
+        "vertex_site_distance": comparison["geometry_comparison"]["symmetric_vertex_site_distance"]["symmetric_max"],
+        "surface_sampled_max_distance": comparison["geometry_comparison"]["symmetric_surface_sampled_distance"]["symmetric_max_sample_distance"],
         "reference_vertices": len(ref_vertices),
         "candidate_vertices": len(candidate["vertices"]),
     }, sort_keys=True))
