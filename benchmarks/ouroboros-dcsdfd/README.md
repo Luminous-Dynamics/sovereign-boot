@@ -64,7 +64,7 @@ python benchmarks/ouroboros-dcsdfd/reference_adapter.py \\
   --output-dir results/seeded/smooth-32/run-01
 \`\`\`
 
-The adapter saves \`vertices.npy\`, \`quads.npy\` and \`run-v1.json\`. The JSON binds input/source hashes, options, versions, host, elapsed time, process RSS high-water, result counts and geometry-array hashes. It does not claim topology, self-intersection, visual quality or energy results.
+The adapter saves \`vertices.npy\`, \`quads.npy\` and \`run-v1.json\`. The JSON binds input/source hashes, options, versions, host, elapsed time, process RSS high-water, result counts and geometry-array hashes. It also records the loaded Python module hash and compiled `_dcsdd_cpp_impl` binary path/hash. The upstream-unmodified mode requires a clean tracked checkout; fixed-seed mode permits exactly one unstaged source-file change matching the recorded patch. The binary digest is recorded, but build provenance is not independently attested—the manifest says so explicitly. This does not claim topology, self-intersection, visual quality or energy results.
 
 ## Workload and parameters
 
@@ -76,7 +76,8 @@ Early characterization: 5 upstream-unmodified repeats and 10 fixed-seed-patched 
 
 - Input SHA, fixture/descriptor hash, exact dimensions/bounds and coordinate layout.
 - Vertex/quad/triangle counts, surface components, boundary edges, manifold links, orientation and degeneracy.
-- Symmetric vertex nearest-neighbour distance p50/p95/p99/max; symmetric surface Chamfer/Hausdorff.
+- Symmetric vertex-site nearest-neighbour distance p50/p95/p99/max (tessellation-sensitive diagnostic).
+- Deterministic area-weighted triangle-surface sample distance using a fixed Halton sequence (reported with sample count and both directions). This is an estimator, not exact Chamfer/Hausdorff; repeat at multiple sample counts to assess convergence.
 - Surface-to-discrete-SDF residual (and analytic ground-truth residual only for exact SDF fixtures).
 - Silhouette IoU, semantic landmark error, head contour and feature-line drift.
 - DCSDFD iteration counts, energy and displacement trace only when captured from an explicitly instrumented reference; otherwise unavailable.
@@ -87,3 +88,18 @@ Never compare only triangle count or final vertex distance. A mismatch should be
 ## Current scope and non-claims
 
 This is a matched reference harness, not a Rust port. It does not prove the classical Rust baseline is equivalent to DCSDFD, and does not show speed/quality/energy superiority. The fixed-seed source is not official upstream. No benchmark has been run. The face fixture is approximate; a broader benchmark still needs exact analytic sphere/box/capsule/torus grids and pinned mesh-derived SDF grids as separate strata.
+
+
+## Comparator hardening
+
+The comparator now:
+- validates the reference manifest schema, pinned upstream commit, source mode, finite isovalue, output-array hashes/counts/shapes, finite vertices and quad index ranges;
+- requires isovalue zero when comparing against the current OURODCQ1 classical extractor;
+- verifies the exact embedded OUROGRD1 digest against the supplied grid and the DCSDFD run manifest;
+- checks that the Rust triangle view is exactly the declared fixed (0,2) triangulation of its quad array;
+- computes both vertex-site distances and deterministic area-weighted triangle-surface sample distances;
+- labels the surface-sample metric as an estimator, not an exact Hausdorff guarantee.
+
+The surface sampler excludes zero-area triangles from its sampling distribution and reports how many were excluded. The independent Rust mesh auditor remains the full topology/vertex-link audit; this Python summary does not replace it.
+
+Current source contains 12 authored reference-adapter tests and 10 authored comparator tests. They are source-inspected but have **not** been run in this environment. No reference extraction, mesh comparison or performance trial is claimed.
