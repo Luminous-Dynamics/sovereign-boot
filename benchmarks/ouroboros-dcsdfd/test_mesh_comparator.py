@@ -75,6 +75,47 @@ def make_dc_receipt(source_grid):
 
 
 class DualContourReceiptTests(unittest.TestCase):
+    def write_reference_run_fixture(self, run_dir, vertices, quads):
+        np.save(run_dir / "vertices.npy", vertices)
+        np.save(run_dir / "quads.npy", quads)
+        manifest = {
+            "schema_version": 1,
+            "reference": {
+                "repository": "sgsellan/gpytoolbox",
+                "commit": "d6e6ae3b5ff9200e687ca19c178ff35d65c1f810",
+                "source_mode": "fixed-seed-patched",
+                "source_file": "src/cpp/dual_contouring_of_signed_distance_data/contouring.cpp",
+                "source_file_sha256": "a" * 64,
+                "patch_sha256": "71b1983492b906935b95588368bdf7c11a87a47ed4ae0fa8694ea5d2f95386ee",
+            },
+            "native_binary": {
+                "extension_path": "/pinned/gpytoolbox/_dcsdd_cpp_impl.so",
+                "extension_sha256": "b" * 64,
+                "extension_inside_reference_checkout": True,
+                "binary_source_binding": "path-and-binary-digest-recorded; build provenance is not independently attested",
+            },
+            "parameters": {"isovalue": 0.0},
+            "input": {
+                "magic": "OUROGRD1",
+                "grid_sha256": "c" * 64,
+                "field_descriptor_sha256": "d" * 64,
+                "resampled": False,
+                "field_reevaluated": False,
+            },
+            "result": {
+                "vertices_file": "vertices.npy",
+                "quads_file": "quads.npy",
+                "vertices_sha256": compare.stable_array_hash(vertices, np),
+                "quads_sha256": compare.stable_array_hash(quads, np),
+                "vertex_count": len(vertices),
+                "quad_count": len(quads),
+            },
+        }
+        (run_dir / "run-v1.json").write_text(
+            __import__("json").dumps(manifest), encoding="utf-8"
+        )
+        return manifest
+
     def write_bytes(self, data):
         handle = tempfile.NamedTemporaryFile(delete=False)
         handle.write(data)
@@ -285,6 +326,70 @@ class DualContourReceiptTests(unittest.TestCase):
         (run_dir / "run-v1.json").write_text(__import__("json").dumps(manifest), encoding="utf-8")
         with self.assertRaisesRegex(compare.ComparisonError, "native extension digest"):
             compare.load_reference_run(run_dir, np)
+
+    def test_reference_run_rejects_float32_vertices_before_dtype_normalization(self):
+        run_dir = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(run_dir, ignore_errors=True))
+        vertices = np.array(
+            [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            dtype=np.float32,
+        )
+        quads = np.array([[0, 1, 2, 0]], dtype=np.int64)
+        self.write_reference_run_fixture(run_dir, vertices, quads)
+        with self.assertRaisesRegex(compare.ComparisonError, "float64 storage"):
+            compare.load_reference_run(run_dir, np)
+
+    def test_reference_run_rejects_float_quad_indices_before_integer_cast(self):
+        run_dir = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(run_dir, ignore_errors=True))
+        vertices = np.array(
+            [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            dtype=np.float64,
+        )
+        quads = np.array([[0.0, 1.0, 2.0, 0.0]], dtype=np.float64)
+        self.write_reference_run_fixture(run_dir, vertices, quads)
+        with self.assertRaisesRegex(compare.ComparisonError, "signed int64"):
+            compare.load_reference_run(run_dir, np)
+
+    def test_reference_run_rejects_artifact_path_escape(self):
+        run_dir = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(run_dir.parent, ignore_errors=True))
+        vertices = np.array(
+            [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            dtype=np.float64,
+        )
+        quads = np.array([[0, 1, 2, 0]], dtype=np.int64)
+        manifest = self.write_reference_run_fixture(run_dir, vertices, quads)
+        outside = run_dir.parent / "outside.npy"
+        np.save(outside, vertices)
+        manifest["result"]["vertices_file"] = "../outside.npy"
+        (run_dir / "run-v1.json").write_text(
+            __import__("json").dumps(manifest), encoding="utf-8"
+        )
+        with self.assertRaisesRegex(compare.ComparisonError, "simple basename"):
+            compare.load_reference_run(run_dir, np)
+
+    def test_reference_input_binding_includes_descriptor_geometry_and_grid_metadata(self):
+        grid_path = self.write_bytes(make_grid())
+        grid = compare.parse_ourogrd1(grid_path, np)
+        input_record = {
+            "magic": "OUROGRD1",
+            "grid_sha256": grid["grid_sha256"],
+            "field_descriptor_sha256": grid["descriptor_sha256"],
+            "fixture_id": grid["fixture_id"],
+            "dimensions": list(grid["dimensions"]),
+            "minimum": grid["minimum"],
+            "maximum": grid["maximum"],
+            "distance_scale": grid["distance_scale"],
+            "sample_count": grid["sample_count"],
+            "layout": "first-axis-fastest",
+            "resampled": False,
+            "field_reevaluated": False,
+        }
+        compare.validate_reference_input_binding({"input": input_record}, grid)
+        input_record["field_descriptor_sha256"] = "0" * 64
+        with self.assertRaisesRegex(compare.ComparisonError, "field_descriptor_sha256"):
+            compare.validate_reference_input_binding({"input": input_record}, grid)
 
     def test_trilinear_residual_is_to_quantized_grid_not_claimed_ground_truth(self):
         grid_path = self.write_bytes(make_grid())
