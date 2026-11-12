@@ -1,0 +1,15 @@
+diff --git a/src/cpp/dual_contouring_of_signed_distance_data/contouring.cpp b/src/cpp/dual_contouring_of_signed_distance_data/contouring.cpp
+--- a/src/cpp/dual_contouring_of_signed_distance_data/contouring.cpp
++++ b/src/cpp/dual_contouring_of_signed_distance_data/contouring.cpp
+@@ -828,10 +828,9 @@
+     std::vector<int> remaining_inds;
+     if ((int)sphere_batch_inds.size() < bounded_batch_size) {
+         int n_needed = bounded_batch_size - (int)sphere_batch_inds.size();
+-        std::random_device rd;
+-        std::mt19937 gen(rd());
++        std::mt19937 gen(0x4F55524FU); // fixed seed for Ouroboros differential trials
+         std::shuffle(inds_to_choose_randomly_from.begin(), inds_to_choose_randomly_from.end(), gen);
+         for (int i = 0; i < n_needed && i < (int)inds_to_choose_randomly_from.size(); ++i) {
+             sphere_batch_inds.push_back(inds_to_choose_randomly_from[i]);
+         }
+     }
