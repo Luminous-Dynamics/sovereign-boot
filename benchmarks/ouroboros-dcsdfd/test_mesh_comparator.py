@@ -197,11 +197,27 @@ class DualContourReceiptTests(unittest.TestCase):
         manifest = {
             "schema_version": 1,
             "reference": {
+                "repository": "sgsellan/gpytoolbox",
                 "commit": "d6e6ae3b5ff9200e687ca19c178ff35d65c1f810",
                 "source_mode": "fixed-seed-patched",
+                "source_file": "src/cpp/dual_contouring_of_signed_distance_data/contouring.cpp",
+                "source_file_sha256": "a" * 64,
+                "patch_sha256": "71b1983492b906935b95588368bdf7c11a87a47ed4ae0fa8694ea5d2f95386ee",
+            },
+            "native_binary": {
+                "extension_path": "/pinned/gpytoolbox/_dcsdd_cpp_impl.so",
+                "extension_sha256": "b" * 64,
+                "extension_inside_reference_checkout": True,
+                "binary_source_binding": "path-and-binary-digest-recorded; build provenance is not independently attested",
             },
             "parameters": {"isovalue": 1.0},
-            "input": {"magic": "OUROGRD1", "resampled": False, "field_reevaluated": False},
+            "input": {
+                "magic": "OUROGRD1",
+                "grid_sha256": "c" * 64,
+                "field_descriptor_sha256": "d" * 64,
+                "resampled": False,
+                "field_reevaluated": False,
+            },
             "result": {
                 "vertices_file": "vertices.npy", "quads_file": "quads.npy",
                 "vertices_sha256": compare.stable_array_hash(vertices, np),
@@ -216,6 +232,58 @@ class DualContourReceiptTests(unittest.TestCase):
         manifest["input"]["resampled"] = True
         (run_dir / "run-v1.json").write_text(__import__("json").dumps(manifest), encoding="utf-8")
         with self.assertRaises(compare.ComparisonError):
+            compare.load_reference_run(run_dir, np)
+
+    def test_reference_run_requires_loaded_native_binary_digest(self):
+        run_dir = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(run_dir, ignore_errors=True))
+        vertices = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+        quads = np.array([[0, 1, 2, 0]], dtype=np.int64)
+        np.save(run_dir / "vertices.npy", vertices)
+        np.save(run_dir / "quads.npy", quads)
+        manifest = {
+            "schema_version": 1,
+            "reference": {
+                "repository": "sgsellan/gpytoolbox",
+                "commit": "d6e6ae3b5ff9200e687ca19c178ff35d65c1f810",
+                "source_mode": "fixed-seed-patched",
+                "source_file": "src/cpp/dual_contouring_of_signed_distance_data/contouring.cpp",
+                "source_file_sha256": "a" * 64,
+                "patch_sha256": "71b1983492b906935b95588368bdf7c11a87a47ed4ae0fa8694ea5d2f95386ee",
+            },
+            "native_binary": {
+                "extension_path": "/pinned/gpytoolbox/_dcsdd_cpp_impl.so",
+                "extension_sha256": "b" * 64,
+                "extension_inside_reference_checkout": True,
+                "binary_source_binding": "path-and-binary-digest-recorded; build provenance is not independently attested",
+            },
+            "parameters": {"isovalue": 0.0},
+            "input": {
+                "magic": "OUROGRD1",
+                "grid_sha256": "c" * 64,
+                "field_descriptor_sha256": "d" * 64,
+                "resampled": False,
+                "field_reevaluated": False,
+            },
+            "result": {
+                "vertices_file": "vertices.npy", "quads_file": "quads.npy",
+                "vertices_sha256": compare.stable_array_hash(vertices, np),
+                "quads_sha256": compare.stable_array_hash(quads, np),
+                "vertex_count": len(vertices), "quad_count": len(quads),
+            },
+        }
+        manifest.pop("native_binary")
+        (run_dir / "run-v1.json").write_text(__import__("json").dumps(manifest), encoding="utf-8")
+        with self.assertRaisesRegex(compare.ComparisonError, "native extension digest"):
+            compare.load_reference_run(run_dir, np)
+        manifest["native_binary"] = {
+            "extension_path": "/pinned/gpytoolbox/_dcsdd_cpp_impl.so",
+            "extension_sha256": "not-a-sha256",
+            "extension_inside_reference_checkout": True,
+            "binary_source_binding": "path-and-binary-digest-recorded; build provenance is not independently attested",
+        }
+        (run_dir / "run-v1.json").write_text(__import__("json").dumps(manifest), encoding="utf-8")
+        with self.assertRaisesRegex(compare.ComparisonError, "native extension digest"):
             compare.load_reference_run(run_dir, np)
 
     def test_trilinear_residual_is_to_quantized_grid_not_claimed_ground_truth(self):
