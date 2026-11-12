@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "dependency": "CGAL",
+  "version": "6.2.1",
+  "release_date": "2026-09-04",
+  "release_channel": "latest-stable-as-of-2026-11-12",
+  "source_archive": "https://github.com/CGAL/cgal/releases/download/v6.2.1/CGAL-6.2.1.tar.xz",
+  "source_archive_sha256": "b6be77c60765a8456335de991eeaf6ffec55256984e4a9ecc6a97c37bbfe85bf",
+  "kernel": "CGAL::Exact_predicates_exact_constructions_kernel",
+  "gmp_required": true,
+  "mpfr_required": true,
+  "cmake_find_package": "find_package(CGAL 6.2.1 EXACT REQUIRED)",
+  "compiler_baseline": "CGAL 6.2 supports GCC 13.3+ on Linux; this oracle requests C++20",
+  "algorithm_api": "CGAL::Polygon_mesh_processing::triangle_soup_self_intersections<CGAL::Sequential_tag>",
+  "pair_limit_parameter": "CGAL::parameters::maximum_number",
+  "reference_docs": "https://doc.cgal.org/6.2/Polygon_mesh_processing/group__PMP__intersection__grp.html",
+  "notes": [
+    "Exact integer nanounits are converted to exact rational coordinates.",
+    "This oracle detects but never repairs or modifies the mesh.",
+    "The source archive hash must be checked by the dependency manager before build."
+  ]
+}
