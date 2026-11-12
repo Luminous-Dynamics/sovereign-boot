@@ -1,0 +1,11 @@
+[
+  {"id":"unknown-top-level-key","expectedCode":"schema.invalid","description":"Unknown fields are rejected.","set":{"path":"/untrustedPlugin","value":{"command":"must-not-execute"}}},
+  {"id":"path-traversal","expectedCode":"schema.invalid","description":"Asset paths cannot traverse outside the package.","set":{"path":"/assets","value":[{"assetId":"escape-asset","path":"../secret.svg","sha256":"0000000000000000000000000000000000000000000000000000000000000000","mediaType":"image/svg+xml","license":{"spdxId":"MIT"}}]}},
+  {"id":"duplicate-asset-ids","expectedCode":"asset.duplicate_id","description":"Asset IDs must be unique.","set":{"path":"/assets","value":[{"assetId":"asset-one","path":"one.svg","sha256":"0000000000000000000000000000000000000000000000000000000000000000","mediaType":"image/svg+xml","license":{"spdxId":"MIT"}},{"assetId":"asset-one","path":"two.svg","sha256":"0000000000000000000000000000000000000000000000000000000000000000","mediaType":"image/svg+xml","license":{"spdxId":"MIT"}}]}},
+  {"id":"safe-region-out-of-bounds","expectedCode":"region.out_of_bounds","description":"Normalized safe regions cannot extend beyond output bounds.","set":{"path":"/presentations/desktop/safeRegions/0/x","value":0.9}},
+  {"id":"static-fallback-motion","expectedCode":"fallback.invalid","description":"Static fallback must not animate.","set":{"path":"/presentations/staticFallback/motion","value":"ambient"}},
+  {"id":"presentation-fps-budget","expectedCode":"budget.fps","description":"A presentation cannot exceed the pack-wide FPS ceiling.","set":{"path":"/presentations/boot/maxFps","value":60}},
+  {"id":"branch-count-budget","expectedCode":"budget.branches","description":"Simulation branch limit cannot exceed the resource budget.","set":{"path":"/simulation/parameters/branchLimit","value":4096}},
+  {"id":"duplicate-input-id","expectedCode":"input.duplicate_id","description":"Input IDs must be unique.","set":{"path":"/inputs","value":[{"id":"local-time","enabledByDefault":false,"consentRequired":true},{"id":"local-time","enabledByDefault":false,"consentRequired":true}]}},
+  {"id":"unsupported-renderer-capability","expectedCode":"capability.unsupported","description":"Required capabilities must be supported by the selected adapter.","set":{"path":"/capabilities/required","value":["gpu"]}}
+]

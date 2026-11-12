@@ -1,0 +1,480 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:luminous-dynamics:ambient-scene-pack:v1",
+  "title": "Luminous Ambient Scene Pack v1",
+  "description": "Declarative, non-executable scene metadata. The manifest cannot grant host, compositor, authentication, or system-mutation authority.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "sceneId",
+    "sceneVersion",
+    "title",
+    "license",
+    "assets",
+    "palette",
+    "simulation",
+    "presentations",
+    "resourceBudget",
+    "capabilities",
+    "inputs",
+    "lifecycle",
+    "accessibility"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "sceneId": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$"
+    },
+    "sceneVersion": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 500
+    },
+    "license": {
+      "$ref": "#/$defs/license"
+    },
+    "assets": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "$ref": "#/$defs/asset"
+      }
+    },
+    "palette": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "canvas",
+        "substrate",
+        "filament",
+        "node",
+        "lichen",
+        "glow"
+      ],
+      "properties": {
+        "canvas": {
+          "$ref": "#/$defs/color"
+        },
+        "substrate": {
+          "$ref": "#/$defs/color"
+        },
+        "filament": {
+          "$ref": "#/$defs/color"
+        },
+        "node": {
+          "$ref": "#/$defs/color"
+        },
+        "lichen": {
+          "$ref": "#/$defs/color"
+        },
+        "glow": {
+          "$ref": "#/$defs/color"
+        }
+      }
+    },
+    "simulation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "engine",
+        "engineVersion",
+        "seed",
+        "fixedStepHz",
+        "parameters"
+      ],
+      "properties": {
+        "engine": {
+          "const": "mycelial-network-v1"
+        },
+        "engineVersion": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?$"
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "fixedStepHz": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 120
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "branchLimit",
+            "maxDepth",
+            "growthRate",
+            "pulsePeriodSeconds",
+            "driftAmplitude"
+          ],
+          "properties": {
+            "branchLimit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 8192
+            },
+            "maxDepth": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 24
+            },
+            "growthRate": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10
+            },
+            "pulsePeriodSeconds": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 3600
+            },
+            "driftAmplitude": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          }
+        }
+      }
+    },
+    "presentations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "boot",
+        "desktop",
+        "idle",
+        "lockedBackground",
+        "staticFallback"
+      ],
+      "properties": {
+        "boot": {
+          "$ref": "#/$defs/presentation"
+        },
+        "desktop": {
+          "$ref": "#/$defs/presentation"
+        },
+        "idle": {
+          "$ref": "#/$defs/presentation"
+        },
+        "lockedBackground": {
+          "$ref": "#/$defs/presentation"
+        },
+        "staticFallback": {
+          "$ref": "#/$defs/presentation"
+        }
+      }
+    },
+    "resourceBudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maxFps",
+        "maxBranches",
+        "maxMemoryMiB",
+        "pauseWhenHidden",
+        "pauseWhenDisplayAsleep"
+      ],
+      "properties": {
+        "maxFps": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 60
+        },
+        "maxBranches": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8192
+        },
+        "maxMemoryMiB": {
+          "type": "integer",
+          "minimum": 16,
+          "maximum": 2048
+        },
+        "pauseWhenHidden": {
+          "type": "boolean"
+        },
+        "pauseWhenDisplayAsleep": {
+          "type": "boolean"
+        }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required",
+        "staticFallbackRequired"
+      ],
+      "properties": {
+        "required": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "gpu",
+              "dmabuf",
+              "vulkan",
+              "egl",
+              "wayland-layer-shell"
+            ]
+          }
+        },
+        "staticFallbackRequired": {
+          "const": true
+        }
+      }
+    },
+    "inputs": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "$ref": "#/$defs/input"
+      }
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "onLock",
+        "onSuspend",
+        "onWake"
+      ],
+      "properties": {
+        "onLock": {
+          "enum": [
+            "pause",
+            "reduced-motion",
+            "static"
+          ]
+        },
+        "onSuspend": {
+          "const": "pause"
+        },
+        "onWake": {
+          "const": "reinitialize-from-seed"
+        }
+      }
+    },
+    "accessibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reducedMotionPresentation",
+        "colorIsSoleSignal",
+        "staticFallbackAvailable"
+      ],
+      "properties": {
+        "reducedMotionPresentation": {
+          "enum": [
+            "idle",
+            "lockedBackground",
+            "staticFallback"
+          ]
+        },
+        "colorIsSoleSignal": {
+          "const": false
+        },
+        "staticFallbackAvailable": {
+          "const": true
+        }
+      }
+    }
+  },
+  "$defs": {
+    "color": {
+      "type": "string",
+      "pattern": "^#[0-9A-Fa-f]{6}$"
+    },
+    "license": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "spdxId"
+      ],
+      "properties": {
+        "spdxId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "sourceUrl": {
+          "type": "string",
+          "format": "uri",
+          "maxLength": 2048
+        }
+      }
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assetId",
+        "path",
+        "sha256",
+        "mediaType",
+        "license"
+      ],
+      "properties": {
+        "assetId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{1,63}$"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._/-]+$"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "mediaType": {
+          "enum": [
+            "image/svg+xml",
+            "image/png",
+            "image/webp",
+            "image/jpeg",
+            "video/webm",
+            "video/mp4"
+          ]
+        },
+        "license": {
+          "$ref": "#/$defs/license"
+        },
+        "sourceUrl": {
+          "type": "string",
+          "format": "uri",
+          "maxLength": 2048
+        }
+      }
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "enabledByDefault",
+        "consentRequired"
+      ],
+      "properties": {
+        "id": {
+          "enum": [
+            "local-time",
+            "pointer-position",
+            "audio-level"
+          ]
+        },
+        "enabledByDefault": {
+          "const": false
+        },
+        "consentRequired": {
+          "const": true
+        }
+      }
+    },
+    "safeRegion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "x",
+        "y",
+        "width",
+        "height"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{1,47}$"
+        },
+        "x": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "y": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "width": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        },
+        "height": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "presentation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "motion",
+        "maxFps",
+        "brightness",
+        "composition",
+        "safeRegions"
+      ],
+      "properties": {
+        "motion": {
+          "enum": [
+            "full",
+            "ambient",
+            "reduced",
+            "minimal",
+            "none"
+          ]
+        },
+        "maxFps": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 60
+        },
+        "brightness": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "composition": {
+          "enum": [
+            "centered-network",
+            "edge-biased-network",
+            "wide-network",
+            "minimal-network",
+            "gradient-only"
+          ]
+        },
+        "safeRegions": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "$ref": "#/$defs/safeRegion"
+          }
+        }
+      }
+    }
+  }
+}

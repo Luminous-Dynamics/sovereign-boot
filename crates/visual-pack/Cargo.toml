@@ -1,0 +1,11 @@
+[package]
+name = "sovereign-visual-pack"
+version = "0.1.0"
+edition = "2024"
+description = "Strict Scene Pack v1 manifest parser and validated host-facing metadata"
+license = "AGPL-3.0-or-later"
+
+[dependencies]
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.150"
+sovereign-visual-core = { path = "../visual-core" }

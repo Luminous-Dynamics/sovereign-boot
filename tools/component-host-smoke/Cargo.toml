@@ -1,0 +1,16 @@
+[package]
+name = "sovereign-visual-component-host-smoke"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "AGPL-3.0-or-later"
+description = "Capability-denied Wasmtime host smoke test for the Sovereign Visual Component Model interface"
+
+# Keep this qualification tool isolated from the production workspace and its
+# renderer dependency graph. A dedicated lockfile is generated and uploaded by
+# CI, then pinned into source control after the first successful qualification.
+[workspace]
+
+[dependencies]
+sovereign-visual-pack = { path = "../../crates/visual-pack" }
+wasmtime = { version = "=49.0.2", default-features = false, features = ["anyhow", "component-model", "cranelift", "runtime", "std"] }

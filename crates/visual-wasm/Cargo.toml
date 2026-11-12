@@ -1,0 +1,19 @@
+[package]
+name = "sovereign-visual-wasm"
+version = "0.1.0"
+edition = "2024"
+description = "Browser/WASM adapter for the Sovereign Visual Core"
+license = "AGPL-3.0-or-later"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+web = ["dep:wasm-bindgen"]
+
+[dependencies]
+sovereign-visual-core = { path = "../visual-core" }
+sovereign-visual-pack = { path = "../visual-pack" }
+wasm-bindgen = { version = "=0.2.108", optional = true }
+
