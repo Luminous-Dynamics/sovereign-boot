@@ -16,6 +16,9 @@ use ouroboros_sdf_lab::{SampledGrid, SdfError};
 
 pub const EXTRACTOR_SCHEMA_VERSION: u16 = 1;
 pub const EXTRACTOR_MAGIC: [u8; 8] = *b"OURODCQ1";
+pub const TRIANGLE_SOUP_MAGIC: [u8; 8] = *b"OUROTSQ1";
+pub const TRIANGLE_SOUP_SCHEMA_VERSION: u16 = 1;
+pub const TRIANGLE_SOUP_POSITION_SCALE: i64 = 1_000_000_000;
 pub const MAX_ACTIVE_CELLS: u64 = 2_097_152;
 pub const MAX_CANONICAL_RECEIPT_BYTES: u64 = 32 * 1024 * 1024;
 pub const DEFAULT_MAX_GEOMETRY_BYTES: u64 = 8 * 1024 * 1024;
@@ -266,6 +269,51 @@ impl DualContourMesh {
             u32::try_from(audit_bytes.len()).map_err(|_| ExtractError::SizeOverflow)?,
         );
         out.extend_from_slice(&audit_bytes);
+        if out.len() as u64 != total {
+            return Err(ExtractError::ReceiptLengthMismatch);
+        }
+        Ok(out)
+    }
+
+    /// Canonical exact-integer triangle-soup interchange for the independent
+    /// CGAL oracle. Coordinates remain signed integer nanounits; the consumer
+    /// must construct exact rationals and must not round-trip through f64.
+    pub fn triangle_soup_canonical_bytes(&self) -> Result<Vec<u8>, ExtractError> {
+        let vertex_count = u32::try_from(self.vertices.len())
+            .map_err(|_| ExtractError::SizeOverflow)?;
+        let triangle_count = u32::try_from(self.triangles.len())
+            .map_err(|_| ExtractError::SizeOverflow)?;
+        let vertex_bytes = u64::from(vertex_count)
+            .checked_mul(24)
+            .ok_or(ExtractError::SizeOverflow)?;
+        let triangle_bytes = u64::from(triangle_count)
+            .checked_mul(12)
+            .ok_or(ExtractError::SizeOverflow)?;
+        let total = 8_u64
+            .checked_add(2 + 4 + 4)
+            .and_then(|value| value.checked_add(vertex_bytes))
+            .and_then(|value| value.checked_add(triangle_bytes))
+            .ok_or(ExtractError::SizeOverflow)?;
+        if total > MAX_CANONICAL_RECEIPT_BYTES {
+            return Err(ExtractError::ReceiptBudgetExceeded);
+        }
+        let mut out = Vec::new();
+        out.try_reserve_exact(usize::try_from(total).map_err(|_| ExtractError::SizeOverflow)?)
+            .map_err(|_| ExtractError::AllocationFailed)?;
+        out.extend_from_slice(&TRIANGLE_SOUP_MAGIC);
+        put_u16(&mut out, TRIANGLE_SOUP_SCHEMA_VERSION);
+        put_u32(&mut out, vertex_count);
+        put_u32(&mut out, triangle_count);
+        for vertex in &self.vertices {
+            for coordinate in vertex.position_nanounits {
+                put_i64(&mut out, coordinate);
+            }
+        }
+        for triangle in &self.triangles {
+            for index in triangle {
+                put_u32(&mut out, *index);
+            }
+        }
         if out.len() as u64 != total {
             return Err(ExtractError::ReceiptLengthMismatch);
         }
@@ -1267,6 +1315,29 @@ mod tests {
             mesh.audit_report().checks.self_intersections,
             CheckStatus::NotEvaluated
         );
+    }
+
+    #[test]
+    fn canonical_triangle_soup_export_has_exact_integer_coordinates_and_indices() {
+        let sampled = source_grid([24, 24, 24]);
+        let mesh = extract(&sampled, DualContourConfig::default()).unwrap();
+        let bytes = mesh.triangle_soup_canonical_bytes().unwrap();
+        assert!(bytes.starts_with(&TRIANGLE_SOUP_MAGIC));
+        assert_eq!(
+            bytes.len(),
+            8 + 2 + 4 + 4 + mesh.vertices().len() * 24 + mesh.triangles().len() * 12
+        );
+        let vertex_count = u32::from_le_bytes(bytes[10..14].try_into().unwrap()) as usize;
+        let triangle_count = u32::from_le_bytes(bytes[14..18].try_into().unwrap()) as usize;
+        assert_eq!(vertex_count, mesh.vertices().len());
+        assert_eq!(triangle_count, mesh.triangles().len());
+        let first_x = i64::from_le_bytes(bytes[18..26].try_into().unwrap());
+        assert_eq!(first_x, mesh.vertices()[0].position_nanounits[0]);
+        let triangle_offset = 18 + vertex_count * 24;
+        let first_index = u32::from_le_bytes(
+            bytes[triangle_offset..triangle_offset + 4].try_into().unwrap(),
+        );
+        assert_eq!(first_index, mesh.triangles()[0][0]);
     }
 
     #[test]
