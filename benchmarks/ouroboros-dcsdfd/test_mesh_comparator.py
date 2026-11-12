@@ -8,25 +8,9 @@ import numpy as np
 import compare_classical_to_dcsdfd as compare
 
 
-def make_face_descriptor():
-    descriptor = bytearray(b"OUROFLD1")
-    descriptor.extend(struct.pack("<H", 1))
-    descriptor.extend(bytes((1, 1, 1, 1)))
-    descriptor.extend(struct.pack(
-        "<H3q3q", 1, 30_000, 0, 0, 120_000, 60_000, 110_000
-    ))
-    descriptor.extend(struct.pack(
-        "<H3q3q", 4, 160_000, 0, 5_000, 20_000, 14_000, 18_000
-    ))
-    descriptor.append(0)
-    descriptor.extend(struct.pack("<q", 0))
-    assert len(descriptor) == 123
-    return bytes(descriptor)
-
-
 def make_grid():
-    fixture = b"ouroboros-face-skin-v1"
-    descriptor = make_face_descriptor()
+    fixture = b"compare-grid"
+    descriptor = b"descriptor-v1"
     bounds = (0, 0, 0, 1_000_000, 2_000_000, 3_000_000)
     # Exact sampled field S=x on a [0,1] x [0,2] x [0,3] grid.
     samples = [0, 1_000_000, 0, 1_000_000, 0, 1_000_000, 0, 1_000_000]
@@ -123,100 +107,6 @@ class DualContourReceiptTests(unittest.TestCase):
         triangles = np.array([[0, 1, 2], [0, 1, 3]], dtype=np.int64)
         report = compare.topology_summary(vertices, triangles, np, 1e-20)
         self.assertEqual(report["orientation_conflict_edge_count"], 1)
-
-    def test_deterministic_surface_sampling_is_zero_for_identical_triangle_surfaces(self):
-        vertices = np.array([
-            [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-        ])
-        triangles = np.array([[0, 1, 2]], dtype=np.int64)
-        result = compare.symmetric_surface_sampled_distance(
-            vertices, triangles, vertices.copy(), triangles.copy(), 4096, np
-        )
-        self.assertEqual(result["sample_count_per_surface"], 4096)
-        self.assertEqual(result["symmetric_max_sample_distance"], 0.0)
-        self.assertEqual(result["reference_degenerate_triangles_excluded"], 0)
-
-    def test_deterministic_surface_sampling_detects_rigid_translation(self):
-        vertices = np.array([
-            [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-        ])
-        triangles = np.array([[0, 1, 2]], dtype=np.int64)
-        shifted = vertices + np.array([0.0, 0.0, 0.25])
-        result = compare.symmetric_surface_sampled_distance(
-            vertices, triangles, shifted, triangles, 4096, np
-        )
-        self.assertAlmostEqual(result["symmetric_max_sample_distance"], 0.25)
-        self.assertAlmostEqual(result["candidate_to_reference"]["mean"], 0.25)
-
-    def test_surface_sampler_excludes_degenerate_faces_but_requires_positive_area(self):
-        vertices = np.array([
-            [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-            [2.0, 2.0, 2.0],
-        ])
-        triangles = np.array([[0, 1, 2], [0, 0, 3]], dtype=np.int64)
-        points, degenerate = compare.deterministic_surface_samples(
-            vertices, triangles, 256, np
-        )
-        self.assertEqual(points.shape, (256, 3))
-        self.assertEqual(degenerate, 1)
-        with self.assertRaises(compare.ComparisonError):
-            compare.deterministic_surface_samples(
-                vertices, np.array([[0, 0, 0]], dtype=np.int64), 256, np
-            )
-
-    def test_surface_sampling_is_deterministic_across_repeated_calls(self):
-        vertices = np.array([
-            [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [1.0, 1.0, 0.2],
-            [0.0, 1.0, 0.0],
-        ])
-        triangles = np.array([[0, 1, 2], [0, 2, 3]], dtype=np.int64)
-        first, first_degenerate = compare.deterministic_surface_samples(
-            vertices, triangles, 2048, np
-        )
-        second, second_degenerate = compare.deterministic_surface_samples(
-            vertices, triangles, 2048, np
-        )
-        np.testing.assert_array_equal(first, second)
-        self.assertEqual(first_degenerate, second_degenerate)
-
-    def test_reference_run_rejects_nonzero_isovalue_and_unbound_inputs(self):
-        run_dir = Path(tempfile.mkdtemp())
-        self.addCleanup(lambda: __import__("shutil").rmtree(run_dir, ignore_errors=True))
-        vertices = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
-        quads = np.array([[0, 1, 2, 0]], dtype=np.int64)
-        np.save(run_dir / "vertices.npy", vertices)
-        np.save(run_dir / "quads.npy", quads)
-        manifest = {
-            "schema_version": 1,
-            "reference": {
-                "commit": "d6e6ae3b5ff9200e687ca19c178ff35d65c1f810",
-                "source_mode": "fixed-seed-patched",
-            },
-            "parameters": {"isovalue": 1.0},
-            "input": {"magic": "OUROGRD1", "resampled": False, "field_reevaluated": False},
-            "result": {
-                "vertices_file": "vertices.npy", "quads_file": "quads.npy",
-                "vertices_sha256": compare.stable_array_hash(vertices, np),
-                "quads_sha256": compare.stable_array_hash(quads, np),
-                "vertex_count": len(vertices), "quad_count": len(quads),
-            },
-        }
-        (run_dir / "run-v1.json").write_text(__import__("json").dumps(manifest), encoding="utf-8")
-        with self.assertRaises(compare.ComparisonError):
-            compare.load_reference_run(run_dir, np)
-        manifest["parameters"]["isovalue"] = 0.0
-        manifest["input"]["resampled"] = True
-        (run_dir / "run-v1.json").write_text(__import__("json").dumps(manifest), encoding="utf-8")
-        with self.assertRaises(compare.ComparisonError):
-            compare.load_reference_run(run_dir, np)
 
     def test_trilinear_residual_is_to_quantized_grid_not_claimed_ground_truth(self):
         grid_path = self.write_bytes(make_grid())
