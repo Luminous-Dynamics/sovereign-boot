@@ -52,19 +52,22 @@ The working estimate includes the canonical input-grid bytes, sample vector payl
 
 The canonical receipt embeds the full source `OUROGRD1` byte string. It then binds the algorithm/schema, all QEF and resource parameters, fixed-point vertices/normals, quads, fixed-diagonal triangles, QEF diagnostics and the independent audit receipt. It returns bytes, not a digest or signature; callers hash/sign externally.
 
+For the standalone CGAL self-intersection oracle, `triangle_soup_canonical_bytes()` also exports `OUROTSQ1`: schema version, vertex/triangle counts, signed i64 nanounit positions and u32 triangle indices. This interchange intentionally excludes floating-point coordinates and must be converted by the consumer to exact integer rationals.
+
 ## Independent audit, not one validity bit
 
 The extractor invokes `ouroboros-mesh-audit` on its triangle view and stores the result. The audit separately reports buffer validity, edge/vertex manifold topology, closure, orientation, computed zero-area/near-degeneracy, semantic provenance and per-component topology. It deliberately reports self-intersections as **NotEvaluated**. The extraction function may return a mesh with failed audit statuses; callers must inspect them rather than equating extraction success with geometric validity.
 
 ## Tests authored
 
-The current source contains 18 authored unit tests:
+The current source contains 19 authored unit tests:
 - source-grounded 32³ face extraction produces vertices/quads/triangles;
 - plane and disconnected-island cell classification plus checkerboard ambiguity rejection;
 - policy-byte fixed length and threshold binding;
 - explicit audit-dimension status checks;
 - repeat extraction emits identical canonical bytes;
 - canonical receipt byte lengths match encoded counts and metrics;
+- OUROTSQ1 exact-integer triangle-soup interchange preserves vertex coordinates and triangle indices;
 - fixed diagonal (0,2) triangulation;
 - per-cell surface-component classification: a planar sheet is one component, disconnected opposite-corner sheets are rejected, and checkerboard faces are rejected as ambiguous;
 - per-cell surface-component classification: one planar sheet accepted, disconnected opposite-corner sheets rejected, and checkerboard face ambiguity rejected;
