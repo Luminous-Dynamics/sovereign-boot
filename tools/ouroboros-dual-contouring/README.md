@@ -60,7 +60,11 @@ The extractor invokes `ouroboros-mesh-audit` on its triangle view and stores the
 
 The current source contains 18 authored unit tests:
 - source-grounded 32³ face extraction produces vertices/quads/triangles;
+- plane and disconnected-island cell classification plus checkerboard ambiguity rejection;
+- policy-byte fixed length and threshold binding;
+- explicit audit-dimension status checks;
 - repeat extraction emits identical canonical bytes;
+- canonical receipt byte lengths match encoded counts and metrics;
 - fixed diagonal (0,2) triangulation;
 - per-cell surface-component classification: a planar sheet is one component, disconnected opposite-corner sheets are rejected, and checkerboard faces are rejected as ambiguous;
 - per-cell surface-component classification: one planar sheet accepted, disconnected opposite-corner sheets rejected, and checkerboard face ambiguity rejected;
