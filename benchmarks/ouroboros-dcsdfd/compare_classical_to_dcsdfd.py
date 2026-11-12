@@ -435,10 +435,36 @@ def load_reference_run(run_dir: Path, np: Any):
     if manifest.get("schema_version") != 1:
         raise ComparisonError("unsupported DCSDFD reference manifest schema")
     reference = manifest.get("reference", {})
+    if reference.get("repository") != "sgsellan/gpytoolbox":
+        raise ComparisonError("reference manifest does not identify sgsellan/gpytoolbox")
     if reference.get("commit") != "d6e6ae3b5ff9200e687ca19c178ff35d65c1f810":
         raise ComparisonError("reference manifest is not pinned to the declared Gpytoolbox commit")
     if reference.get("source_mode") not in ("upstream-unmodified", "fixed-seed-patched"):
         raise ComparisonError("reference manifest has an unknown source mode")
+    source_digest = reference.get("source_file_sha256")
+    if not isinstance(source_digest, str) or len(source_digest) != 64 or any(ch not in "0123456789abcdef" for ch in source_digest):
+        raise ComparisonError("reference manifest is missing a valid pinned source-file digest")
+    if reference.get("source_file") != "src/cpp/dual_contouring_of_signed_distance_data/contouring.cpp":
+        raise ComparisonError("reference manifest has an unexpected source-file path")
+    if reference["source_mode"] == "fixed-seed-patched":
+        if reference.get("patch_sha256") != "71b1983492b906935b95588368bdf7c11a87a47ed4ae0fa8694ea5d2f95386ee":
+            raise ComparisonError("fixed-seed reference manifest has an unexpected patch digest")
+    elif reference.get("patch_sha256") is not None:
+        raise ComparisonError("upstream-unmodified reference must not claim a patch digest")
+
+    native = manifest.get("native_binary", {})
+    extension_digest = native.get("extension_sha256")
+    if not isinstance(extension_digest, str) or len(extension_digest) != 64 or any(ch not in "0123456789abcdef" for ch in extension_digest):
+        raise ComparisonError("reference manifest is missing the loaded native extension digest")
+    if not isinstance(native.get("extension_path"), str) or not native["extension_path"]:
+        raise ComparisonError("reference manifest is missing the loaded native extension path")
+    if native.get("binary_source_binding") != (
+        "path-and-binary-digest-recorded; build provenance is not independently attested"
+    ):
+        raise ComparisonError("reference manifest has an unknown native binary provenance label")
+    if native.get("extension_inside_reference_checkout") not in (True, False):
+        raise ComparisonError("reference manifest is missing native extension checkout-location status")
+
     parameters = manifest.get("parameters", {})
     isovalue = parameters.get("isovalue")
     if not isinstance(isovalue, (int, float)) or not math.isfinite(float(isovalue)):
@@ -448,6 +474,11 @@ def load_reference_run(run_dir: Path, np: Any):
     input_record = manifest.get("input", {})
     if input_record.get("magic") != "OUROGRD1":
         raise ComparisonError("reference manifest does not identify OUROGRD1 input")
+    grid_digest = input_record.get("grid_sha256")
+    descriptor_digest = input_record.get("field_descriptor_sha256")
+    for label, digest in (("grid", grid_digest), ("field descriptor", descriptor_digest)):
+        if not isinstance(digest, str) or len(digest) != 64 or any(ch not in "0123456789abcdef" for ch in digest):
+            raise ComparisonError(f"reference manifest is missing a valid {label} digest")
     if input_record.get("resampled") is not False or input_record.get("field_reevaluated") is not False:
         raise ComparisonError("reference manifest does not attest frozen, non-resampled input")
 
