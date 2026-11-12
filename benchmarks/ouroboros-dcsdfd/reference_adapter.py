@@ -66,9 +66,12 @@ def read_u64(buf: bytes, offset: int) -> tuple[int, int]:
 
 
 def parse_ourogrd1(path: Path, np: Any) -> dict[str, Any]:
-    raw = path.read_bytes()
-    if len(raw) > MAX_INPUT_BYTES:
+    file_size = path.stat().st_size
+    if file_size > MAX_INPUT_BYTES:
         raise InputError(f"input exceeds {MAX_INPUT_BYTES} bytes")
+    raw = path.read_bytes()
+    if len(raw) != file_size:
+        raise InputError("input length changed while reading")
     if len(raw) < 8 or raw[:8] != MAGIC:
         raise InputError("unsupported input magic; expected OUROGRD1")
 
