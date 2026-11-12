@@ -1,0 +1,20 @@
+[package]
+name = "ouroboros-edge-star-audit"
+version = "0.1.0"
+edition = "2024"
+description = "Bounded primal-edge star enumeration and transition-case coverage audit for adaptive Ouroboros octrees"
+license = "AGPL-3.0-or-later"
+
+[dependencies]
+ouroboros-adaptive-sampling = { path = "../ouroboros-adaptive-sampling" }
+ouroboros-octree-topology-audit = { path = "../ouroboros-octree-topology-audit" }
+ouroboros-scalar-grid = { path = "../ouroboros-scalar-grid" }
+
+[lib]
+path = "src/lib.rs"
+
+[[example]]
+name = "audit-sphere-edge-stars"
+path = "examples/audit-sphere-edge-stars.rs"
+
+[workspace]
