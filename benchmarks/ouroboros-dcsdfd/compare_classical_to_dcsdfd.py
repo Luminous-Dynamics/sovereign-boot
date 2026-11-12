@@ -29,6 +29,9 @@ DC_MAGIC = b"OURODCQ1"
 DC_SCHEMA = 1
 DC_CONFIG_BYTES = 37
 POSITION_SCALE = 1_000_000_000.0
+MAX_REFERENCE_ARRAY_BYTES = 512 * 1024 * 1024
+MAX_REFERENCE_VERTICES = 2_000_000
+MAX_REFERENCE_QUADS = 2_000_000
 
 
 class ComparisonError(ValueError):
@@ -427,6 +430,54 @@ def sampled_grid_residual(vertices: Any, grid: dict[str, Any], np: Any) -> dict[
     }
 
 
+def safe_reference_array_path(run_dir: Path, filename: Any, label: str) -> Path:
+    if (
+        not isinstance(filename, str)
+        or not filename
+        or filename in (".", "..")
+        or Path(filename).name != filename
+    ):
+        raise ComparisonError(f"reference {label} filename must be a simple basename")
+    root = run_dir.resolve(strict=True)
+    path = root / filename
+    if path.is_symlink():
+        raise ComparisonError(f"reference {label} file must not be a symlink")
+    try:
+        resolved = path.resolve(strict=True)
+    except OSError as exc:
+        raise ComparisonError(f"reference {label} file is missing or unreadable") from exc
+    try:
+        resolved.relative_to(root)
+    except ValueError as exc:
+        raise ComparisonError(f"reference {label} file escapes its run directory") from exc
+    if not resolved.is_file():
+        raise ComparisonError(f"reference {label} path is not a regular file")
+    if resolved.stat().st_size > MAX_REFERENCE_ARRAY_BYTES:
+        raise ComparisonError(f"reference {label} file exceeds the array byte limit")
+    return resolved
+
+
+def validate_reference_input_binding(reference_manifest: dict[str, Any], grid: dict[str, Any]) -> None:
+    input_record = reference_manifest.get("input", {})
+    expected = {
+        "magic": "OUROGRD1",
+        "grid_sha256": grid["grid_sha256"],
+        "field_descriptor_sha256": grid["descriptor_sha256"],
+        "fixture_id": grid["fixture_id"],
+        "dimensions": list(grid["dimensions"]),
+        "minimum": grid["minimum"],
+        "maximum": grid["maximum"],
+        "distance_scale": grid["distance_scale"],
+        "sample_count": grid["sample_count"],
+        "layout": "first-axis-fastest",
+        "resampled": False,
+        "field_reevaluated": False,
+    }
+    for key, value in expected.items():
+        if input_record.get(key) != value:
+            raise ComparisonError(f"reference input binding mismatch for {key}")
+
+
 def load_reference_run(run_dir: Path, np: Any):
     manifest_path = run_dir / "run-v1.json"
     if not manifest_path.is_file():
@@ -482,27 +533,51 @@ def load_reference_run(run_dir: Path, np: Any):
     if input_record.get("resampled") is not False or input_record.get("field_reevaluated") is not False:
         raise ComparisonError("reference manifest does not attest frozen, non-resampled input")
 
-    vertices_path = run_dir / manifest["result"]["vertices_file"]
-    quads_path = run_dir / manifest["result"]["quads_file"]
-    vertices = np.load(vertices_path, allow_pickle=False)
-    quads = np.load(quads_path, allow_pickle=False)
-    vertices = np.asarray(vertices, dtype=np.float64)
-    quads = np.asarray(quads, dtype=np.int64)
-    if vertices.ndim != 2 or vertices.shape[1] != 3 or len(vertices) == 0:
+    result_record = manifest.get("result")
+    if not isinstance(result_record, dict):
+        raise ComparisonError("reference manifest is missing its result record")
+    vertices_path = safe_reference_array_path(
+        run_dir, result_record.get("vertices_file"), "vertex-array"
+    )
+    quads_path = safe_reference_array_path(
+        run_dir, result_record.get("quads_file"), "quad-array"
+    )
+    vertices_raw = np.load(vertices_path, allow_pickle=False)
+    quads_raw = np.load(quads_path, allow_pickle=False)
+    if not isinstance(vertices_raw, np.ndarray) or not isinstance(quads_raw, np.ndarray):
+        raise ComparisonError("reference outputs must be plain NPY arrays, not archives")
+    if vertices_raw.dtype.kind != "f" or vertices_raw.dtype.itemsize != 8:
+        raise ComparisonError("reference vertex array must preserve float64 storage")
+    if quads_raw.dtype.kind != "i" or quads_raw.dtype.itemsize != 8:
+        raise ComparisonError("reference quad array must preserve signed int64 index storage")
+    if vertices_raw.ndim != 2 or vertices_raw.shape[1] != 3 or len(vertices_raw) == 0:
         raise ComparisonError("reference vertex array has an invalid shape or is empty")
-    if quads.ndim != 2 or quads.shape[1] != 4 or len(quads) == 0:
+    if quads_raw.ndim != 2 or quads_raw.shape[1] != 4 or len(quads_raw) == 0:
         raise ComparisonError("reference quad array has an invalid shape or is empty")
+    if len(vertices_raw) > MAX_REFERENCE_VERTICES or len(quads_raw) > MAX_REFERENCE_QUADS:
+        raise ComparisonError("reference output exceeds the vertex/quad count limits")
+    vertices = np.asarray(vertices_raw, dtype=np.float64)
+    quads = np.asarray(quads_raw, dtype=np.int64)
     if not np.isfinite(vertices).all():
         raise ComparisonError("reference mesh contains non-finite vertices")
     if quads.min() < 0 or quads.max() >= len(vertices):
         raise ComparisonError("reference quad index out of range")
-    if stable_array_hash(vertices, np) != manifest["result"]["vertices_sha256"]:
+    vertices_digest = result_record.get("vertices_sha256")
+    quads_digest = result_record.get("quads_sha256")
+    for label, digest in (("vertex", vertices_digest), ("quad", quads_digest)):
+        if (
+            not isinstance(digest, str)
+            or len(digest) != 64
+            or any(ch not in "0123456789abcdef" for ch in digest)
+        ):
+            raise ComparisonError(f"reference manifest has an invalid {label}-array digest")
+    if stable_array_hash(vertices, np) != vertices_digest:
         raise ComparisonError("reference vertex-array digest does not match run manifest")
-    if stable_array_hash(quads, np) != manifest["result"]["quads_sha256"]:
+    if stable_array_hash(quads, np) != quads_digest:
         raise ComparisonError("reference quad-array digest does not match run manifest")
-    if len(vertices) != manifest["result"].get("vertex_count"):
+    if len(vertices) != result_record.get("vertex_count"):
         raise ComparisonError("reference vertex count does not match run manifest")
-    if len(quads) != manifest["result"].get("quad_count"):
+    if len(quads) != result_record.get("quad_count"):
         raise ComparisonError("reference quad count does not match run manifest")
     return manifest, vertices, quads
 
@@ -528,8 +603,7 @@ def main() -> int:
 
     grid = parse_ourogrd1(args.grid, np)
     grid_sha = grid["grid_sha256"]
-    if grid_sha != reference_manifest["input"]["grid_sha256"]:
-        raise ComparisonError("reference run and requested grid have different SHA-256")
+    validate_reference_input_binding(reference_manifest, grid)
     if candidate["embedded_grid_sha256"] != grid_sha:
         raise ComparisonError("OURODCQ1 embedded grid differs from reference input")
 
@@ -563,6 +637,8 @@ def main() -> int:
             "receipt_sha256": candidate["receipt_sha256"],
             "config_sha256": candidate["config_sha256"],
             "metrics": candidate["metrics"],
+            "embedded_audit_receipt_sha256": candidate["audit_receipt_sha256"],
+            "embedded_audit_receipt_bytes": candidate["audit_receipt_bytes"],
             "vertex_count": int(len(candidate["vertices"])),
             "quad_count": int(len(candidate["quads"])),
             "topology_indicators": cand_topology,
