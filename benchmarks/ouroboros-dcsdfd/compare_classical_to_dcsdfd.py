@@ -32,6 +32,8 @@ POSITION_SCALE = 1_000_000_000.0
 MAX_REFERENCE_ARRAY_BYTES = 512 * 1024 * 1024
 MAX_REFERENCE_VERTICES = 2_000_000
 MAX_REFERENCE_QUADS = 2_000_000
+MAX_TOPOLOGY_VERTICES = 1_000_000
+MAX_TOPOLOGY_TRIANGLES = 200_000
 
 
 class ComparisonError(ValueError):
@@ -183,6 +185,10 @@ def union_find_components(face_count: int, edge_uses: dict):
 
 
 def topology_summary(vertices: Any, triangles: Any, np: Any, area_epsilon: float) -> dict[str, Any]:
+    if len(vertices) > MAX_TOPOLOGY_VERTICES or len(triangles) > MAX_TOPOLOGY_TRIANGLES:
+        raise ComparisonError(
+            "lightweight topology summary exceeds its explicit vertex/triangle work limit"
+        )
     if triangles.ndim != 2 or triangles.shape[1] != 3:
         raise ComparisonError("triangle array must have shape (n,3)")
     if triangles.size and (triangles.min() < 0 or triangles.max() >= len(vertices)):
@@ -458,7 +464,9 @@ def safe_reference_array_path(run_dir: Path, filename: Any, label: str) -> Path:
 
 
 def validate_reference_input_binding(reference_manifest: dict[str, Any], grid: dict[str, Any]) -> None:
-    input_record = reference_manifest.get("input", {})
+    input_record = reference_manifest.get("input") if isinstance(reference_manifest, dict) else None
+    if not isinstance(input_record, dict):
+        raise ComparisonError("reference manifest is missing a structured input record")
     expected = {
         "magic": "OUROGRD1",
         "grid_sha256": grid["grid_sha256"],
@@ -483,9 +491,11 @@ def load_reference_run(run_dir: Path, np: Any):
     if not manifest_path.is_file():
         raise ComparisonError(f"missing reference manifest {manifest_path}")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if manifest.get("schema_version") != 1:
+    if not isinstance(manifest, dict) or type(manifest.get("schema_version")) is not int or manifest.get("schema_version") != 1:
         raise ComparisonError("unsupported DCSDFD reference manifest schema")
-    reference = manifest.get("reference", {})
+    reference = manifest.get("reference")
+    if not isinstance(reference, dict):
+        raise ComparisonError("reference manifest is missing its source identity record")
     if reference.get("repository") != "sgsellan/gpytoolbox":
         raise ComparisonError("reference manifest does not identify sgsellan/gpytoolbox")
     if reference.get("commit") != "d6e6ae3b5ff9200e687ca19c178ff35d65c1f810":
@@ -503,7 +513,9 @@ def load_reference_run(run_dir: Path, np: Any):
     elif reference.get("patch_sha256") is not None:
         raise ComparisonError("upstream-unmodified reference must not claim a patch digest")
 
-    native = manifest.get("native_binary", {})
+    native = manifest.get("native_binary")
+    if not isinstance(native, dict):
+        raise ComparisonError("reference manifest is missing its native binary record")
     extension_digest = native.get("extension_sha256")
     if not isinstance(extension_digest, str) or len(extension_digest) != 64 or any(ch not in "0123456789abcdef" for ch in extension_digest):
         raise ComparisonError("reference manifest is missing the loaded native extension digest")
@@ -516,13 +528,17 @@ def load_reference_run(run_dir: Path, np: Any):
     if native.get("extension_inside_reference_checkout") not in (True, False):
         raise ComparisonError("reference manifest is missing native extension checkout-location status")
 
-    parameters = manifest.get("parameters", {})
+    parameters = manifest.get("parameters")
+    if not isinstance(parameters, dict):
+        raise ComparisonError("reference manifest is missing its parameter record")
     isovalue = parameters.get("isovalue")
-    if not isinstance(isovalue, (int, float)) or not math.isfinite(float(isovalue)):
+    if isinstance(isovalue, bool) or not isinstance(isovalue, (int, float)) or not math.isfinite(float(isovalue)):
         raise ComparisonError("reference manifest is missing a finite isovalue")
     if float(isovalue) != 0.0:
         raise ComparisonError("classical OURODCQ1 comparison requires the zero isovalue")
-    input_record = manifest.get("input", {})
+    input_record = manifest.get("input")
+    if not isinstance(input_record, dict):
+        raise ComparisonError("reference manifest is missing its input record")
     if input_record.get("magic") != "OUROGRD1":
         raise ComparisonError("reference manifest does not identify OUROGRD1 input")
     grid_digest = input_record.get("grid_sha256")
