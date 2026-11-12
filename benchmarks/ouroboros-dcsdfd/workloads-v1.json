@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "benchmark_id": "ouroboros-dcsdfd-matched-grid-v1",
+  "reference_commit": "d6e6ae3b5ff9200e687ca19c178ff35d65c1f810",
+  "grid_bounds": [
+    [
+      -0.18,
+      -0.14,
+      -0.16
+    ],
+    [
+      0.25,
+      0.14,
+      0.16
+    ]
+  ],
+  "fixture": "OURO-FACE-HEAD-NOSE-APPROX-IQ-ELLIPSOID",
+  "modes": [
+    "Sharp",
+    "PolynomialSmooth"
+  ],
+  "smooth_union_width": 0.004,
+  "grid_sizes": [
+    32,
+    64,
+    128
+  ],
+  "initial_parameter_presets": [
+    {
+      "name": "upstream-default",
+      "outer_iters": 100,
+      "inner_iters": 100,
+      "hermite_update": true
+    },
+    {
+      "name": "outer-1",
+      "outer_iters": 1,
+      "inner_iters": 100,
+      "hermite_update": true
+    },
+    {
+      "name": "outer-5",
+      "outer_iters": 5,
+      "inner_iters": 100,
+      "hermite_update": true
+    },
+    {
+      "name": "outer-20",
+      "outer_iters": 20,
+      "inner_iters": 100,
+      "hermite_update": true
+    },
+    {
+      "name": "outer-100-no-hermite-update",
+      "outer_iters": 100,
+      "inner_iters": 100,
+      "hermite_update": false
+    }
+  ],
+  "common_parameters": {
+    "batch_size": 200000,
+    "mu": 0.1,
+    "dc_weight": 0.02,
+    "svd_threshold": 0.01,
+    "new_hermite_pos_weight": 0.2,
+    "new_face_pos_weight": 0.2,
+    "new_hermite_normal_weight": 0.2
+  },
+  "repetitions": {
+    "upstream_unmodified": 5,
+    "fixed_seed_patched": 10,
+    "confirmatory_minimum": 30
+  },
+  "result_fields": [
+    "grid_sha256",
+    "source_commit",
+    "source_mode",
+    "source_file_sha256",
+    "vertices_sha256",
+    "quads_sha256",
+    "vertex_count",
+    "quad_count",
+    "elapsed_ns",
+    "peak_rss_bytes",
+    "parameter_set",
+    "host_metadata"
+  ],
+  "next_strata": [
+    "exact analytic sphere/box/capsule/torus SDFs",
+    "pinned mesh-derived SDFs"
+  ],
+  "non_claim": "The face fixture is approximate; initial results are a matched application workload, not a general exact-SDF reconstruction benchmark."
+}
