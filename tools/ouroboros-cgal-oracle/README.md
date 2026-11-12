@@ -7,7 +7,7 @@ Input exporter: \`DualContourMesh::triangle_soup_canonical_bytes()\` in the clas
 
 ## Build
 
-CGAL 6.2.1 is pinned exactly in CMake. It was the latest stable CGAL release found for the 12 November 2026 research pass. The oracle requires a CGAL installation with GMP/MPFR support and uses the exact-predicate/exact-construction kernel (EPECK).
+CGAL 6.2.1 is pinned exactly in CMake and in `dependencies-v1.json`, including the upstream source-archive SHA-256. It was the latest stable CGAL release found for the 12 November 2026 research pass. The oracle requires a CGAL installation with GMP/MPFR support and uses the exact-predicate/exact-construction kernel (EPECK).
 
 \`\`\`sh
 cmake -S tools/ouroboros-cgal-oracle -B build/ouroboros-cgal-oracle \\
@@ -68,3 +68,12 @@ The tests are authored, not compiled or executed.
 ## Evidence boundary
 
 This oracle is a standalone detector. It does not prove closure, manifold topology, orientation, semantic provenance, normal quality, watertightness under every convention or perceptual correctness. It does not repair the mesh. The Rust/evidence layer must bind the exact OUROTSQ1 digest, oracle binary/build digest, CGAL version, kernel, output JSON and status into the evidence bundle. Until that exact-input evidence path is wired and qualified, the Rust mesh audit must continue to say self-intersection \`NotEvaluated\`.
+
+
+## Reproducibility pins
+
+- Upstream release source archive: `https://github.com/CGAL/cgal/releases/download/v6.2.1/CGAL-6.2.1.tar.xz`
+- SHA-256: `b6be77c60765a8456335de991eeaf6ffec55256984e4a9ecc6a97c37bbfe85bf`
+- Full machine-readable pin: `dependencies-v1.json`
+
+The CMake package constraint checks the installed version; the dependency manager/build environment must independently verify the archive hash and pin GMP/MPFR, Boost and the compiler toolchain. Do not infer that CMake's version check alone proves source provenance.
