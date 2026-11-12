@@ -23,6 +23,12 @@ from pathlib import Path
 from typing import Any
 
 MAGIC = b"OUROGRD1"
+FIELD_MAGIC = b"OUROFLD1"
+GRID_SCHEMA_VERSION = 1
+FIELD_SCHEMA_VERSION = 1
+FIELD_DESCRIPTOR_BYTES = 123
+EXPECTED_FIXTURE_ID = "ouroboros-face-skin-v1"
+EXPECTED_DISTANCE_SCALE = 1_000_000
 REFERENCE_COMMIT = "d6e6ae3b5ff9200e687ca19c178ff35d65c1f810"
 RNG_PATCH_SEED_LINE = "std::mt19937 gen(0x4F55524FU);"
 UPSTREAM_RANDOM_LINE = "std::mt19937 gen(rd());"
@@ -71,6 +77,59 @@ def read_u64(buf: bytes, offset: int) -> tuple[int, int]:
     return struct.unpack_from("<Q", buf, offset)[0], offset + 8
 
 
+def validate_face_field_descriptor(descriptor: bytes) -> dict[str, Any]:
+    if len(descriptor) != FIELD_DESCRIPTOR_BYTES:
+        raise InputError(
+            f"OUROFLD1 descriptor length {len(descriptor)} != {FIELD_DESCRIPTOR_BYTES}"
+        )
+    if descriptor[:8] != FIELD_MAGIC:
+        raise InputError("unsupported field descriptor magic")
+    field_schema = struct.unpack_from("<H", descriptor, 8)[0]
+    if field_schema != FIELD_SCHEMA_VERSION:
+        raise InputError(f"unsupported OUROFLD1 schema {field_schema}")
+    interpretation = tuple(descriptor[10:14])
+    if interpretation != (1, 1, 1, 1):
+        raise InputError(f"unsupported field interpretation IDs {interpretation}")
+
+    offset = 14
+    head_region = struct.unpack_from("<H", descriptor, offset)[0]
+    offset += 2
+    head_values = struct.unpack_from("<6q", descriptor, offset)
+    offset += 48
+    nose_region = struct.unpack_from("<H", descriptor, offset)[0]
+    offset += 2
+    nose_values = struct.unpack_from("<6q", descriptor, offset)
+    offset += 48
+    union_mode = descriptor[offset]
+    offset += 1
+    union_width = struct.unpack_from("<q", descriptor, offset)[0]
+    offset += 8
+    if offset != FIELD_DESCRIPTOR_BYTES:
+        raise InputError("internal OUROFLD1 descriptor offset mismatch")
+    if head_region != 1 or nose_region != 4:
+        raise InputError("OUROFLD1 must bind head-shell region 1 and nose region 4")
+    if any(radius <= 0 for radius in head_values[3:] + nose_values[3:]):
+        raise InputError("OUROFLD1 ellipsoid radii must be positive")
+    if union_mode == 0:
+        if union_width != 0:
+            raise InputError("sharp union must encode a zero smoothing width")
+    elif union_mode == 1:
+        if union_width <= 0 or union_width > 50_000:
+            raise InputError("polynomial smooth-union width is outside the supported range")
+    else:
+        raise InputError(f"unsupported union mode {union_mode}")
+
+    return {
+        "field_schema": field_schema,
+        "interpretation_ids": list(interpretation),
+        "head_region_id": head_region,
+        "nose_region_id": nose_region,
+        "union_mode": "sharp" if union_mode == 0 else "polynomial-smooth",
+        "union_width_microunits": union_width,
+        "field_semantics": "approximate-analytic-ellipsoid-field",
+    }
+
+
 def parse_ourogrd1(path: Path, np: Any) -> dict[str, Any]:
     file_size = path.stat().st_size
     if file_size > MAX_INPUT_BYTES:
@@ -83,7 +142,7 @@ def parse_ourogrd1(path: Path, np: Any) -> dict[str, Any]:
 
     offset = 8
     schema, offset = read_u16(raw, offset)
-    if schema != 1:
+    if schema != GRID_SCHEMA_VERSION:
         raise InputError(f"unsupported OUROGRD1 schema {schema}")
 
     fixture_len, offset = read_u16(raw, offset)
@@ -94,12 +153,15 @@ def parse_ourogrd1(path: Path, np: Any) -> dict[str, Any]:
     except UnicodeDecodeError as exc:
         raise InputError("fixture ID is not UTF-8") from exc
     offset += fixture_len
+    if fixture_id != EXPECTED_FIXTURE_ID:
+        raise InputError(f"unsupported OUROGRD1 fixture ID {fixture_id!r}")
 
     descriptor_len, offset = read_u32(raw, offset)
-    if descriptor_len == 0 or offset + descriptor_len > len(raw):
-        raise InputError("invalid field-descriptor length")
+    if descriptor_len != FIELD_DESCRIPTOR_BYTES or offset + descriptor_len > len(raw):
+        raise InputError("invalid OUROFLD1 field-descriptor length")
     descriptor = raw[offset : offset + descriptor_len]
     offset += descriptor_len
+    field = validate_face_field_descriptor(descriptor)
 
     if offset + 12 + 4 > len(raw):
         raise InputError("truncated dimensions/layout")
@@ -126,8 +188,14 @@ def parse_ourogrd1(path: Path, np: Any) -> dict[str, Any]:
         raise InputError(
             f"sample count mismatch: header={sample_count}, dimensions={expected_count}"
         )
-    if distance_scale <= 0:
-        raise InputError("distance quantization scale must be positive")
+    if distance_scale != EXPECTED_DISTANCE_SCALE:
+        raise InputError(
+            f"unsupported OUROGRD1 distance scale {distance_scale}; "
+            f"expected {EXPECTED_DISTANCE_SCALE}"
+        )
+    bounds = [bounds_fixed[i] / 1_000_000.0 for i in range(6)]
+    if any(bounds[i + 3] <= bounds[i] for i in range(3)):
+        raise InputError("grid maximum bounds must exceed minimum bounds on every axis")
     sample_bytes = sample_count * 4
     if offset + sample_bytes != len(raw):
         raise InputError("OUROGRD1 length does not match header and sample count")
@@ -146,6 +214,7 @@ def parse_ourogrd1(path: Path, np: Any) -> dict[str, Any]:
         "grid_sha256": sha256_bytes(raw),
         "fixture_id": fixture_id,
         "descriptor_sha256": sha256_bytes(descriptor),
+        "field": field,
         "dimensions": (nx, ny, nz),
         "minimum": minimum,
         "maximum": maximum,
@@ -196,6 +265,44 @@ def stable_array_hash(array: Any, np: Any) -> str:
     return sha256_bytes(prefix + b"\0" + canonical.tobytes(order="C"))
 
 
+def native_binary_identity(root: Path, gpy: Any) -> dict[str, Any]:
+    try:
+        import gpytoolbox_bindings
+        from gpytoolbox_bindings import _dcsdd_cpp_impl
+    except ImportError as exc:
+        raise InputError(
+            "could not import the compiled gpytoolbox_bindings._dcsdd_cpp_impl module"
+        ) from exc
+
+    extension_path = Path(_dcsdd_cpp_impl.__file__).resolve()
+    if not extension_path.is_file():
+        raise InputError(f"compiled DCSDFD extension is not a file: {extension_path}")
+    try:
+        extension_relative = extension_path.relative_to(root.resolve()).as_posix()
+        extension_in_checkout = True
+    except ValueError:
+        extension_relative = None
+        extension_in_checkout = False
+
+    python_module_path = Path(gpy.__file__).resolve()
+    python_module_sha256 = (
+        sha256_bytes(python_module_path.read_bytes()) if python_module_path.is_file() else None
+    )
+    binding_package_path = getattr(gpytoolbox_bindings, "__file__", None)
+    return {
+        "python_module_path": str(python_module_path),
+        "python_module_sha256": python_module_sha256,
+        "binding_package_path": str(binding_package_path) if binding_package_path else None,
+        "extension_path": str(extension_path),
+        "extension_path_relative_to_checkout": extension_relative,
+        "extension_inside_reference_checkout": extension_in_checkout,
+        "extension_sha256": sha256_bytes(extension_path.read_bytes()),
+        "binary_source_binding": (
+            "path-and-binary-digest-recorded; build provenance is not independently attested"
+        ),
+    }
+
+
 def fixed_seed_diff_matches(diff_text: str) -> bool:
     changed = [
         line for line in diff_text.splitlines()
@@ -231,14 +338,20 @@ def source_identity(root: Path, mode: str, patch_path: Path) -> dict[str, Any]:
         ["git", "-C", str(root), "diff", "--cached", "--name-only"],
         check=True, capture_output=True, text=True,
     ).stdout.splitlines()
+    tracked_status = subprocess.run(
+        ["git", "-C", str(root), "status", "--porcelain", "--untracked-files=no"],
+        check=True, capture_output=True, text=True,
+    ).stdout.splitlines()
 
     if mode == "upstream-unmodified":
         if UPSTREAM_RANDOM_LINE not in source_text or "std::random_device rd;" not in source_text:
             raise InputError("source does not match upstream-unmodified RNG implementation")
         if RNG_PATCH_SEED_LINE in source_text:
             raise InputError("fixed-seed patch detected in upstream-unmodified mode")
-        if str(SOURCE_RELATIVE_PATH) in diff_names or str(SOURCE_RELATIVE_PATH) in cached_names:
-            raise InputError("reference source is modified; use fixed-seed-patched mode")
+        if tracked_status:
+            raise InputError(
+                "upstream-unmodified mode requires a clean tracked source checkout"
+            )
         patch_sha = None
     elif mode == "fixed-seed-patched":
         if not patch_path.is_file():
@@ -248,6 +361,8 @@ def source_identity(root: Path, mode: str, patch_path: Path) -> dict[str, Any]:
             raise InputError(f"fixed-seed patch SHA-256 mismatch: {patch_sha}")
         if diff_names != [str(SOURCE_RELATIVE_PATH)] or cached_names:
             raise InputError("patched mode requires exactly one unstaged source-file modification")
+        if tracked_status != [f" M {SOURCE_RELATIVE_PATH.as_posix()}"]:
+            raise InputError("patched mode requires exactly the intended tracked source-file change")
         diff_text = subprocess.run(
             ["git", "-C", str(root), "diff", "--no-ext-diff", "--unified=0", "--",
              str(SOURCE_RELATIVE_PATH)],
@@ -326,6 +441,17 @@ def main() -> int:
     ):
         if not isinstance(value, (int, float)) or not float("-inf") < float(value) < float("inf"):
             raise SystemExit(f"{name} must be finite")
+    if args.batch_size > MAX_SAMPLES:
+        raise SystemExit(f"batch-size must not exceed {MAX_SAMPLES}")
+    if args.mu < 0 or args.dc_weight < 0 or args.svd_threshold < 0:
+        raise SystemExit("mu, dc-weight and svd-threshold must be nonnegative")
+    for name, value in (
+        ("new_hermite_pos_weight", args.new_hermite_pos_weight),
+        ("new_face_pos_weight", args.new_face_pos_weight),
+        ("new_hermite_normal_weight", args.new_hermite_normal_weight),
+    ):
+        if not 0.0 <= value <= 1.0:
+            raise SystemExit(f"{name} must be in [0,1]")
 
     root = args.gpytoolbox_root.resolve()
     identity = source_identity(root, args.mode, Path(__file__).with_name("determinize-gpytoolbox.patch"))
@@ -347,6 +473,7 @@ def main() -> int:
             "from the pinned source checkout"
         ) from exc
 
+    binary_identity = native_binary_identity(root, gpy)
     grid = parse_ourogrd1(args.grid, np)
     gv = build_grid_vertices(grid, np)
     if gv.shape != (grid["sample_count"], 3):
@@ -402,6 +529,7 @@ def main() -> int:
         "benchmark_id": "ouroboros-dcsdfd-matched-grid-v1",
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "reference": identity,
+        "native_binary": binary_identity,
         "gpytoolbox_version": package_version,
         "python_version": sys.version,
         "numpy_version": np.__version__,
