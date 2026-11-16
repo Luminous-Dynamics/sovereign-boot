@@ -107,6 +107,7 @@ struct Lattice {
     config: Config,
     nodes: Vec<Node>,
     neighbors: Vec<Vec<usize>>,
+    seed: u64,
     tick: u64,
 }
 
@@ -152,7 +153,7 @@ impl Lattice {
             let count = (config.finest_nodes >> scale).max(2) as usize;
             let start = nodes.len();
 
-            for local_index in 0..count {
+            for _ in 0..count {
                 let id = u32::try_from(nodes.len()).map_err(|_| LabError::ArithmeticOverflow)?;
                 let mixed = mix64(seed ^ u64::from(id));
                 let fraction = (mixed % 500_001) as f64 / 1_000_000.0;
@@ -162,7 +163,6 @@ impl Lattice {
                     activity: 0.25 + fraction,
                     resource: config.initial_resource,
                 });
-                debug_assert!(local_index < count);
             }
 
             level_ranges.push((start, nodes.len()));
@@ -205,6 +205,7 @@ impl Lattice {
             config,
             nodes,
             neighbors,
+            seed,
             tick: 0,
         })
     }
@@ -304,7 +305,34 @@ impl Lattice {
     // This digest is NOT cryptographic and must not authenticate state.
     fn replay_digest_non_security(&self) -> u64 {
         let mut hash = 0xcbf2_9ce4_8422_2325u64;
+
+        // Bind the comparison to the complete experiment identity, not only
+        // the visible node values. This remains a non-cryptographic digest.
+        fnv_mix(&mut hash, &self.seed.to_le_bytes());
+        fnv_mix(&mut hash, &[self.config.scales]);
+        fnv_mix(&mut hash, &self.config.finest_nodes.to_le_bytes());
+        fnv_mix(&mut hash, &(self.config.max_nodes as u64).to_le_bytes());
+        fnv_mix(&mut hash, &self.config.max_steps.to_le_bytes());
+        for value in [
+            self.config.dt,
+            self.config.coupling,
+            self.config.decay,
+            self.config.drive,
+            self.config.initial_resource,
+            self.config.idle_cost,
+            self.config.activity_cost,
+        ] {
+            fnv_mix(&mut hash, &value.to_bits().to_le_bytes());
+        }
         fnv_mix(&mut hash, &self.tick.to_le_bytes());
+
+        for (index, adjacent) in self.neighbors.iter().enumerate() {
+            fnv_mix(&mut hash, &(index as u64).to_le_bytes());
+            fnv_mix(&mut hash, &(adjacent.len() as u64).to_le_bytes());
+            for &neighbor in adjacent {
+                fnv_mix(&mut hash, &(neighbor as u64).to_le_bytes());
+            }
+        }
         for node in &self.nodes {
             fnv_mix(&mut hash, &node.id.to_le_bytes());
             fnv_mix(&mut hash, &[node.scale]);
@@ -378,6 +406,25 @@ mod tests {
         left.run_steps(100).unwrap();
         right.run_steps(100).unwrap();
         assert_eq!(left.replay_digest_non_security(), right.replay_digest_non_security());
+    }
+
+    #[test]
+    fn replay_digest_binds_seed_and_configuration() {
+        let config = Config::default();
+        let same_state_a = Lattice::new(config.clone(), 1234).unwrap();
+        let different_seed = Lattice::new(config.clone(), 5678).unwrap();
+        let mut changed_config = config;
+        changed_config.drive = 0.04;
+        let different_config = Lattice::new(changed_config, 1234).unwrap();
+
+        assert_ne!(
+            same_state_a.replay_digest_non_security(),
+            different_seed.replay_digest_non_security()
+        );
+        assert_ne!(
+            same_state_a.replay_digest_non_security(),
+            different_config.replay_digest_non_security()
+        );
     }
 
     #[test]
