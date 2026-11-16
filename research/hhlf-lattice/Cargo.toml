@@ -1,0 +1,12 @@
+[workspace]
+
+[package]
+name = "hhlf-lattice-lab"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "AGPL-3.0-or-later"
+description = "Bounded CPU-first research scaffold for multiscale liquid lattice experiments"
+
+[profile.release]
+overflow-checks = true
